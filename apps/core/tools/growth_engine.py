@@ -1,17 +1,17 @@
 """
-growth_engine.py — Motor de Revenue & Growth para ARIA AI.
+growth_engine.py — Revenue & Growth engine for ARIA AI.
 
-Integra GrowthBook y PostHog para:
-  - A/B testing profesional de estrategias de marketing (GrowthBook)
-  - Analítica de producto con funnels y conversiones (PostHog)
-  - Experimentación continua para optimizar ingresos
-  - Seguimiento de eventos de negocio en tiempo real
-  - Análisis de cohortes y retención de clientes
+Integrates GrowthBook and PostHog for:
+  - Professional A/B testing of marketing strategies (GrowthBook)
+  - Product analytics with funnels and conversions (PostHog)
+  - Continuous experimentation to optimize revenue
+  - Real-time business event tracking
+  - Cohort analysis and customer retention
 
-ARIA necesita aprender qué funciona. No solo ejecutar.
-Este módulo cierra el loop: ejecutar → medir → aprender → optimizar.
+ARIA needs to learn what works. Not just execute.
+This module closes the loop: execute → measure → learn → optimize.
 
-Referencia:
+Reference:
   - GrowthBook: https://github.com/growthbook/growthbook-python
   - PostHog: https://github.com/posthog/posthog-python
 """
@@ -26,67 +26,67 @@ from typing import Any
 
 logger = logging.getLogger("aria.growth_engine")
 
-# ── GrowthBook Import con fallback ───────────────────────────────────────────
+# ── GrowthBook import with fallback ──────────────────────────────────────────
 try:
     from growthbook import Experiment, GrowthBook, Result  # noqa: F401
 
     GROWTHBOOK_AVAILABLE = True
-    logger.info("[GrowthBook] Librería cargada correctamente.")
+    logger.info("[GrowthBook] Library loaded successfully.")
 except ImportError:
     GROWTHBOOK_AVAILABLE = False
     logger.warning(
-        "[GrowthBook] growthbook no instalado. "
-        "Usando A/B testing nativo. "
-        "Instala con: pip install growthbook"
+        "[GrowthBook] growthbook not installed. "
+        "Using native A/B testing. "
+        "Install with: pip install growthbook"
     )
     GrowthBook = None  # type: ignore[assignment,misc]
     Experiment = None  # type: ignore[assignment,misc]
 
-# ── PostHog Import con fallback ──────────────────────────────────────────────
+# ── PostHog import with fallback ─────────────────────────────────────────────
 try:
     import posthog
 
     POSTHOG_AVAILABLE = True
-    logger.info("[PostHog] Librería cargada correctamente.")
+    logger.info("[PostHog] Library loaded successfully.")
 except ImportError:
     POSTHOG_AVAILABLE = False
     logger.warning(
-        "[PostHog] posthog no instalado. "
-        "Usando logging nativo. "
-        "Instala con: pip install posthog"
+        "[PostHog] posthog not installed. "
+        "Using native logging. "
+        "Install with: pip install posthog"
     )
     posthog = None  # type: ignore[assignment]
 
 
-# ── GrowthBook Engine ────────────────────────────────────────────────────────
+# ── GrowthBook Engine ─────────────────────────────────────────────────────────
 
 
 class AriaGrowthBookEngine:
     """
-    Motor de A/B Testing para ARIA AI con GrowthBook.
+    A/B Testing engine for ARIA AI with GrowthBook.
 
-    Permite a ARIA experimentar con diferentes estrategias y aprender
-    cuáles generan más ingresos y conversiones.
+    Lets ARIA experiment with different strategies and learn
+    which ones generate more revenue and conversions.
 
-    Experimentos típicos de ARIA:
-    - Precio de ebooks ($7 vs $17 vs $27)
-    - Horario de publicación de contenido (mañana vs tarde vs noche)
-    - Tipo de CTA en emails (urgencia vs beneficio vs social proof)
-    - Canal de distribución (TikTok vs Instagram vs Twitter)
-    - Longitud de email de ventas (corto vs largo)
+    Typical ARIA experiments:
+    - Ebook pricing ($7 vs $17 vs $27)
+    - Content publishing schedule (morning vs afternoon vs evening)
+    - CTA type in emails (urgency vs benefit vs social proof)
+    - Distribution channel (TikTok vs Instagram vs Twitter)
+    - Sales email length (short vs long)
 
-    Uso:
+    Usage:
         engine = AriaGrowthBookEngine()
 
-        # Crear experimento de precio
+        # Create pricing experiment
         variant = engine.get_variant(
             experiment_id="ebook_price_test",
             user_id="campaign_001",
             variants=["$7", "$17", "$27"],
         )
-        print(f"Precio a usar: {variant}")
+        print(f"Price to use: {variant}")
 
-        # Registrar conversión
+        # Record conversion
         engine.track_conversion(
             experiment_id="ebook_price_test",
             user_id="campaign_001",
@@ -112,19 +112,19 @@ class AriaGrowthBookEngine:
         weights: list[float] | None = None,
     ) -> Any:
         """
-        Obtiene la variante asignada para un usuario en un experimento.
+        Gets the variant assigned to a user in an experiment.
 
-        Usa hashing determinístico para asignación consistente.
-        El mismo user_id siempre recibe la misma variante.
+        Uses deterministic hashing for consistent assignment.
+        The same user_id always receives the same variant.
 
         Args:
-            experiment_id: ID único del experimento
-            user_id: ID del usuario o campaña
-            variants: Lista de variantes posibles
-            weights: Pesos de distribución (default: igual distribución)
+            experiment_id: Unique experiment ID
+            user_id: User or campaign ID
+            variants: List of possible variants
+            weights: Distribution weights (default: equal distribution)
 
         Returns:
-            La variante asignada al usuario
+            The variant assigned to the user
         """
         if not variants:
             return None
@@ -144,14 +144,14 @@ class AriaGrowthBookEngine:
                 result = gb.run(exp)
                 variant = result.value
 
-                # Registrar asignación
+                # Record assignment
                 self._record_assignment(experiment_id, user_id, variant, result.in_experiment)
                 return variant
 
             except Exception as exc:
-                logger.warning("[GrowthBook] Error en experimento %s: %s", experiment_id, exc)
+                logger.warning("[GrowthBook] Error in experiment %s: %s", experiment_id, exc)
 
-        # Fallback: hashing determinístico
+        # Fallback: deterministic hashing
         return self._hash_variant(experiment_id, user_id, variants, weights)
 
     def _hash_variant(
@@ -161,12 +161,12 @@ class AriaGrowthBookEngine:
         variants: list[Any],
         weights: list[float] | None = None,
     ) -> Any:
-        """Asignación determinística por hash cuando GrowthBook no está disponible."""
+        """Deterministic hash-based assignment when GrowthBook is not available."""
         hash_input = f"{experiment_id}_{user_id}"
         hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
 
         if weights:
-            # Distribución ponderada
+            # Weighted distribution
             cumulative = 0.0
             normalized_hash = (hash_value % 10000) / 10000.0
             for variant, weight in zip(variants, weights, strict=False):
@@ -174,7 +174,7 @@ class AriaGrowthBookEngine:
                 if normalized_hash <= cumulative:
                     return variant
             return variants[-1]
-        # Distribución uniforme
+        # Uniform distribution
         return variants[hash_value % len(variants)]
 
     def _record_assignment(
@@ -184,7 +184,7 @@ class AriaGrowthBookEngine:
         variant: Any,
         in_experiment: bool,
     ) -> None:
-        """Registra la asignación de variante."""
+        """Records the variant assignment."""
         if experiment_id not in self._experiments:
             self._experiments[experiment_id] = {
                 "id": experiment_id,
@@ -206,13 +206,13 @@ class AriaGrowthBookEngine:
         metric: str = "revenue",
     ) -> None:
         """
-        Registra una conversión para un experimento.
+        Records a conversion for an experiment.
 
         Args:
-            experiment_id: ID del experimento
-            user_id: ID del usuario
-            value: Valor de la conversión (ej: $27.0 para una venta)
-            metric: Métrica a trackear ('revenue', 'conversion', 'clicks')
+            experiment_id: Experiment ID
+            user_id: User ID
+            value: Conversion value (e.g. $27.0 for a sale)
+            metric: Metric to track ('revenue', 'conversion', 'clicks')
         """
         conversion = {
             "experiment_id": experiment_id,
@@ -227,7 +227,7 @@ class AriaGrowthBookEngine:
             self._experiments[experiment_id]["conversions"].append(conversion)
 
         logger.info(
-            "[GrowthBook] Conversión registrada: exp=%s user=%s value=%.2f",
+            "[GrowthBook] Conversion recorded: exp=%s user=%s value=%.2f",
             experiment_id,
             user_id,
             value,
@@ -235,19 +235,19 @@ class AriaGrowthBookEngine:
 
     def get_experiment_results(self, experiment_id: str) -> dict[str, Any]:
         """
-        Obtiene los resultados estadísticos de un experimento.
+        Gets the statistical results of an experiment.
 
         Returns:
-            Análisis de resultados por variante con métricas clave
+            Results analysis by variant with key metrics
         """
         if experiment_id not in self._experiments:
-            return {"error": f"Experimento '{experiment_id}' no encontrado"}
+            return {"error": f"Experiment '{experiment_id}' not found"}
 
         exp = self._experiments[experiment_id]
         assignments = exp.get("assignments", {})
         conversions = exp.get("conversions", [])
 
-        # Agrupar por variante
+        # Group by variant
         variant_stats: dict[str, dict] = {}
         for user_id, assignment in assignments.items():
             variant = str(assignment["variant"])
@@ -263,7 +263,7 @@ class AriaGrowthBookEngine:
                     variant_stats[variant]["conversions"] += 1
                     variant_stats[variant]["total_value"] += conv.get("value", 0.0)
 
-        # Calcular métricas
+        # Calculate metrics
         for variant, stats in variant_stats.items():
             users = stats["users"]
             stats["conversion_rate"] = stats["conversions"] / users if users > 0 else 0.0
@@ -282,7 +282,7 @@ class AriaGrowthBookEngine:
         }
 
     def get_all_experiments(self) -> list[dict[str, Any]]:
-        """Lista todos los experimentos activos."""
+        """Lists all active experiments."""
         return [
             {
                 "id": exp_id,
@@ -294,33 +294,33 @@ class AriaGrowthBookEngine:
         ]
 
 
-# ── PostHog Analytics Engine ─────────────────────────────────────────────────
+# ── PostHog Analytics Engine ──────────────────────────────────────────────────
 
 
 class AriaPostHogEngine:
     """
-    Motor de Analítica de Producto para ARIA AI con PostHog.
+    Product Analytics engine for ARIA AI with PostHog.
 
-    Permite a ARIA medir:
-    - Funnels de conversión completos (contenido → lead → venta)
-    - Eventos de negocio en tiempo real
-    - Cohortes de clientes y retención
-    - Feature flags para rollouts graduales
-    - Session recordings para análisis de comportamiento
+    Lets ARIA measure:
+    - Complete conversion funnels (content → lead → sale)
+    - Real-time business events
+    - Customer cohorts and retention
+    - Feature flags for gradual rollouts
+    - Session recordings for behavior analysis
 
-    Para un Revenue Engine es casi obligatorio.
+    Nearly mandatory for a Revenue Engine.
 
-    Uso:
+    Usage:
         engine = AriaPostHogEngine()
 
-        # Trackear evento de negocio
+        # Track business event
         engine.capture_event(
             distinct_id="campaign_001",
             event="sale_completed",
             properties={"amount": 27.0, "product": "Ebook Fitness", "channel": "tiktok"}
         )
 
-        # Identificar usuario/campaña
+        # Identify user/campaign
         engine.identify(
             distinct_id="campaign_001",
             properties={"niche": "fitness", "total_revenue": 270.0}
@@ -343,9 +343,9 @@ class AriaPostHogEngine:
                 posthog.host = host
                 posthog.debug = False
                 self._initialized = True
-                logger.info("[PostHog] Inicializado correctamente (host=%s)", host)
+                logger.info("[PostHog] Initialized successfully (host=%s)", host)
             except Exception as exc:
-                logger.warning("[PostHog] Error inicializando: %s", exc)
+                logger.warning("[PostHog] Initialization error: %s", exc)
 
     def capture_event(
         self,
@@ -354,12 +354,12 @@ class AriaPostHogEngine:
         properties: dict[str, Any] | None = None,
     ) -> None:
         """
-        Captura un evento de negocio en PostHog.
+        Captures a business event in PostHog.
 
         Args:
-            distinct_id: ID único del usuario, campaña o agente
-            event: Nombre del evento (ej: 'sale_completed', 'content_published')
-            properties: Propiedades del evento (amount, channel, niche, etc.)
+            distinct_id: Unique ID of the user, campaign, or agent
+            event: Event name (e.g. 'sale_completed', 'content_published')
+            properties: Event properties (amount, channel, niche, etc.)
         """
         props = properties or {}
         props["timestamp"] = datetime.now(UTC).isoformat()
@@ -379,14 +379,14 @@ class AriaPostHogEngine:
                     event=event,
                     properties=props,
                 )
-                logger.debug("[PostHog] Evento capturado: %s | %s", event, distinct_id)
+                logger.debug("[PostHog] Event captured: %s | %s", event, distinct_id)
             except Exception as exc:
-                logger.warning("[PostHog] Error capturando evento: %s", exc)
+                logger.warning("[PostHog] Error capturing event: %s", exc)
                 self._event_buffer.append(event_data)
         else:
-            # Buffer local cuando PostHog no está disponible
+            # Local buffer when PostHog is not available
             self._event_buffer.append(event_data)
-            logger.debug("[PostHog] Evento en buffer: %s | %s", event, distinct_id)
+            logger.debug("[PostHog] Event buffered: %s | %s", event, distinct_id)
 
     def identify(
         self,
@@ -394,11 +394,11 @@ class AriaPostHogEngine:
         properties: dict[str, Any] | None = None,
     ) -> None:
         """
-        Identifica un usuario/campaña con sus propiedades.
+        Identifies a user/campaign with its properties.
 
         Args:
-            distinct_id: ID único
-            properties: Propiedades del perfil (niche, total_revenue, etc.)
+            distinct_id: Unique ID
+            properties: Profile properties (niche, total_revenue, etc.)
         """
         if self._initialized and posthog is not None:
             try:
@@ -407,7 +407,7 @@ class AriaPostHogEngine:
                     properties=properties or {},
                 )
             except Exception as exc:
-                logger.warning("[PostHog] Error en identify: %s", exc)
+                logger.warning("[PostHog] Error in identify: %s", exc)
 
     def capture_funnel_step(
         self,
@@ -417,18 +417,18 @@ class AriaPostHogEngine:
         properties: dict[str, Any] | None = None,
     ) -> None:
         """
-        Captura un paso en un funnel de conversión.
+        Captures a step in a conversion funnel.
 
-        Funnels típicos de ARIA:
+        Typical ARIA funnels:
         - content_funnel: content_created → lead_generated → email_sent → sale_completed
         - product_funnel: idea_generated → product_created → published → first_sale
         - campaign_funnel: campaign_started → content_published → engagement → conversion
 
         Args:
-            funnel_id: ID del funnel (ej: 'content_to_sale')
-            step: Paso actual (ej: 'lead_generated')
-            distinct_id: ID del usuario/campaña
-            properties: Datos adicionales del paso
+            funnel_id: Funnel ID (e.g. 'content_to_sale')
+            step: Current step (e.g. 'lead_generated')
+            distinct_id: User/campaign ID
+            properties: Additional step data
         """
         props = properties or {}
         props["funnel_id"] = funnel_id
@@ -449,14 +449,14 @@ class AriaPostHogEngine:
         agent: str = "",
     ) -> None:
         """
-        Captura un evento de ingresos para análisis de Revenue Attribution.
+        Captures a revenue event for Revenue Attribution analysis.
 
         Args:
-            amount_usd: Monto en USD
-            channel: Canal de origen (tiktok, email, organic, etc.)
-            product: Producto vendido
-            campaign_id: ID de la campaña que generó la venta
-            agent: Agente de ARIA que ejecutó la acción
+            amount_usd: Amount in USD
+            channel: Source channel (tiktok, email, organic, etc.)
+            product: Product sold
+            campaign_id: ID of the campaign that generated the sale
+            agent: ARIA agent that executed the action
         """
         distinct_id = campaign_id or f"revenue_{channel}_{datetime.now().strftime('%Y%m%d')}"
 
@@ -482,14 +482,14 @@ class AriaPostHogEngine:
         roi: float = 0.0,
     ) -> None:
         """
-        Captura una acción de agente para análisis de performance.
+        Captures an agent action for performance analysis.
 
         Args:
-            agent_name: Nombre del agente (orchestrator, cfo, marketing, etc.)
-            action: Acción ejecutada
-            success: Si fue exitosa
-            duration_ms: Duración en milisegundos
-            roi: ROI generado
+            agent_name: Agent name (orchestrator, cfo, marketing, etc.)
+            action: Action executed
+            success: Whether it succeeded
+            duration_ms: Duration in milliseconds
+            roi: ROI generated
         """
         self.capture_event(
             distinct_id=f"agent_{agent_name}",
@@ -504,17 +504,17 @@ class AriaPostHogEngine:
         )
 
     def get_buffered_events(self) -> list[dict[str, Any]]:
-        """Retorna los eventos en buffer (cuando PostHog no está disponible)."""
+        """Returns the buffered events (when PostHog is not available)."""
         return self._event_buffer.copy()
 
     def flush_buffer(self) -> int:
-        """Vacía el buffer de eventos y retorna el número de eventos."""
+        """Clears the event buffer and returns the number of events."""
         count = len(self._event_buffer)
         self._event_buffer.clear()
         return count
 
     def get_status(self) -> dict[str, Any]:
-        """Estado del motor PostHog."""
+        """Status of the PostHog engine."""
         return {
             "posthog_available": POSTHOG_AVAILABLE,
             "initialized": self._initialized,
@@ -524,23 +524,23 @@ class AriaPostHogEngine:
         }
 
 
-# ── Motor Unificado de Growth ────────────────────────────────────────────────
+# ── Unified Growth Engine ─────────────────────────────────────────────────────
 
 
 class AriaGrowthEngine:
     """
-    Motor unificado de Revenue & Growth para ARIA AI.
+    Unified Revenue & Growth engine for ARIA AI.
 
-    Combina GrowthBook (A/B testing) y PostHog (analítica) para
-    cerrar el loop de aprendizaje continuo:
+    Combines GrowthBook (A/B testing) and PostHog (analytics) to
+    close the continuous learning loop:
 
-        Ejecutar → Medir → Aprender → Optimizar → Ejecutar
+        Execute → Measure → Learn → Optimize → Execute
 
-    Integra con:
-    - ExecutionPipeline (medir resultados de cada ejecución)
-    - MarketingAgent (optimizar campañas)
-    - CFO Agent (atribuir ingresos)
-    - EvolutionAgent (aprender y mejorar)
+    Integrates with:
+    - ExecutionPipeline (measure each execution's results)
+    - MarketingAgent (optimize campaigns)
+    - CFO Agent (attribute revenue)
+    - EvolutionAgent (learn and improve)
     """
 
     def __init__(
@@ -566,27 +566,27 @@ class AriaGrowthEngine:
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Ejecuta un experimento completo: asigna variante y trackea en PostHog.
+        Runs a complete experiment: assigns a variant and tracks it in PostHog.
 
         Args:
-            experiment_id: ID único del experimento
-            variants: Variantes a probar
-            context: Contexto adicional (niche, campaign_id, etc.)
+            experiment_id: Unique experiment ID
+            variants: Variants to test
+            context: Additional context (niche, campaign_id, etc.)
 
         Returns:
-            Dict con la variante asignada y metadata del experimento
+            Dict with the assigned variant and experiment metadata
         """
         ctx = context or {}
         user_id = ctx.get("campaign_id") or ctx.get("user_id") or str(uuid.uuid4())
 
-        # Asignar variante con GrowthBook
+        # Assign variant with GrowthBook
         variant = self.ab_testing.get_variant(
             experiment_id=experiment_id,
             user_id=user_id,
             variants=variants,
         )
 
-        # Trackear en PostHog
+        # Track in PostHog
         self.analytics.capture_event(
             distinct_id=user_id,
             event="experiment_started",
@@ -598,7 +598,7 @@ class AriaGrowthEngine:
         )
 
         logger.info(
-            "[GrowthEngine] Experimento %s: user=%s variante=%s", experiment_id, user_id, variant
+            "[GrowthEngine] Experiment %s: user=%s variant=%s", experiment_id, user_id, variant
         )
 
         return {
@@ -617,16 +617,16 @@ class AriaGrowthEngine:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """
-        Registra el resultado de un experimento.
+        Records the outcome of an experiment.
 
         Args:
-            experiment_id: ID del experimento
-            user_id: ID del usuario
-            success: Si fue exitoso
-            revenue_usd: Ingresos generados
-            metadata: Datos adicionales
+            experiment_id: Experiment ID
+            user_id: User ID
+            success: Whether it succeeded
+            revenue_usd: Revenue generated
+            metadata: Additional data
         """
-        # Registrar conversión en GrowthBook
+        # Record conversion in GrowthBook
         if success or revenue_usd > 0:
             self.ab_testing.track_conversion(
                 experiment_id=experiment_id,
@@ -635,7 +635,7 @@ class AriaGrowthEngine:
                 metric="revenue",
             )
 
-        # Trackear en PostHog
+        # Track in PostHog
         self.analytics.capture_event(
             distinct_id=user_id,
             event="experiment_outcome",
@@ -648,7 +648,7 @@ class AriaGrowthEngine:
         )
 
     def get_full_report(self) -> dict[str, Any]:
-        """Reporte completo del estado de growth."""
+        """Complete report of growth status."""
         return {
             "experiments": self.ab_testing.get_all_experiments(),
             "analytics_status": self.analytics.get_status(),
@@ -662,7 +662,7 @@ _growth_engine_instance: AriaGrowthEngine | None = None
 
 
 def get_growth_engine() -> AriaGrowthEngine:
-    """Retorna el singleton del motor de Growth de ARIA."""
+    """Returns ARIA's Growth engine singleton."""
     global _growth_engine_instance
     if _growth_engine_instance is None:
         import os

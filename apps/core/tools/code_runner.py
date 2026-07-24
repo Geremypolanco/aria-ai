@@ -1,26 +1,26 @@
 """
-code_runner.py — Sandbox seguro para ejecución de código por ARIA AI.
+code_runner.py — Secure sandbox for code execution by ARIA AI.
 
-Ejecuta Python, JavaScript y bash con:
-  - Aislamiento real de proceso/filesystem/red via bubblewrap (bwrap), cuando
-    está disponible — namespaces sin privilegios (mount/pid/net/ipc/uts), con
-    solo el directorio de trabajo efímero de esa ejecución montado en
-    lectura-escritura y el resto del filesystem host en solo lectura o
-    inexistente. Sin `bwrap`, cae a ejecución directa (mismo nivel de
-    aislamiento que antes) — el resultado incluye "sandboxed": bool para que
-    quien llama sepa cuál se aplicó.
-  - Límites de recursos reales (CPU, memoria, procesos, tamaño de archivo,
-    file descriptors) via `ulimit`, independientes de bwrap.
-  - Red deshabilitada por defecto (namespace de red vacío); solo
-    _install_packages() la habilita explícitamente para poder llegar a PyPI.
-  - Timeout configurable (default 15s) reforzado además por el límite de
-    ulimit de CPU.
-  - Captura completa de stdout/stderr, sin heredar el entorno del servidor
-    (ningún secreto configurado es visible dentro del código ejecutado).
-  - Restricción adicional (defense-in-depth) de imports peligrosos.
+Runs Python, JavaScript, and bash with:
+  - Real process/filesystem/network isolation via bubblewrap (bwrap), when
+    available — unprivileged namespaces (mount/pid/net/ipc/uts), with
+    only that execution's ephemeral working directory mounted
+    read-write and the rest of the host filesystem read-only or
+    nonexistent. Without `bwrap`, it falls back to direct execution (same
+    isolation level as before) — the result includes "sandboxed": bool so
+    the caller knows which one was applied.
+  - Real resource limits (CPU, memory, processes, file size,
+    file descriptors) via `ulimit`, independent of bwrap.
+  - Network disabled by default (empty network namespace); only
+    _install_packages() explicitly enables it to reach PyPI.
+  - Configurable timeout (default 15s) additionally enforced by the
+    ulimit CPU limit.
+  - Full stdout/stderr capture, without inheriting the server's environment
+    (no configured secret is visible inside the executed code).
+  - Additional restriction (defense-in-depth) on dangerous imports.
 
-ARIA puede escribir código, ejecutarlo, ver el output real, y corregirlo.
-Esto habilita el loop: escribir → ejecutar → depurar → iterar.
+ARIA can write code, execute it, see the real output, and fix it.
+This enables the loop: write → execute → debug → iterate.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from typing import Any
 
 logger = logging.getLogger("aria.code_runner")
 
-# Imports que no se permiten en el sandbox de Python
+# Imports that are not allowed in the Python sandbox
 _BLOCKED_IMPORTS = {
     "subprocess",
     "os.system",
@@ -48,33 +48,33 @@ _BLOCKED_IMPORTS = {
     "multiprocessing",
 }
 
-# Tamaño máximo de output para no saturar el contexto
+# Maximum output size so we don't saturate the context
 MAX_OUTPUT_CHARS = 4000
-DEFAULT_TIMEOUT = 15  # segundos
+DEFAULT_TIMEOUT = 15  # seconds
 
-# Límites de recursos aplicados a todo proceso ejecutado (bwrap disponible o no).
-_ULIMIT_VIRTUAL_MEM_KB = 1_048_576  # 1 GB de memoria virtual
-_ULIMIT_MAX_PROCESSES = 64  # evita fork bombs
-_ULIMIT_MAX_FILE_SIZE_BLOCKS = 20_480  # ~10 MB por archivo escrito (bloques de 512B)
+# Resource limits applied to every executed process (whether bwrap is available or not).
+_ULIMIT_VIRTUAL_MEM_KB = 1_048_576  # 1 GB of virtual memory
+_ULIMIT_MAX_PROCESSES = 64  # prevents fork bombs
+_ULIMIT_MAX_FILE_SIZE_BLOCKS = 20_480  # ~10 MB per written file (512B blocks)
 _ULIMIT_MAX_OPEN_FILES = 128
 
-# Directorios host que se montan de solo lectura dentro del sandbox — lo
-# mínimo necesario para que el intérprete (python/node/bash) y sus
-# librerías dinámicas funcionen. Todo lo demás del filesystem host es
-# invisible dentro del sandbox.
+# Host directories mounted read-only inside the sandbox — the
+# minimum needed for the interpreter (python/node/bash) and its
+# dynamic libraries to work. Everything else on the host filesystem is
+# invisible inside the sandbox.
 _RO_BIND_CANDIDATES = ["/usr", "/bin", "/lib", "/lib64", "/usr/local", "/etc"]
 
 
 def _bwrap_path() -> str | None:
-    """Ruta al binario bwrap si está instalado y REALMENTE puede crear
-    namespaces sin privilegios en este entorno — cacheado tras la primera
-    llamada. No basta con que el binario exista: algunos runtimes de
-    contenedores (dependiendo de su perfil de seccomp/AppArmor) bloquean
-    `unshare(CLONE_NEWUSER)` para procesos sin privilegios, en cuyo caso
-    bwrap existe pero cada invocación fallaría con "Creating new namespace
-    failed: Operation not permitted" — sin este chequeo, CodeRunner
-    reportaría error de sandbox en vez de ejecutar el código (peor que la
-    ejecución sin aislar). Se prueba una vez con una invocación mínima."""
+    """Path to the bwrap binary if it's installed and can REALLY create
+    unprivileged namespaces in this environment — cached after the first
+    call. It's not enough for the binary to exist: some container runtimes
+    (depending on their seccomp/AppArmor profile) block
+    `unshare(CLONE_NEWUSER)` for unprivileged processes, in which case
+    bwrap exists but every invocation would fail with "Creating new namespace
+    failed: Operation not permitted" — without this check, CodeRunner
+    would report a sandbox error instead of executing the code (worse than
+    running unsandboxed). Tested once with a minimal invocation."""
     if not hasattr(_bwrap_path, "_cached"):
         path = shutil.which("bwrap")
         if path:
@@ -99,10 +99,10 @@ def _bwrap_path() -> str | None:
 
 
 def _build_sandboxed_cmd(cmd: list[str], workdir: str, network: bool) -> list[str]:
-    """Envuelve `cmd` con bubblewrap: namespaces sin privilegios que dejan
-    `workdir` como único punto de escritura real, deshabilitan la red salvo
-    que `network=True`, y no exponen ningún otro archivo del servidor
-    (secretos, código fuente de ARIA, otras ejecuciones concurrentes)."""
+    """Wraps `cmd` with bubblewrap: unprivileged namespaces that leave
+    `workdir` as the only real writable location, disable the network unless
+    `network=True`, and don't expose any other server file
+    (secrets, ARIA's source code, other concurrent executions)."""
     bwrap = _bwrap_path()
     assert bwrap is not None
 
@@ -131,9 +131,9 @@ def _build_sandboxed_cmd(cmd: list[str], workdir: str, network: bool) -> list[st
 
 
 def _wrap_with_ulimits(cmd: list[str]) -> list[str]:
-    """Aplica límites de recursos reales via el builtin `ulimit` de bash antes
-    de reemplazar el shell con el comando real (`exec`). No depende de bwrap
-    ni de preexec_fn (inseguro junto a asyncio) — funciona siempre."""
+    """Applies real resource limits via bash's `ulimit` builtin before
+    replacing the shell with the actual command (`exec`). Doesn't depend on
+    bwrap or preexec_fn (unsafe alongside asyncio) — always works."""
     ulimits = (
         f"ulimit -v {_ULIMIT_VIRTUAL_MEM_KB}; "
         f"ulimit -u {_ULIMIT_MAX_PROCESSES}; "
@@ -145,7 +145,7 @@ def _wrap_with_ulimits(cmd: list[str]) -> list[str]:
 
 
 class CodeRunner:
-    """Ejecuta código de forma segura y devuelve stdout/stderr."""
+    """Executes code securely and returns stdout/stderr."""
 
     async def run(
         self,
@@ -155,7 +155,7 @@ class CodeRunner:
         packages: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Ejecuta código y devuelve {success, stdout, stderr, exit_code, runtime_ms, sandboxed}.
+        Executes code and returns {success, stdout, stderr, exit_code, runtime_ms, sandboxed}.
         """
         language = language.lower().strip()
 
@@ -165,14 +165,14 @@ class CodeRunner:
             return await self._run_javascript(code, timeout)
         if language in ("bash", "shell", "sh"):
             return await self._run_bash(code, timeout)
-        # Intentar como Python por defecto
+        # Default to trying as Python
         return await self._run_python(code, timeout, packages)
 
     async def _run_python(
         self, code: str, timeout: int, packages: list[str] | None
     ) -> dict[str, Any]:
-        """Ejecuta Python en subproceso aislado, en un workdir efímero propio."""
-        # Chequeo básico de imports peligrosos
+        """Runs Python in an isolated subprocess, in its own ephemeral workdir."""
+        # Basic check for dangerous imports
         warning = self._check_dangerous(code)
         if warning:
             return {
@@ -202,7 +202,7 @@ class CodeRunner:
             shutil.rmtree(workdir, ignore_errors=True)
 
     async def _run_javascript(self, code: str, timeout: int) -> dict[str, Any]:
-        """Ejecuta JavaScript con Node.js si está disponible, en un workdir efímero propio."""
+        """Runs JavaScript with Node.js if available, in its own ephemeral workdir."""
         workdir = tempfile.mkdtemp(prefix="aria_sandbox_")
         try:
             tmp_path = os.path.join(workdir, "script.js")
@@ -214,14 +214,14 @@ class CodeRunner:
             shutil.rmtree(workdir, ignore_errors=True)
 
     async def _run_bash(self, code: str, timeout: int) -> dict[str, Any]:
-        """Ejecuta bash en un workdir efímero propio. Solo para comandos de lectura/análisis."""
-        # Bloquear comandos destructivos
+        """Runs bash in its own ephemeral workdir. Only for read/analysis commands."""
+        # Block destructive commands
         dangerous = ["rm -rf", "dd if=", "mkfs", ":(){", "shutdown", "reboot"]
         for d in dangerous:
             if d in code:
                 return {
                     "success": False,
-                    "stderr": f"Comando peligroso bloqueado: '{d}'",
+                    "stderr": f"Dangerous command blocked: '{d}'",
                     "stdout": "",
                     "exit_code": -1,
                     "sandboxed": _bwrap_path() is not None,
@@ -240,7 +240,7 @@ class CodeRunner:
         network: bool = False,
         extra_env: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Ejecuta comando y captura output con timeout.
+        """Executes a command and captures output with a timeout.
 
         Isolation actually applied:
           - Real OS-level sandbox via bubblewrap when available (`sandboxed:
@@ -296,7 +296,7 @@ class CodeRunner:
                 return {
                     "success": False,
                     "stdout": "",
-                    "stderr": f"Timeout: ejecución superó {timeout}s",
+                    "stderr": f"Timeout: execution exceeded {timeout}s",
                     "exit_code": -1,
                     "runtime_ms": int((time.monotonic() - start) * 1000),
                     "sandboxed": sandboxed,
@@ -325,7 +325,7 @@ class CodeRunner:
             return {
                 "success": False,
                 "stdout": "",
-                "stderr": f"Intérprete no encontrado: {exc}",
+                "stderr": f"Interpreter not found: {exc}",
                 "exit_code": -1,
                 "runtime_ms": 0,
                 "sandboxed": sandboxed,
@@ -342,15 +342,15 @@ class CodeRunner:
             }
 
     async def _install_packages(self, packages: list[str], workdir: str) -> str | None:
-        """Instala paquetes pip en un directorio efímero dentro de `workdir`
-        (via --target), no en el site-packages global del servidor. Antes,
-        `pip install` sin --target escribía en el mismo site-packages que usa
-        el propio proceso de ARIA — una ejecución podía instalar/sobreescribir
-        una dependencia que el servidor usa, y los paquetes quedaban
-        persistidos para todas las ejecuciones futuras (y visibles entre
-        ellas) en lugar de ser efímeros como el resto del sandbox. Requiere
-        red (`network=True`) para llegar a PyPI — es la única ejecución que
-        la habilita por defecto."""
+        """Installs pip packages into an ephemeral directory inside `workdir`
+        (via --target), not into the server's global site-packages. Before,
+        `pip install` without --target wrote into the same site-packages
+        used by ARIA's own process — one execution could install/overwrite
+        a dependency the server uses, and the packages would persist for
+        all future executions (and be visible across them) instead of being
+        ephemeral like the rest of the sandbox. Requires
+        network (`network=True`) to reach PyPI — it's the only execution
+        that enables it by default."""
         site_dir = os.path.join(workdir, "site-packages")
         os.makedirs(site_dir, exist_ok=True)
         try:
@@ -369,26 +369,26 @@ class CodeRunner:
             return None
 
     def _check_dangerous(self, code: str) -> str:
-        """Retorna mensaje de error si el código contiene imports peligrosos."""
+        """Returns an error message if the code contains dangerous imports."""
         for blocked in _BLOCKED_IMPORTS:
             pattern = blocked.replace(".", r"\.")
             if re.search(rf"\b{pattern}\b", code):
-                return f"Import bloqueado en sandbox: '{blocked}'"
+                return f"Import blocked in sandbox: '{blocked}'"
         return ""
 
     async def run_with_fix(
         self, code: str, language: str = "python", max_iterations: int = 3
     ) -> dict[str, Any]:
         """
-        Ejecuta código, y si falla, usa IA para corregirlo automáticamente.
-        Implementa el loop: escribir → ejecutar → depurar → reejecutar.
+        Executes code, and if it fails, uses AI to automatically fix it.
+        Implements the loop: write → execute → debug → re-execute.
         """
         result = await self.run(code, language)
 
         if result.get("success") or max_iterations == 0:
             return result
 
-        # Código falló — intentar auto-fix con IA
+        # Code failed — try AI auto-fix
         for attempt in range(max_iterations):
             error = result.get("stderr", "")[:500]
             logger.info(

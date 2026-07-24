@@ -1,12 +1,12 @@
 """
-research_agent.py — Agente de Investigación Avanzado para ARIA.
+research_agent.py — Advanced Research Agent for ARIA.
 
-Combina las capacidades de Manus:
-- Búsqueda web profunda
-- Análisis de fuentes
-- Extracción de datos
-- Síntesis de información
-- Citación automática
+Combines Manus-style capabilities:
+- Deep web search
+- Source analysis
+- Data extraction
+- Information synthesis
+- Automatic citation
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ logger = logging.getLogger("aria.research_agent")
 
 
 class ResearchAgent(BaseAgent):
-    """Agente de investigación con capacidades avanzadas de búsqueda y análisis."""
+    """Research agent with advanced search and analysis capabilities."""
 
     def __init__(self) -> None:
         super().__init__(
             name="research",
-            description="Investigación profunda — búsqueda web, análisis, síntesis",
+            description="Deep research — web search, analysis, synthesis",
             capabilities=[
                 "web_search",
                 "data_extraction",
@@ -43,25 +43,25 @@ class ResearchAgent(BaseAgent):
         self.sources: list[dict[str, Any]] = []
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Punto de entrada principal."""
+        """Main entry point."""
         query = context.get("query", "")
         context.get("research_type", "general")
         depth = context.get("depth", "medium")  # shallow, medium, deep
         max_sources = context.get("max_sources", 20)
 
-        logger.info(f"[ResearchAgent] Iniciando investigación: {query[:80]}")
+        logger.info(f"[ResearchAgent] Starting research: {query[:80]}")
 
         try:
-            # 1. Búsqueda web profunda
+            # 1. Deep web search
             sources = await self._deep_search(query, max_sources, depth)
 
-            # 2. Análisis de fuentes
+            # 2. Source analysis
             analyzed_sources = await self._analyze_sources(sources)
 
-            # 3. Síntesis de información
+            # 3. Information synthesis
             synthesis = await self._synthesize_information(query, analyzed_sources)
 
-            # 4. Generar reporte
+            # 4. Generate report
             report = await self._generate_report(query, synthesis, analyzed_sources)
 
             return {
@@ -74,30 +74,30 @@ class ResearchAgent(BaseAgent):
             }
 
         except Exception as exc:
-            logger.error(f"[ResearchAgent] Error en investigación: {exc}")
+            logger.error(f"[ResearchAgent] Error in research: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _deep_search(self, query: str, max_sources: int, depth: str) -> list[dict[str, Any]]:
-        """Realiza una búsqueda web profunda."""
-        logger.info(f"[ResearchAgent] Búsqueda profunda: {query}")
+        """Performs a deep web search."""
+        logger.info(f"[ResearchAgent] Deep search: {query}")
 
         sources = []
 
         try:
-            # Búsqueda múltiple con diferentes estrategias
+            # Multiple search with different strategies
             search_queries = await self._generate_search_variants(query)
 
             for search_query in search_queries[:5]:
-                # Buscar en múltiples motores
+                # Search across multiple engines
                 google_results = await self._search_google(search_query)
                 bing_results = await self._search_bing(search_query)
                 duckduckgo_results = await self._search_duckduckgo(search_query)
 
-                # Combinar y deduplicar
+                # Combine and deduplicate
                 all_results = google_results + bing_results + duckduckgo_results
                 sources.extend(all_results)
 
-            # Deduplicar por URL
+            # Deduplicate by URL
             unique_sources = {}
             for source in sources:
                 url = source.get("url", "")
@@ -106,62 +106,62 @@ class ResearchAgent(BaseAgent):
 
             sources = list(unique_sources.values())[:max_sources]
 
-            # Extracción de contenido
+            # Content extraction
             for source in sources:
                 content = await self._extract_content(source.get("url", ""))
                 source["content"] = content
                 source["extracted_at"] = datetime.now(UTC).isoformat()
 
             self.sources = sources
-            logger.info(f"[ResearchAgent] Encontradas {len(sources)} fuentes únicas")
+            logger.info(f"[ResearchAgent] Found {len(sources)} unique sources")
 
             return sources
 
         except Exception as exc:
-            logger.error(f"[ResearchAgent] Error en búsqueda: {exc}")
+            logger.error(f"[ResearchAgent] Search error: {exc}")
             return []
 
     async def _generate_search_variants(self, query: str) -> list[str]:
-        """Genera variantes de la búsqueda para mayor cobertura."""
+        """Generates search variants for wider coverage."""
         ai = get_ai_client()
         if not ai:
             return [query]
 
         try:
             response = await ai.complete(
-                system="Eres un experto en búsqueda. Genera 5 variantes de una búsqueda para máxima cobertura.",
-                user=f"Genera variantes de búsqueda para: {query}",
+                system="You are a search expert. Generate 5 search variants for maximum coverage.",
+                user=f"Generate search variants for: {query}",
                 model=AIModel.FAST,
                 max_tokens=300,
             )
 
-            # Parsear respuesta
+            # Parse response
             variants = response.split("\n") if response else [query]
             return [v.strip() for v in variants if v.strip()][:5]
 
         except Exception as exc:
-            logger.warning(f"[ResearchAgent] Error generando variantes: {exc}")
+            logger.warning(f"[ResearchAgent] Error generating variants: {exc}")
             return [query]
 
     async def _search_google(self, query: str) -> list[dict[str, Any]]:
-        """Busca en Google."""
-        # Implementación con Google Custom Search API
-        # Por ahora, retornar lista vacía como placeholder
-        logger.debug(f"[ResearchAgent] Buscando en Google: {query}")
+        """Searches Google."""
+        # Implementation with Google Custom Search API
+        # For now, return an empty list as a placeholder
+        logger.debug(f"[ResearchAgent] Searching Google: {query}")
         return []
 
     async def _search_bing(self, query: str) -> list[dict[str, Any]]:
-        """Busca en Bing."""
-        logger.debug(f"[ResearchAgent] Buscando en Bing: {query}")
+        """Searches Bing."""
+        logger.debug(f"[ResearchAgent] Searching Bing: {query}")
         return []
 
     async def _search_duckduckgo(self, query: str) -> list[dict[str, Any]]:
-        """Busca en DuckDuckGo."""
-        logger.debug(f"[ResearchAgent] Buscando en DuckDuckGo: {query}")
+        """Searches DuckDuckGo."""
+        logger.debug(f"[ResearchAgent] Searching DuckDuckGo: {query}")
         return []
 
     async def _extract_content(self, url: str) -> str:
-        """Extrae contenido de una URL."""
+        """Extracts content from a URL."""
         try:
             web_scraping_tool = tool_registry.get_tool("web_scraping")
             if not web_scraping_tool:
@@ -173,11 +173,11 @@ class ResearchAgent(BaseAgent):
             return ""
 
         except Exception as exc:
-            logger.warning(f"[ResearchAgent] Error extrayendo contenido: {exc}")
+            logger.warning(f"[ResearchAgent] Error extracting content: {exc}")
             return ""
 
     async def _analyze_sources(self, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Analiza la credibilidad y relevancia de las fuentes."""
+        """Analyzes the credibility and relevance of the sources."""
         ai = get_ai_client()
         if not ai:
             return sources
@@ -186,20 +186,20 @@ class ResearchAgent(BaseAgent):
 
         for source in sources:
             try:
-                analysis_prompt = f"""Analiza esta fuente en términos de credibilidad y relevancia:
+                analysis_prompt = f"""Analyze this source in terms of credibility and relevance:
 
 URL: {source.get('url', '')}
-Título: {source.get('title', '')}
-Contenido (primeros 500 chars): {source.get('content', '')[:500]}
+Title: {source.get('title', '')}
+Content (first 500 chars): {source.get('content', '')[:500]}
 
-Proporciona:
-- Credibilidad (1-10)
-- Relevancia (1-10)
-- Tipo de fuente (académica, noticia, blog, etc.)
-- Sesgo potencial (si aplica)"""
+Provide:
+- Credibility (1-10)
+- Relevance (1-10)
+- Source type (academic, news, blog, etc.)
+- Potential bias (if applicable)"""
 
                 response = await ai.complete(
-                    system="Eres un analista de fuentes. Evalúa credibilidad y relevancia.",
+                    system="You are a source analyst. Evaluate credibility and relevance.",
                     user=analysis_prompt,
                     model=AIModel.FAST,
                     max_tokens=200,
@@ -209,40 +209,40 @@ Proporciona:
                 analyzed.append(source)
 
             except Exception as exc:
-                logger.warning(f"[ResearchAgent] Error analizando fuente: {exc}")
+                logger.warning(f"[ResearchAgent] Error analyzing source: {exc}")
                 analyzed.append(source)
 
         return analyzed
 
     async def _synthesize_information(self, query: str, sources: list[dict[str, Any]]) -> str:
-        """Sintetiza la información de múltiples fuentes."""
+        """Synthesizes information from multiple sources."""
         ai = get_ai_client()
         if not ai:
-            return "Síntesis no disponible"
+            return "Synthesis not available"
 
         try:
-            # Preparar resumen de fuentes
+            # Prepare a summary of sources
             sources_summary = "\n".join(
                 [
-                    f"- {s.get('title', 'Sin título')}: {s.get('content', '')[:300]}"
+                    f"- {s.get('title', 'No title')}: {s.get('content', '')[:300]}"
                     for s in sources[:10]
                 ]
             )
 
-            synthesis_prompt = f"""Sintetiza la información de estas fuentes sobre: {query}
+            synthesis_prompt = f"""Synthesize the information from these sources about: {query}
 
-FUENTES:
+SOURCES:
 {sources_summary}
 
-Proporciona:
-1. Resumen ejecutivo (2-3 párrafos)
-2. Puntos clave
-3. Áreas de consenso
-4. Áreas de desacuerdo
-5. Conclusiones"""
+Provide:
+1. Executive summary (2-3 paragraphs)
+2. Key points
+3. Areas of consensus
+4. Areas of disagreement
+5. Conclusions"""
 
             response = await ai.complete(
-                system="Eres un sintetizador de información. Crea resúmenes coherentes y bien estructurados.",
+                system="You are an information synthesizer. Create coherent, well-structured summaries.",
                 user=synthesis_prompt,
                 model=AIModel.STRATEGY,
                 max_tokens=1500,
@@ -251,8 +251,8 @@ Proporciona:
             return response
 
         except Exception as exc:
-            logger.error(f"[ResearchAgent] Error sintetizando: {exc}")
-            return "Error en síntesis"
+            logger.error(f"[ResearchAgent] Error synthesizing: {exc}")
+            return "Error in synthesis"
 
     async def _generate_report(
         self,
@@ -260,7 +260,7 @@ Proporciona:
         synthesis: str,
         sources: list[dict[str, Any]],
     ) -> str:
-        """Genera un reporte formateado con citas."""
+        """Generates a formatted report with citations."""
         ai = get_ai_client()
         if not ai:
             return synthesis
@@ -268,23 +268,23 @@ Proporciona:
         try:
             citations = self._generate_citations(sources)
 
-            report_prompt = f"""Genera un reporte profesional sobre: {query}
+            report_prompt = f"""Generate a professional report about: {query}
 
-SÍNTESIS:
+SYNTHESIS:
 {synthesis}
 
-CITAS DISPONIBLES:
+AVAILABLE CITATIONS:
 {citations}
 
-Formato del reporte:
-- Introducción
-- Hallazgos principales
-- Análisis detallado
-- Conclusiones
-- Referencias"""
+Report format:
+- Introduction
+- Main findings
+- Detailed analysis
+- Conclusions
+- References"""
 
             response = await ai.complete(
-                system="Eres un escritor técnico. Genera reportes profesionales bien estructurados.",
+                system="You are a technical writer. Generate well-structured, professional reports.",
                 user=report_prompt,
                 model=AIModel.STRATEGY,
                 max_tokens=2000,
@@ -293,19 +293,19 @@ Formato del reporte:
             return response
 
         except Exception as exc:
-            logger.error(f"[ResearchAgent] Error generando reporte: {exc}")
+            logger.error(f"[ResearchAgent] Error generating report: {exc}")
             return synthesis
 
     def _generate_citations(self, sources: list[dict[str, Any]]) -> str:
-        """Genera citas en formato APA."""
+        """Generates citations in APA format."""
         citations = []
 
         for i, source in enumerate(sources[:20], 1):
             url = source.get("url", "")
-            title = source.get("title", "Sin título")
+            title = source.get("title", "No title")
             date = source.get("date", datetime.now().strftime("%Y-%m-%d"))
 
-            # Formato APA simplificado
+            # Simplified APA format
             citation = f"[{i}] {title}. Retrieved from {url} ({date})"
             citations.append(citation)
 

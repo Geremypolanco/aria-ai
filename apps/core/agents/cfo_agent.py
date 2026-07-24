@@ -1,6 +1,6 @@
 """
 CFOAgent — Chief Financial Officer Agent
-Crea y publica productos digitales, gestiona pagos y registra ingresos.
+Creates and publishes digital products, manages payments, and records revenue.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ class CFOAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
             name="cfo",
-            description="CFO — productos digitales, pagos e ingresos",
+            description="CFO — digital products, payments, and revenue",
             capabilities=["ebook_creation", "gumroad", "stripe", "shopify", "revenue_tracking"],
         )
 
@@ -32,21 +32,21 @@ class CFOAgent(BaseAgent):
 
         ebook = await self.create_ebook(market_focus, language)
         if not ebook:
-            return {"success": False, "error": "No se pudo generar el ebook"}
+            return {"success": False, "error": "Could not generate the ebook"}
 
         results: dict[str, Any] = {"success": True, "agent": "cfo_agent", "ebook": ebook}
 
-        # Publicar en Gumroad (requiere aprobación si precio > 0)
+        # Publish to Gumroad (requires approval if price > 0)
         if settings.GUMROAD_TOKEN and ebook.get("price_usd", 0) > 0:
             gumroad_result = await self.execute_with_approval(
-                action="Publicar ebook en Gumroad",
-                details=f"Título: {ebook['title']} | Precio: ${ebook['price_usd']}",
+                action="Publish ebook to Gumroad",
+                details=f"Title: {ebook['title']} | Price: ${ebook['price_usd']}",
                 fn=lambda: self.publish_to_gumroad(ebook),
-                amount_usd=0.0,  # No tiene costo, genera ingresos
+                amount_usd=0.0,  # No cost, generates revenue
             )
             results["gumroad"] = gumroad_result
 
-        # Crear link de pago en Stripe
+        # Create payment link in Stripe
         if settings.STRIPE_SECRET_KEY:
             stripe_result = await self.create_payment_link(
                 name=ebook["title"],
@@ -58,15 +58,15 @@ class CFOAgent(BaseAgent):
         return results
 
     async def create_ebook(self, niche: str, language: str) -> dict[str, Any] | None:
-        """Genera el contenido completo de un ebook usando IA."""
+        """Generates the full content of an ebook using AI."""
         meta = await self.think(
-            system="Eres un experto en marketing de información y creación de productos digitales de alto valor.",
+            system="You are an expert in information marketing and creating high-value digital products.",
             user=(
-                f"Nicho: {niche} | Idioma: {language}\n\n"
-                "Crea los metadatos de un ebook que se pueda vender por $7-$27 USD. JSON:\n"
+                f"Niche: {niche} | Language: {language}\n\n"
+                "Create the metadata for an ebook that can be sold for $7-$27 USD. JSON:\n"
                 '{"title": "...", "subtitle": "...", "description": "...", '
                 '"price_usd": 9.99, "pages_estimate": 30, '
-                '"chapter_titles": ["Cap 1", "Cap 2", "Cap 3", "Cap 4", "Cap 5"], '
+                '"chapter_titles": ["Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4", "Chapter 5"], '
                 '"target_audience": "...", "unique_value_proposition": "...", '
                 '"keywords": ["kw1", "kw2", "kw3"]}'
             ),
@@ -76,13 +76,13 @@ class CFOAgent(BaseAgent):
         if not meta:
             return None
 
-        # Generar contenido de los primeros 2 capítulos
+        # Generate content for the first 2 chapters
         content = await self.think(
-            system="Eres un escritor experto en libros de no-ficción orientados a resultados prácticos.",
+            system="You are an expert writer of non-fiction books focused on practical results.",
             user=(
-                f"Escribe la introducción y el primer capítulo del ebook '{meta.get('title', '')}' "
-                f"sobre '{niche}'. Idioma: {language}. "
-                "Sé práctico, con ejemplos reales y pasos accionables. Mínimo 800 palabras."
+                f"Write the introduction and first chapter of the ebook '{meta.get('title', '')}' "
+                f"about '{niche}'. Language: {language}. "
+                "Be practical, with real examples and actionable steps. Minimum 800 words."
             ),
             model=AIModel.CREATIVE,
         )
@@ -90,12 +90,12 @@ class CFOAgent(BaseAgent):
         meta["niche"] = niche
         meta["language"] = language
         logger.info(
-            "[CFOAgent] Ebook creado: %s | $%.2f", meta.get("title"), meta.get("price_usd", 0)
+            "[CFOAgent] Ebook created: %s | $%.2f", meta.get("title"), meta.get("price_usd", 0)
         )
         return meta
 
     async def publish_to_gumroad(self, ebook: dict[str, Any]) -> dict[str, Any]:
-        """Publica el ebook en Gumroad via API."""
+        """Publishes the ebook to Gumroad via API."""
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(
@@ -104,7 +104,7 @@ class CFOAgent(BaseAgent):
                         "access_token": settings.GUMROAD_TOKEN,
                         "name": ebook["title"],
                         "description": ebook["description"],
-                        "price": int(ebook.get("price_usd", 9.99) * 100),  # centavos
+                        "price": int(ebook.get("price_usd", 9.99) * 100),  # cents
                         "url": "https://gumroad.com",
                         "published": "true",
                     },
@@ -112,7 +112,7 @@ class CFOAgent(BaseAgent):
                 if res.status_code == 201:
                     data = res.json().get("product", {})
                     url = data.get("short_url", "")
-                    logger.info("[CFOAgent] Publicado en Gumroad: %s", url)
+                    logger.info("[CFOAgent] Published to Gumroad: %s", url)
                     # Do NOT register revenue here — this only confirms the
                     # LISTING was created (HTTP 201), not that anyone bought
                     # it. Recording ebook["price_usd"] as revenue at this
@@ -124,13 +124,13 @@ class CFOAgent(BaseAgent):
                 logger.warning("[CFOAgent] Gumroad error %d: %s", res.status_code, res.text[:200])
                 return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
-            logger.error("[CFOAgent] Error publicando en Gumroad: %s", exc)
+            logger.error("[CFOAgent] Error publishing to Gumroad: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def create_stripe_product(
         self, name: str, price_usd: float, description: str
     ) -> dict[str, Any]:
-        """Crea un producto en Stripe."""
+        """Creates a product in Stripe."""
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 prod_res = await client.post(
@@ -157,16 +157,16 @@ class CFOAgent(BaseAgent):
                 if price_res.status_code != 200:
                     return {"success": False, "error": f"Stripe price HTTP {price_res.status_code}"}
                 price_id = price_res.json()["id"]
-                logger.info("[CFOAgent] Producto Stripe creado: %s", product_id)
+                logger.info("[CFOAgent] Stripe product created: %s", product_id)
                 return {"success": True, "product_id": product_id, "price_id": price_id}
         except Exception as exc:
-            logger.error("[CFOAgent] Error creando producto Stripe: %s", exc)
+            logger.error("[CFOAgent] Error creating Stripe product: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def create_payment_link(
         self, name: str, price_usd: float, description: str
     ) -> dict[str, Any]:
-        """Crea un link de pago directo en Stripe."""
+        """Creates a direct payment link in Stripe."""
         try:
             stripe_prod = await self.create_stripe_product(name, price_usd, description)
             if not stripe_prod.get("success"):
@@ -183,17 +183,17 @@ class CFOAgent(BaseAgent):
                 )
                 if res.status_code == 200:
                     url = res.json().get("url", "")
-                    logger.info("[CFOAgent] Payment link creado: %s", url)
+                    logger.info("[CFOAgent] Payment link created: %s", url)
                     return {"success": True, "url": url}
                 return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
-            logger.error("[CFOAgent] Error creando payment link: %s", exc)
+            logger.error("[CFOAgent] Error creating payment link: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def create_shopify_product(
         self, name: str, description: str, price_usd: float, niche: str
     ) -> dict[str, Any]:
-        """Crea un producto en Shopify."""
+        """Creates a product in Shopify."""
         shop_url = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
         token = (
             settings.SHOPIFY_ADMIN_TOKEN
@@ -202,7 +202,7 @@ class CFOAgent(BaseAgent):
         )
 
         if not shop_url or not token:
-            return {"success": False, "error": "Shopify no configurado en el servidor"}
+            return {"success": False, "error": "Shopify is not configured on the server"}
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(
@@ -225,7 +225,7 @@ class CFOAgent(BaseAgent):
                 )
                 if res.status_code in (200, 201):
                     product = res.json().get("product", {})
-                    logger.info("[CFOAgent] Producto Shopify creado: %s", product.get("id"))
+                    logger.info("[CFOAgent] Shopify product created: %s", product.get("id"))
                     return {
                         "success": True,
                         "product_id": product.get("id"),
@@ -233,7 +233,7 @@ class CFOAgent(BaseAgent):
                     }
                 return {"success": False, "error": f"HTTP {res.status_code}"}
         except Exception as exc:
-            logger.error("[CFOAgent] Error creando producto Shopify: %s", exc)
+            logger.error("[CFOAgent] Error creating Shopify product: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def _register_revenue(
@@ -257,7 +257,7 @@ class CFOAgent(BaseAgent):
             )
             self.metrics.revenue_generated += amount
             logger.info(
-                "[CFOAgent] Ingreso registrado: $%.2f %s via %s", amount, currency, platform
+                "[CFOAgent] Revenue recorded: $%.2f %s via %s", amount, currency, platform
             )
         except Exception as exc:
-            logger.warning("[CFOAgent] No se pudo registrar ingreso: %s", exc)
+            logger.warning("[CFOAgent] Could not record revenue: %s", exc)

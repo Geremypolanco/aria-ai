@@ -1,6 +1,6 @@
 """
-commerce_tools.py — Herramientas de comercio electrónico.
-Gumroad, Stripe, PayPal, Shopify — creación de productos y cobros.
+commerce_tools.py — E-commerce tools.
+Gumroad, Stripe, PayPal, Shopify — product creation and payments.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ logger = logging.getLogger("aria.commerce_tools")
 
 
 class CommerceTools:
-    """Herramientas completas de monetización y e-commerce."""
+    """Complete monetization and e-commerce tools."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=20.0)
@@ -30,9 +30,9 @@ class CommerceTools:
         price_cents: int = 997,
         file_url: str | None = None,
     ) -> dict[str, Any]:
-        """Crea un producto digital en Gumroad."""
+        """Creates a digital product on Gumroad."""
         if not settings.GUMROAD_TOKEN:
-            return {"success": False, "error": "GUMROAD_TOKEN no configurado"}
+            return {"success": False, "error": "GUMROAD_TOKEN not configured"}
         try:
             data: dict[str, Any] = {
                 "access_token": settings.GUMROAD_TOKEN,
@@ -49,7 +49,7 @@ class CommerceTools:
             res = await self._http.post("https://api.gumroad.com/v2/products", data=data)
             if res.status_code == 200:
                 product = res.json().get("product", {})
-                logger.info("[CommerceTools] Gumroad producto creado: %s", product.get("id"))
+                logger.info("[CommerceTools] Gumroad product created: %s", product.get("id"))
                 return {
                     "success": True,
                     "product_id": product.get("id"),
@@ -59,13 +59,13 @@ class CommerceTools:
                 }
             return {"success": False, "error": f"Gumroad HTTP {res.status_code}: {res.text[:200]}"}
         except Exception as exc:
-            logger.error("[CommerceTools] Error Gumroad create: %s", exc)
+            logger.error("[CommerceTools] Gumroad create error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def gumroad_get_sales(self, product_id: str | None = None) -> dict[str, Any]:
-        """Obtiene las ventas de Gumroad."""
+        """Gets Gumroad sales."""
         if not settings.GUMROAD_TOKEN:
-            return {"success": False, "error": "GUMROAD_TOKEN no configurado"}
+            return {"success": False, "error": "GUMROAD_TOKEN not configured"}
         try:
             params = {"access_token": settings.GUMROAD_TOKEN}
             if product_id:
@@ -88,9 +88,9 @@ class CommerceTools:
     async def gumroad_update_product(
         self, product_id: str, updates: dict[str, Any]
     ) -> dict[str, Any]:
-        """Actualiza un producto en Gumroad."""
+        """Updates a product on Gumroad."""
         if not settings.GUMROAD_TOKEN:
-            return {"success": False, "error": "GUMROAD_TOKEN no configurado"}
+            return {"success": False, "error": "GUMROAD_TOKEN not configured"}
         try:
             data = {"access_token": settings.GUMROAD_TOKEN, **updates}
             res = await self._http.put(
@@ -114,13 +114,13 @@ class CommerceTools:
         recurring: bool = False,
         recurring_interval: str = "month",
     ) -> dict[str, Any]:
-        """Crea un producto + precio en Stripe."""
+        """Creates a product + price on Stripe."""
         if not settings.STRIPE_SECRET_KEY:
-            return {"success": False, "error": "STRIPE_SECRET_KEY no configurado"}
+            return {"success": False, "error": "STRIPE_SECRET_KEY not configured"}
         try:
             headers = {"Authorization": f"Bearer {settings.STRIPE_SECRET_KEY}"}
 
-            # 1. Crear producto
+            # 1. Create product
             prod_res = await self._http.post(
                 "https://api.stripe.com/v1/products",
                 headers=headers,
@@ -133,7 +133,7 @@ class CommerceTools:
                 }
             product_id = prod_res.json()["id"]
 
-            # 2. Crear precio
+            # 2. Create price
             price_data: dict[str, Any] = {
                 "product": product_id,
                 "unit_amount": price_cents,
@@ -151,7 +151,7 @@ class CommerceTools:
                 return {"success": False, "error": f"Stripe price HTTP {price_res.status_code}"}
             price_id = price_res.json()["id"]
 
-            # 3. Crear payment link
+            # 3. Create payment link
             link_res = await self._http.post(
                 "https://api.stripe.com/v1/payment_links",
                 headers=headers,
@@ -161,7 +161,7 @@ class CommerceTools:
             if link_res.status_code == 200:
                 payment_link = link_res.json().get("url", "")
 
-            logger.info("[CommerceTools] Stripe producto creado: %s", product_id)
+            logger.info("[CommerceTools] Stripe product created: %s", product_id)
             return {
                 "success": True,
                 "product_id": product_id,
@@ -170,7 +170,7 @@ class CommerceTools:
                 "amount_usd": price_cents / 100,
             }
         except Exception as exc:
-            logger.error("[CommerceTools] Error Stripe: %s", exc)
+            logger.error("[CommerceTools] Stripe error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def stripe_create_checkout(
@@ -179,9 +179,9 @@ class CommerceTools:
         success_url: str = "https://aria-ai.fly.dev/success",
         cancel_url: str = "https://aria-ai.fly.dev/cancel",
     ) -> dict[str, Any]:
-        """Crea una sesión de Stripe Checkout."""
+        """Creates a Stripe Checkout session."""
         if not settings.STRIPE_SECRET_KEY:
-            return {"success": False, "error": "STRIPE_SECRET_KEY no configurado"}
+            return {"success": False, "error": "STRIPE_SECRET_KEY not configured"}
         try:
             headers = {"Authorization": f"Bearer {settings.STRIPE_SECRET_KEY}"}
             res = await self._http.post(
@@ -207,9 +207,9 @@ class CommerceTools:
             return {"success": False, "error": str(exc)}
 
     async def stripe_get_revenue(self) -> dict[str, Any]:
-        """Obtiene el revenue total de Stripe."""
+        """Gets total revenue from Stripe."""
         if not settings.STRIPE_SECRET_KEY:
-            return {"success": False, "error": "STRIPE_SECRET_KEY no configurado"}
+            return {"success": False, "error": "STRIPE_SECRET_KEY not configured"}
         try:
             headers = {"Authorization": f"Bearer {settings.STRIPE_SECRET_KEY}"}
             res = await self._http.get(
@@ -228,7 +228,7 @@ class CommerceTools:
     # ── PAYPAL ────────────────────────────────────────────
 
     async def _paypal_get_token(self) -> str | None:
-        """Obtiene access token de PayPal."""
+        """Gets a PayPal access token."""
         if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_SECRET:
             return None
         try:
@@ -240,7 +240,7 @@ class CommerceTools:
             if res.status_code == 200:
                 return res.json().get("access_token")
         except Exception as exc:
-            logger.error("[CommerceTools] Error PayPal token: %s", exc)
+            logger.error("[CommerceTools] PayPal token error: %s", exc)
         return None
 
     async def paypal_create_payment_link(
@@ -250,10 +250,10 @@ class CommerceTools:
         amount: float,
         currency: str = "USD",
     ) -> dict[str, Any]:
-        """Crea un enlace de pago en PayPal."""
+        """Creates a payment link on PayPal."""
         token = await self._paypal_get_token()
         if not token:
-            return {"success": False, "error": "PayPal no configurado o token inválido"}
+            return {"success": False, "error": "PayPal not configured or invalid token"}
         try:
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -290,7 +290,7 @@ class CommerceTools:
                 }
             return {"success": False, "error": f"PayPal HTTP {res.status_code}: {res.text[:200]}"}
         except Exception as exc:
-            logger.error("[CommerceTools] Error PayPal create: %s", exc)
+            logger.error("[CommerceTools] PayPal create error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     # ── SHOPIFY ───────────────────────────────────────────
@@ -303,12 +303,12 @@ class CommerceTools:
         product_type: str = "Digital",
         vendor: str = "Aria AI",
     ) -> dict[str, Any]:
-        """Crea un producto en Shopify via Admin API."""
+        """Creates a product on Shopify via the Admin API."""
         shop_url = settings.SHOPIFY_URL
         token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN
 
         if not shop_url or not token:
-            return {"success": False, "error": "Shopify no configurado en el servidor"}
+            return {"success": False, "error": "Shopify not configured on the server"}
         try:
             # Normalize URL: strip scheme prefix if present (env var may include https://)
             _base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")
@@ -340,7 +340,7 @@ class CommerceTools:
                 product = res.json().get("product", {})
                 product_id = product.get("id")
                 shop_url = f"https://{_base}/products/{product.get('handle', '')}"
-                logger.info("[CommerceTools] Shopify producto creado: %s", product_id)
+                logger.info("[CommerceTools] Shopify product created: %s", product_id)
                 return {
                     "success": True,
                     "product_id": str(product_id),
@@ -350,16 +350,16 @@ class CommerceTools:
                 }
             return {"success": False, "error": f"Shopify HTTP {res.status_code}: {res.text[:200]}"}
         except Exception as exc:
-            logger.error("[CommerceTools] Error Shopify: %s", exc)
+            logger.error("[CommerceTools] Shopify error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def shopify_get_orders(self, limit: int = 20) -> dict[str, Any]:
-        """Obtiene los últimos pedidos de Shopify."""
+        """Gets the latest orders from Shopify."""
         shop_url = settings.SHOPIFY_URL
         token = settings.SHOPIFY_ADMIN_TOKEN or settings.SHOPIFY_AUTOMATION_TOKEN
 
         if not shop_url or not token:
-            return {"success": False, "error": "Shopify no configurado"}
+            return {"success": False, "error": "Shopify not configured"}
         try:
             # Normalize URL: strip scheme prefix if present (env var may include https://)
             _base = shop_url.removeprefix("https://").removeprefix("http://").rstrip("/")

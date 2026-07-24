@@ -1,17 +1,17 @@
 """
-deep_think.py — Razonamiento extendido para ARIA AI.
+deep_think.py — Extended reasoning for ARIA AI.
 
-Inspirado en Claude 3.7 Sonnet "Hybrid Reasoning":
-  - Modo estándar: respuesta rápida sin pensamiento visible
-  - Modo thinking: pensamiento paso a paso con presupuesto de tokens (hasta 128K)
-  - Modo ultra: máximo presupuesto, para problemas de alta complejidad
+Inspired by Claude 3.7 Sonnet "Hybrid Reasoning":
+  - Standard mode: fast response with no visible thinking
+  - Thinking mode: step-by-step thinking with a token budget (up to 128K)
+  - Ultra mode: maximum budget, for high-complexity problems
 
-ARIA usa deep_think para:
-  - Análisis estratégico complejo
-  - Debugging de problemas difíciles
-  - Decisiones de negocio con múltiples variables
-  - Investigación que requiere síntesis profunda
-  - Planificación de proyectos grandes
+ARIA uses deep_think for:
+  - Complex strategic analysis
+  - Debugging difficult problems
+  - Business decisions with multiple variables
+  - Research requiring deep synthesis
+  - Planning large projects
 """
 
 from __future__ import annotations
@@ -49,19 +49,22 @@ class ThinkingResult:
 
 class DeepThink:
     """
-    Motor de razonamiento extendido para ARIA.
-    Selecciona automáticamente el nivel de pensamiento según la complejidad detectada.
+    Extended reasoning engine for ARIA.
+    Automatically selects the thinking level based on detected complexity.
     """
 
-    # Presupuestos de tokens de pensamiento (similar a Claude 3.7)
+    # Thinking token budgets (similar to Claude 3.7)
     BUDGETS = {
-        "fast": 0,  # Sin pensamiento explícito
-        "standard": 2000,  # Pensamiento breve
-        "deep": 8000,  # Pensamiento profundo
-        "ultra": 32000,  # Máximo razonamiento
+        "fast": 0,  # No explicit thinking
+        "standard": 2000,  # Brief thinking
+        "deep": 8000,  # Deep thinking
+        "ultra": 32000,  # Maximum reasoning
     }
 
-    # Keywords que indican que se necesita pensamiento profundo
+    # Keywords indicating deep thinking is needed
+    # NOTE: intentionally bilingual (English + Spanish) — this list matches
+    # against free-text questions a caller may ask in either language, so
+    # do not translate the keyword values themselves.
     DEEP_TRIGGERS = [
         "estrategia",
         "strategy",
@@ -108,10 +111,10 @@ class DeepThink:
         show_trace: bool = False,
     ) -> ThinkingResult:
         """
-        Razona sobre una pregunta con el nivel de profundidad adecuado.
+        Reasons about a question at the appropriate depth level.
 
-        depth: "auto" detecta automáticamente, "fast"|"standard"|"deep"|"ultra" fuerza nivel.
-        show_trace: incluye el proceso de razonamiento en la respuesta.
+        depth: "auto" detects automatically, "fast"|"standard"|"deep"|"ultra" forces a level.
+        show_trace: includes the reasoning process in the response.
         """
         t0 = time.monotonic()
 
@@ -125,23 +128,23 @@ class DeepThink:
         client = get_ai_client()
 
         sys_prompt = system or (
-            "Eres ARIA, una IA de negocio autónoma con capacidades de razonamiento avanzado. "
-            "Piensas de forma estructurada: primero entiendes el problema, consideras múltiples ángulos, "
-            "evalúas trade-offs, y luego formulas una respuesta completa y accionable. "
-            "Eres directa, honesta y evitas respuestas genéricas."
+            "You are ARIA, an autonomous business AI with advanced reasoning capabilities. "
+            "You think in a structured way: first you understand the problem, consider multiple angles, "
+            "evaluate trade-offs, and then formulate a complete, actionable response. "
+            "You are direct, honest, and avoid generic answers."
         )
 
         full_prompt = question
         if context:
-            full_prompt = f"Contexto:\n{context}\n\nPregunta: {question}"
+            full_prompt = f"Context:\n{context}\n\nQuestion: {question}"
 
         if budget > 0:
             # Extended thinking: prepend thinking instruction
             thinking_instruction = (
-                f"\n\n<thinking_mode>Usa razonamiento paso a paso antes de responder. "
-                f"Piensa en voz alta sobre: el problema central, consideraciones clave, "
-                f"posibles enfoques, trade-offs, y tu conclusión final. "
-                f"Máximo {budget} tokens de pensamiento.</thinking_mode>"
+                f"\n\n<thinking_mode>Use step-by-step reasoning before answering. "
+                f"Think out loud about: the central problem, key considerations, "
+                f"possible approaches, trade-offs, and your final conclusion. "
+                f"Maximum {budget} thinking tokens.</thinking_mode>"
             )
             full_prompt = full_prompt + thinking_instruction
             model = AIModel.STRATEGY
@@ -195,20 +198,20 @@ class DeepThink:
         self, objective: str, context: str = "", constraints: list[str] = None
     ) -> dict[str, Any]:
         """
-        Razonamiento estructurado para planificación de proyectos.
-        Retorna plan detallado con fases, recursos y riesgos.
+        Structured reasoning for project planning.
+        Returns a detailed plan with phases, resources, and risks.
         """
         constraints_text = "\n".join(f"- {c}" for c in (constraints or []))
         prompt = (
-            f"Objetivo: {objective}\n"
-            + (f"Restricciones:\n{constraints_text}\n" if constraints_text else "")
-            + "\nCrea un plan de ejecución detallado con:\n"
-            "1. Análisis de la situación actual\n"
-            "2. Fases de implementación (con duración estimada)\n"
-            "3. Recursos necesarios\n"
-            "4. Riesgos y mitigaciones\n"
-            "5. KPIs de éxito\n"
-            "6. Próximos 3 pasos inmediatos\n"
+            f"Objective: {objective}\n"
+            + (f"Constraints:\n{constraints_text}\n" if constraints_text else "")
+            + "\nCreate a detailed execution plan with:\n"
+            "1. Analysis of the current situation\n"
+            "2. Implementation phases (with estimated duration)\n"
+            "3. Necessary resources\n"
+            "4. Risks and mitigations\n"
+            "5. Success KPIs\n"
+            "6. Next 3 immediate steps\n"
         )
 
         result = await self.think(prompt, context=context, depth="deep")
@@ -225,20 +228,20 @@ class DeepThink:
         criteria: list[str] = None,
     ) -> dict[str, Any]:
         """
-        Framework de decisión estructurado con análisis multi-criterio.
-        Como un consultor de McKinsey pensando en voz alta.
+        Structured decision framework with multi-criteria analysis.
+        Like a McKinsey consultant thinking out loud.
         """
         options_text = "\n".join(f"  {i+1}. {o}" for i, o in enumerate(options))
         criteria_text = "\n".join(
-            f"  - {c}" for c in (criteria or ["impacto", "esfuerzo", "riesgo", "costo"])
+            f"  - {c}" for c in (criteria or ["impact", "effort", "risk", "cost"])
         )
 
         prompt = (
-            f"Decisión a tomar: {question}\n\n"
-            f"Opciones:\n{options_text}\n\n"
-            f"Criterios de evaluación:\n{criteria_text}\n\n"
-            "Analiza cada opción frente a los criterios, identifica la mejor decisión "
-            "y justifica con razonamiento sólido. Sé directo sobre cuál recomiendas."
+            f"Decision to make: {question}\n\n"
+            f"Options:\n{options_text}\n\n"
+            f"Evaluation criteria:\n{criteria_text}\n\n"
+            "Analyze each option against the criteria, identify the best decision, "
+            "and justify it with solid reasoning. Be direct about which one you recommend."
         )
 
         result = await self.think(prompt, depth="deep")
@@ -255,23 +258,23 @@ class DeepThink:
         error_trace: str = "",
     ) -> dict[str, Any]:
         """
-        Debugging profundo — piensa como un senior engineer con 20 años de experiencia.
+        Deep debugging — thinks like a senior engineer with 20 years of experience.
         """
         prompt = (
-            f"Problema: {problem}\n"
+            f"Problem: {problem}\n"
             + (f"Error:\n```\n{error_trace}\n```\n" if error_trace else "")
-            + (f"Contexto: {context}\n" if context else "")
-            + "\nDiagnostica la causa raíz, explica por qué ocurre, "
-            "y proporciona la solución exacta con código si aplica."
+            + (f"Context: {context}\n" if context else "")
+            + "\nDiagnose the root cause, explain why it occurs, "
+            "and provide the exact solution with code if applicable."
         )
 
         result = await self.think(
             prompt,
             depth="deep",
             system=(
-                "Eres un senior engineer con 20 años de experiencia. "
-                "Diagnosticas problemas de forma metódica: síntomas → causa raíz → solución. "
-                "Nunca das respuestas vagas. Siempre proporciones código ejecutable cuando aplica."
+                "You are a senior engineer with 20 years of experience. "
+                "You diagnose problems methodically: symptoms → root cause → solution. "
+                "You never give vague answers. Always provide runnable code when applicable."
             ),
         )
         return {
@@ -288,9 +291,9 @@ class DeepThink:
         system: str = "",
     ) -> ThinkingResult:
         """
-        Test-Time Compute: genera `paths` respuestas independientes en paralelo,
-        las auto-evalúa con un juez interno y devuelve la mejor.
-        Inspirado en GPT-5 / Claude 4.5 inference-time scaling.
+        Test-Time Compute: generates `paths` independent answers in parallel,
+        self-evaluates them with an internal judge, and returns the best one.
+        Inspired by GPT-5 / Claude 4.5 inference-time scaling.
         """
         import time as _time
 
@@ -313,14 +316,14 @@ class DeepThink:
 
         client = get_ai_client()
         eval_prompt = (
-            f"Pregunta original: {question}\n\n"
-            + "\n\n".join(f"RESPUESTA {i+1}:\n{c.answer[:1500]}" for i, c in enumerate(candidates))
-            + "\n\nEvalúa cada respuesta en: precisión, completitud y utilidad práctica. "
-            "Responde SOLO con el número de la mejor respuesta (1, 2, etc.) y una breve justificación."
+            f"Original question: {question}\n\n"
+            + "\n\n".join(f"ANSWER {i+1}:\n{c.answer[:1500]}" for i, c in enumerate(candidates))
+            + "\n\nEvaluate each answer on: accuracy, completeness, and practical usefulness. "
+            "Respond with ONLY the number of the best answer (1, 2, etc.) and a brief justification."
         )
         eval_resp = await client.complete(
             model=AIModel.FAST,
-            system="Eres un juez crítico que evalúa la calidad de respuestas de IA.",
+            system="You are a critical judge who evaluates the quality of AI answers.",
             user=eval_prompt,
             max_tokens=200,
         )
@@ -342,22 +345,22 @@ class DeepThink:
         return best
 
     def _detect_depth(self, question: str) -> str:
-        """Detecta automáticamente el nivel de pensamiento necesario."""
+        """Automatically detects the required thinking level."""
         q_lower = question.lower()
         word_count = len(question.split())
 
-        # Preguntas muy largas o complejas → deep
+        # Very long or complex questions → deep
         if word_count > 50:
             return "deep"
 
-        # Keywords de alta complejidad → deep
+        # High-complexity keywords → deep
         deep_count = sum(1 for kw in self.DEEP_TRIGGERS if kw in q_lower)
         if deep_count >= 2:
             return "deep"
         if deep_count == 1:
             return "standard"
 
-        # Preguntas cortas y simples → fast
+        # Short, simple questions → fast
         return "fast"
 
 
@@ -368,8 +371,8 @@ class DeepThink:
 
 class ProgressStream:
     """
-    Transmite actualizaciones de progreso en tiempo real durante tareas largas.
-    Inspirado en Manus `message` tool — updates del agente al usuario.
+    Streams real-time progress updates during long tasks.
+    Inspired by the Manus `message` tool — agent-to-user updates.
     """
 
     def __init__(self, session_id: str, task_name: str) -> None:
@@ -378,12 +381,12 @@ class ProgressStream:
         self._steps: list[dict] = []
 
     async def update(self, step: str, detail: str = "", icon: str = "⚡") -> None:
-        """Envía actualización de progreso al usuario."""
+        """Sends a progress update to the user."""
         entry = {"step": step, "detail": detail, "icon": icon}
         self._steps.append(entry)
         logger.info("[Progress:%s] %s %s", self.task_name, icon, step)
 
-        # Enviar a Telegram si la sesión es de Telegram
+        # Send to Telegram if the session is a Telegram session
         if self.session_id.startswith("telegram:"):
             chat_id = self.session_id.replace("telegram:", "")
             if chat_id.isdigit():
@@ -404,7 +407,7 @@ class ProgressStream:
             pass
 
     async def complete(self, message: str = "") -> None:
-        await self.update(message or f"{self.task_name} completado", icon="✅")
+        await self.update(message or f"{self.task_name} completed", icon="✅")
 
     async def error(self, message: str) -> None:
         await self.update(f"Error: {message}", icon="❌")

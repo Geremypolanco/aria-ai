@@ -1,5 +1,5 @@
 """
-content_tools.py — Herramientas de creación de contenido multimedia.
+content_tools.py — Multimedia content creation tools.
 Cloudinary, Pexels, ElevenLabs, FLUX.1, Airtable.
 """
 
@@ -17,7 +17,7 @@ logger = logging.getLogger("aria.content_tools")
 
 
 class ContentTools:
-    """Herramientas de creación y gestión de contenido multimedia."""
+    """Tools for creating and managing multimedia content."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=60.0)
@@ -30,9 +30,9 @@ class ContentTools:
         public_id: str | None = None,
         folder: str = "aria-ai",
     ) -> dict[str, Any]:
-        """Sube una imagen a Cloudinary y devuelve la URL pública."""
+        """Uploads an image to Cloudinary and returns the public URL."""
         if not settings.CLOUDINARY_CLOUD_NAME or not settings.CLOUDINARY_API_KEY:
-            return {"success": False, "error": "Cloudinary no configurado"}
+            return {"success": False, "error": "Cloudinary not configured"}
         try:
             import hashlib
             import hmac
@@ -67,22 +67,22 @@ class ContentTools:
             if res.status_code == 200:
                 result = res.json()
                 url = result.get("secure_url", "")
-                logger.info("[ContentTools] Imagen subida a Cloudinary: %s", url[:80])
+                logger.info("[ContentTools] Image uploaded to Cloudinary: %s", url[:80])
                 return {"success": True, "url": url, "public_id": result.get("public_id")}
             return {
                 "success": False,
                 "error": f"Cloudinary HTTP {res.status_code}: {res.text[:200]}",
             }
         except Exception as exc:
-            logger.error("[ContentTools] Error Cloudinary upload: %s", exc)
+            logger.error("[ContentTools] Cloudinary upload error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def cloudinary_upload_url(
         self, image_url: str, folder: str = "aria-ai", public_id: str | None = None
     ) -> dict[str, Any]:
-        """Sube una imagen desde URL a Cloudinary."""
+        """Uploads an image to Cloudinary from a URL."""
         if not settings.CLOUDINARY_CLOUD_NAME or not settings.CLOUDINARY_API_KEY:
-            return {"success": False, "error": "Cloudinary no configurado"}
+            return {"success": False, "error": "Cloudinary not configured"}
         try:
             import hashlib
             import hmac
@@ -125,7 +125,7 @@ class ContentTools:
         crop: str = "fill",
         quality: str = "auto",
     ) -> str:
-        """Genera una URL de Cloudinary con transformaciones."""
+        """Generates a Cloudinary URL with transformations."""
         if not settings.CLOUDINARY_CLOUD_NAME:
             return ""
         return (
@@ -138,9 +138,9 @@ class ContentTools:
     async def pexels_search(
         self, query: str, per_page: int = 5, orientation: str = "landscape"
     ) -> list[dict[str, Any]]:
-        """Busca fotos de stock en Pexels."""
+        """Searches for stock photos on Pexels."""
         if not settings.PEXELS_API_KEY:
-            logger.warning("[ContentTools] PEXELS_API_KEY no configurado")
+            logger.warning("[ContentTools] PEXELS_API_KEY not configured")
             return []
         try:
             res = await self._http.get(
@@ -164,11 +164,11 @@ class ContentTools:
                 ]
             logger.warning("[ContentTools] Pexels HTTP %d", res.status_code)
         except Exception as exc:
-            logger.error("[ContentTools] Error Pexels: %s", exc)
+            logger.error("[ContentTools] Pexels error: %s", exc)
         return []
 
     async def pexels_get_curated(self, per_page: int = 5) -> list[dict[str, Any]]:
-        """Obtiene fotos curadas de Pexels."""
+        """Gets curated photos from Pexels."""
         if not settings.PEXELS_API_KEY:
             return []
         try:
@@ -193,9 +193,9 @@ class ContentTools:
         stability: float = 0.5,
         similarity_boost: float = 0.75,
     ) -> dict[str, Any]:
-        """Genera audio con ElevenLabs TTS."""
+        """Generates audio with ElevenLabs TTS."""
         if not settings.ELEVENLABS_API_KEY:
-            return {"success": False, "error": "ELEVENLABS_API_KEY no configurado"}
+            return {"success": False, "error": "ELEVENLABS_API_KEY not configured"}
         try:
             res = await self._http.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
@@ -215,7 +215,7 @@ class ContentTools:
             if res.status_code == 200:
                 audio_bytes = res.content
                 audio_b64 = base64.b64encode(audio_bytes).decode()
-                logger.info("[ContentTools] Audio ElevenLabs generado: %d bytes", len(audio_bytes))
+                logger.info("[ContentTools] ElevenLabs audio generated: %d bytes", len(audio_bytes))
                 return {
                     "success": True,
                     "audio_base64": audio_b64,
@@ -227,11 +227,11 @@ class ContentTools:
                 "error": f"ElevenLabs HTTP {res.status_code}: {res.text[:200]}",
             }
         except Exception as exc:
-            logger.error("[ContentTools] Error ElevenLabs: %s", exc)
+            logger.error("[ContentTools] ElevenLabs error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def elevenlabs_get_voices(self) -> list[dict[str, Any]]:
-        """Lista las voces disponibles en ElevenLabs."""
+        """Lists the voices available on ElevenLabs."""
         if not settings.ELEVENLABS_API_KEY:
             return []
         try:
@@ -262,9 +262,9 @@ class ContentTools:
         width: int = 1024,
         height: int = 1024,
     ) -> dict[str, Any]:
-        """Genera imagen con FLUX.1 via HuggingFace."""
+        """Generates an image with FLUX.1 via HuggingFace."""
         if not settings.hf_key:
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             res = await self._http.post(
                 f"https://api-inference.huggingface.co/models/{model}",
@@ -276,7 +276,7 @@ class ContentTools:
             )
             if res.status_code == 200 and res.headers.get("content-type", "").startswith("image"):
                 image_b64 = base64.b64encode(res.content).decode()
-                logger.info("[ContentTools] Imagen FLUX.1 generada: %d bytes", len(res.content))
+                logger.info("[ContentTools] FLUX.1 image generated: %d bytes", len(res.content))
                 return {
                     "success": True,
                     "image_base64": image_b64,
@@ -285,19 +285,19 @@ class ContentTools:
                     "content_type": res.headers.get("content-type", "image/jpeg"),
                 }
             if res.status_code == 503:
-                return {"success": False, "error": "Modelo en cold start (503) — reintentar en 30s"}
+                return {"success": False, "error": "Model in cold start (503) — retry in 30s"}
             return {
                 "success": False,
                 "error": f"HuggingFace HTTP {res.status_code}: {res.text[:200]}",
             }
         except Exception as exc:
-            logger.error("[ContentTools] Error FLUX.1: %s", exc)
+            logger.error("[ContentTools] FLUX.1 error: %s", exc)
             return {"success": False, "error": str(exc)}
 
     async def generate_and_upload_image(
         self, prompt: str, public_id: str | None = None
     ) -> dict[str, Any]:
-        """Genera una imagen con FLUX.1 y la sube a Cloudinary."""
+        """Generates an image with FLUX.1 and uploads it to Cloudinary."""
         flux_result = await self.flux_generate_image(prompt)
         if not flux_result.get("success"):
             return flux_result
@@ -317,9 +317,9 @@ class ContentTools:
     async def airtable_create_record(
         self, base_id: str, table_name: str, fields: dict[str, Any]
     ) -> dict[str, Any]:
-        """Crea un registro en Airtable."""
+        """Creates a record in Airtable."""
         if not settings.AIRTABLE_TOKEN:
-            return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
+            return {"success": False, "error": "AIRTABLE_TOKEN not configured"}
         try:
             res = await self._http.post(
                 f"https://api.airtable.com/v0/{base_id}/{table_name}",
@@ -342,9 +342,9 @@ class ContentTools:
         max_records: int = 20,
         filter_formula: str | None = None,
     ) -> dict[str, Any]:
-        """Lista registros de una tabla de Airtable."""
+        """Lists records from an Airtable table."""
         if not settings.AIRTABLE_TOKEN:
-            return {"success": False, "error": "AIRTABLE_TOKEN no configurado"}
+            return {"success": False, "error": "AIRTABLE_TOKEN not configured"}
         try:
             params: dict[str, Any] = {"maxRecords": max_records}
             if filter_formula:
@@ -364,7 +364,7 @@ class ContentTools:
     # ── GOOGLE CUSTOM SEARCH ──────────────────────────────
 
     async def google_search(self, query: str, num: int = 10) -> list[dict[str, Any]]:
-        """Búsqueda via Google Custom Search API."""
+        """Search via the Google Custom Search API."""
         if not settings.GOOGLE_API_KEY:
             return []
         try:
@@ -380,7 +380,7 @@ class ContentTools:
                 return res.json().get("items", [])
             logger.warning("[ContentTools] Google Search HTTP %d", res.status_code)
         except Exception as exc:
-            logger.error("[ContentTools] Error Google Search: %s", exc)
+            logger.error("[ContentTools] Google Search error: %s", exc)
         return []
 
     async def close(self) -> None:

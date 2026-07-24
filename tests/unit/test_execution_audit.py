@@ -427,5 +427,5 @@ class TestFlow6SupportAndLegal:
         # Signed-in but not yet agreed → interstitial with the mandatory checkbox.
         assert r.status_code == 200
         assert 'type="checkbox"' in r.text
-        assert "política estricta de no reembolso" in r.text
+        assert "strict no-refund policy" in r.text
         assert "agreed=1" in r.text

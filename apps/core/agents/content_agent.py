@@ -1,16 +1,16 @@
 """
-ARIA Content Agent — Agente especializado en generación y monetización de contenido.
+ARIA Content Agent — Agent specialized in content generation and monetization.
 
-Ejecuta el pipeline completo:
-1. Detecta tendencias (HN + Reddit + Product Hunt)
-2. Genera artículos SEO (Groq/HuggingFace)
-3. Inyecta links de afiliado (Amazon + ClickBank)
-4. Publica en Medium + Dev.to + Hashnode
-5. Distribuye en redes sociales
-6. Crea productos digitales en Gumroad
-7. Registra todo en Supabase
+Runs the full pipeline:
+1. Detects trends (HN + Reddit + Product Hunt)
+2. Generates SEO articles (Groq/HuggingFace)
+3. Injects affiliate links (Amazon + ClickBank)
+4. Publishes to Medium + Dev.to + Hashnode
+5. Distributes on social media
+6. Creates digital products on Gumroad
+7. Logs everything to Supabase
 
-Se ejecuta en cada ciclo autónomo del orchestrator.
+Runs on every autonomous cycle of the orchestrator.
 """
 
 from __future__ import annotations
@@ -25,14 +25,14 @@ logger = logging.getLogger("aria.content_agent")
 
 class ContentAgent(BaseAgent):
     """
-    Agente de generación y monetización de contenido.
-    Opera de forma completamente autónoma.
+    Content generation and monetization agent.
+    Operates fully autonomously.
     """
 
     def __init__(self) -> None:
         super().__init__(
             name="content",
-            description="Genera y monetiza contenido automaticamente",
+            description="Generates and monetizes content automatically",
             capabilities=[
                 "trend_detection",
                 "article_generation",
@@ -44,7 +44,7 @@ class ContentAgent(BaseAgent):
         )
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Punto de entrada del agente."""
+        """Agent entry point."""
         task = context.get("task", "full_pipeline")
         language = context.get("language", "es")
         num_articles = context.get("num_articles", 3)
@@ -54,7 +54,7 @@ class ContentAgent(BaseAgent):
         if task == "trending_only":
             return await self._get_trends_report()
         if task == "create_product":
-            topic = context.get("topic", "inteligencia artificial para negocios")
+            topic = context.get("topic", "artificial intelligence for business")
             category = context.get("category", "business")
             return await self._create_product(topic, category)
         if task == "newsletter":
@@ -66,7 +66,7 @@ class ContentAgent(BaseAgent):
         return await self._run_full_pipeline(language, num_articles)
 
     async def _run_creative_task(self, format: str, topic: str) -> dict:
-        """Ejecuta tareas de creación multimedia real."""
+        """Runs real multimedia creation tasks."""
         from apps.core.tools.creative_engine import CreativeEngine
 
         creative = CreativeEngine()
@@ -90,11 +90,11 @@ class ContentAgent(BaseAgent):
         return await ct.generate_and_upload_image(topic)
 
     async def _run_full_pipeline(self, language: str = "es", num_articles: int = 3) -> dict:
-        """Pipeline completo: tendencias → artículos → publicación → distribución."""
+        """Full pipeline: trends → articles → publishing → distribution."""
         from apps.core.tools.content_pipeline import ContentPipeline
 
         logger.info(
-            "[ContentAgent] Iniciando pipeline completo — %d artículos en %s",
+            "[ContentAgent] Starting full pipeline — %d articles in %s",
             num_articles,
             language,
         )
@@ -102,31 +102,31 @@ class ContentAgent(BaseAgent):
         pipeline = ContentPipeline()
         result = await pipeline.run_pipeline(num_articles=num_articles, language=language)
 
-        # Si el pipeline tuvo éxito, crear un producto digital sobre el tema más popular
+        # If the pipeline succeeded, create a digital product on the most popular topic
         if result.get("success") and result.get("articles"):
             top_article = result["articles"][0]
-            topic = top_article.get("title", "inteligencia artificial")
+            topic = top_article.get("title", "artificial intelligence")
             category = "tech"  # default
 
             try:
                 product_result = await self._create_product(topic, category)
                 result["digital_product"] = product_result
             except Exception as exc:
-                logger.warning("[ContentAgent] Error creando producto digital: %s", exc)
+                logger.warning("[ContentAgent] Error creating digital product: %s", exc)
 
-        # Construir resumen
+        # Build summary
         articles_count = result.get("articles_published", 0)
-        result["summary"] = f"Pipeline completado: {articles_count} artículos publicados. " + (
-            "Producto digital creado en Gumroad."
+        result["summary"] = f"Pipeline complete: {articles_count} articles published. " + (
+            "Digital product created on Gumroad."
             if result.get("digital_product", {}).get("success")
             else ""
         )
 
-        logger.info("[ContentAgent] Pipeline completado — %d artículos", articles_count)
+        logger.info("[ContentAgent] Pipeline complete — %d articles", articles_count)
         return result
 
     async def _get_trends_report(self) -> dict:
-        """Obtiene y reporta las tendencias actuales."""
+        """Fetches and reports current trends."""
         from apps.core.tools.content_pipeline import ContentPipeline
 
         pipeline = ContentPipeline()
@@ -135,21 +135,21 @@ class ContentAgent(BaseAgent):
             "success": True,
             "topics": topics,
             "count": len(topics),
-            "summary": f"Encontré {len(topics)} trending topics",
+            "summary": f"Found {len(topics)} trending topics",
         }
 
     async def _create_product(self, topic: str, category: str) -> dict:
-        """Crea un producto digital en Gumroad."""
+        """Creates a digital product on Gumroad."""
         from apps.core.tools.affiliate_tools import AffiliateTools
 
         tools = AffiliateTools()
         result = await tools.auto_create_digital_product(topic, category)
         return result
 
-    # ── CAPACIDADES HF (siempre disponibles con HF_TOKEN) ────────────────────
+    # ── HF CAPABILITIES (always available with HF_TOKEN) ────────────────────
 
     async def _translate_with_hf(self, text: str, source: str = "en", target: str = "es") -> str:
-        """Traduce texto usando HuggingFace Helsinki-NLP."""
+        """Translates text using HuggingFace Helsinki-NLP."""
         try:
             from apps.core.tools.hf_discovery import get_hf
 
@@ -158,10 +158,10 @@ class ContentAgent(BaseAgent):
                 return result["translation"]
         except Exception as exc:
             logger.warning("[ContentAgent] HF translate failed: %s", exc)
-        return text  # fallback: texto original
+        return text  # fallback: original text
 
     async def _analyze_content_sentiment(self, text: str) -> dict:
-        """Analiza el sentimiento de un texto con HuggingFace."""
+        """Analyzes the sentiment of a text with HuggingFace."""
         try:
             from apps.core.tools.hf_discovery import get_hf
 
@@ -170,7 +170,7 @@ class ContentAgent(BaseAgent):
             return {"success": False, "error": str(exc)}
 
     async def _classify_topic(self, text: str, topics: list) -> dict:
-        """Clasifica el tema de un texto sin entrenamiento previo."""
+        """Classifies the topic of a text with zero-shot classification."""
         try:
             from apps.core.tools.hf_discovery import get_hf
 
@@ -179,7 +179,7 @@ class ContentAgent(BaseAgent):
             return {"success": False, "error": str(exc)}
 
     async def _generate_cover_image(self, title: str) -> dict:
-        """Genera imagen de portada para un artículo usando FLUX/SDXL."""
+        """Generates a cover image for an article using FLUX/SDXL."""
         try:
             from apps.core.tools.hf_discovery import get_hf
 
@@ -189,7 +189,7 @@ class ContentAgent(BaseAgent):
             return {"success": False, "error": str(exc)}
 
     async def _summarize_for_social(self, article_text: str, max_length: int = 150) -> str:
-        """Resume artículo largo para posts de redes sociales."""
+        """Summarizes a long article for social media posts."""
         try:
             from apps.core.tools.hf_discovery import get_hf
 
@@ -201,7 +201,7 @@ class ContentAgent(BaseAgent):
         return article_text[:max_length]
 
     async def _extract_article_entities(self, text: str) -> dict:
-        """Extrae personas, empresas y temas de un artículo para SEO y targeting."""
+        """Extracts people, companies, and topics from an article for SEO and targeting."""
         try:
             from apps.core.tools.hf_discovery import get_hf
 
@@ -210,7 +210,7 @@ class ContentAgent(BaseAgent):
             return {"success": False, "error": str(exc)}
 
     async def get_hf_capabilities(self) -> dict:
-        """Reporta qué capacidades HF están disponibles para este agente."""
+        """Reports which HF capabilities are available for this agent."""
         try:
             from apps.core.tools.hf_discovery import get_hf
 
@@ -237,7 +237,7 @@ class ContentAgent(BaseAgent):
             return {"available": False, "error": str(exc)}
 
     async def _send_newsletter_digest(self) -> dict:
-        """Envía digest de los últimos artículos publicados."""
+        """Sends a digest of the latest published articles."""
         try:
             from apps.core.memory.supabase_client import get_db
             from apps.core.tools.publishing_tools import PublishingTools
@@ -245,7 +245,7 @@ class ContentAgent(BaseAgent):
             db = get_db()
             publisher = PublishingTools()
 
-            # Obtener últimos artículos
+            # Fetch latest articles
             result = (
                 db._client.table("products")
                 .select("*")
@@ -257,18 +257,18 @@ class ContentAgent(BaseAgent):
 
             articles = result.data or []
             if not articles:
-                return {"success": False, "error": "No hay artículos recientes"}
+                return {"success": False, "error": "No recent articles"}
 
-            # Construir newsletter
-            html = "<h1>ARIA Digest — Últimos artículos</h1>\n<ul>"
-            text = "ARIA Digest — Últimos artículos\n\n"
+            # Build newsletter
+            html = "<h1>ARIA Digest — Latest articles</h1>\n<ul>"
+            text = "ARIA Digest — Latest articles\n\n"
             for a in articles:
                 html += f'<li><a href="{a.get("url", "")}">{a.get("name", "")}</a></li>'
                 text += f"- {a.get('name', '')}: {a.get('url', '')}\n"
             html += "</ul>"
 
             send_result = await publisher.send_newsletter(
-                subject="ARIA Digest — Nuevos artículos publicados",
+                subject="ARIA Digest — New articles published",
                 html_content=html,
                 plain_text=text,
             )

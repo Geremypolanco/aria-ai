@@ -1,6 +1,6 @@
 """
-support_agent.py — Support Agent multilingüe con Google Translate + HuggingFace.
-Soporte en 133 idiomas, detección automática, sentiment analysis de tickets.
+support_agent.py — Multilingual Support Agent with Google Translate + HuggingFace.
+Support in 133 languages, automatic detection, ticket sentiment analysis.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class SupportAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
             name="support",
-            description="Soporte multilingüe — 133 idiomas, análisis de tickets, respuesta automática",
+            description="Multilingual support — 133 languages, ticket analysis, automatic response",
             capabilities=[
                 "customer_support",
                 "multilingual_response",
@@ -37,36 +37,37 @@ class SupportAgent(BaseAgent):
 
         results: dict[str, Any] = {"success": True, "agent": "support_agent"}
 
-        # Detectar idioma del mensaje
+        # Detect the message language
         detected_lang = await self._detect_language(message)
         results["detected_language"] = detected_lang
 
-        # Análisis de sentimiento del ticket
+        # Ticket sentiment analysis
         sentiment = await self._analyze_ticket_sentiment(message)
         results["ticket_sentiment"] = sentiment
 
-        # Clasificar tipo de soporte
+        # Classify support type
         ticket_type = await self._classify_ticket(message)
         results["ticket_type"] = ticket_type
 
-        # Generar respuesta en el idioma del usuario
+        # Generate a response in the user's language
         response = await self._generate_multilingual_response(
             message, detected_lang, ticket_type, sentiment
         )
         results["response"] = response
 
-        # Escalar si el sentimiento es muy negativo
+        # Escalate if the sentiment is very negative
+        # (value is real HF-model output data, not translatable prose — left as-is)
         if sentiment.get("sentiment") == "negativo" and sentiment.get("confidence", 0) > 0.8:
             results["escalated"] = True
             await self._escalate_ticket(user_id, message, sentiment)
 
         await self._log(
-            "support_response", f"Canal: {channel} | Idioma: {detected_lang} | Tipo: {ticket_type}"
+            "support_response", f"Channel: {channel} | Language: {detected_lang} | Type: {ticket_type}"
         )
         return results
 
     async def _detect_language(self, text: str) -> str:
-        """Detecta el idioma del mensaje usando HuggingFace o Google."""
+        """Detects the message language using HuggingFace or Google."""
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
@@ -88,7 +89,7 @@ class SupportAgent(BaseAgent):
         return "es"
 
     async def _analyze_ticket_sentiment(self, text: str) -> dict[str, Any]:
-        """Analiza sentimiento del ticket para priorización."""
+        """Analyzes ticket sentiment for prioritization."""
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
@@ -96,10 +97,11 @@ class SupportAgent(BaseAgent):
             return await hf.analyze_sentiment(text[:512], multilingual=True)
         except Exception as exc:
             logger.warning("[SupportAgent] sentiment error: %s", exc)
+            # "neutro" matches the real value the HF suite returns — not translatable prose
             return {"sentiment": "neutro", "confidence": 0.5}
 
     async def _classify_ticket(self, text: str) -> str:
-        """Clasifica el tipo de ticket de soporte."""
+        """Classifies the support ticket type."""
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
@@ -126,26 +128,26 @@ class SupportAgent(BaseAgent):
     async def _generate_multilingual_response(
         self, message: str, language: str, ticket_type: str, sentiment: dict
     ) -> dict[str, Any]:
-        """Genera respuesta en el idioma del usuario, traducida automáticamente."""
-        # Generar respuesta en español primero
+        """Generates a response in the user's language, automatically translated."""
+        # Generate the response in Spanish first
         response_es = await self.think(
             system=(
-                "Eres el agente de soporte de ARIA AI, un sistema de negocio digital autónomo. "
-                "Responde de forma empática, clara y concisa. "
-                f"El ticket es de tipo: {ticket_type}. "
-                f"Tono del usuario: {sentiment.get('sentiment','neutro')}."
+                "You are ARIA AI's support agent, an autonomous digital business system. "
+                "Respond empathetically, clearly, and concisely. "
+                f"The ticket type is: {ticket_type}. "
+                f"User tone: {sentiment.get('sentiment','neutro')}."
             ),
-            user=f"Usuario pregunta: {message}\n\nResponde en español, máximo 3 párrafos.",
+            user=f"User asks: {message}\n\nRespond in Spanish, maximum 3 paragraphs.",
             model=AIModel.FAST,
         )
 
         if not response_es:
             return {
-                "text": "Gracias por contactarnos. Un agente revisará tu mensaje pronto.",
+                "text": "Thank you for contacting us. An agent will review your message soon.",
                 "language": "es",
             }
 
-        # Si el idioma detectado no es español, traducir la respuesta
+        # If the detected language is not Spanish, translate the response
         if language and language not in ("es", "spa", "es-ES", "es-MX"):
             try:
                 from apps.core.tools.google_suite import GoogleSuite
@@ -164,7 +166,7 @@ class SupportAgent(BaseAgent):
         return {"text": response_es, "language": "es"}
 
     async def _escalate_ticket(self, user_id: str, message: str, sentiment: dict) -> None:
-        """Escala ticket muy negativo para revisión humana."""
+        """Escalates a very negative ticket for human review."""
         try:
             from apps.core.memory.supabase_client import get_db
 
@@ -172,7 +174,7 @@ class SupportAgent(BaseAgent):
             await db.create_approval_request(
                 agent="support_agent",
                 action_type="escalated_ticket",
-                description=f"Ticket negativo de usuario {user_id}: {message[:200]}",
+                description=f"Negative ticket from user {user_id}: {message[:200]}",
                 data={"user_id": user_id, "message": message, "sentiment": sentiment},
             )
         except Exception as exc:

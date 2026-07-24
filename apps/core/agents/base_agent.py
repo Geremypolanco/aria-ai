@@ -1,8 +1,8 @@
 """
-BaseAgent — Clase base para todos los agentes de Aria AI.
+BaseAgent — Base class for all Aria AI agents.
 
-Principio fundamental: ARIA nunca simula. Si no puede realizar una acción
-porque le falta una API key o un servicio, lo declara explícitamente.
+Fundamental principle: ARIA never simulates. If it cannot perform an action
+because it lacks an API key or a service, it states so explicitly.
 """
 
 from __future__ import annotations
@@ -49,15 +49,15 @@ class AgentMetrics:
 
 class BaseAgent(ABC):
     """
-    Clase base para todos los agentes de Aria AI.
-    Politica: ningun metodo retorna datos falsos o simulados.
-    Si falta una API key o servicio, se retorna error explicito.
+    Base class for all Aria AI agents.
+    Policy: no method returns fake or simulated data.
+    If an API key or service is missing, an explicit error is returned.
     """
 
     APPROVAL_THRESHOLD_USD: float = float(getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 0.0))
     REQUIRE_APPROVAL_FOR_PAYMENTS: bool = True
 
-    # Mapa global: nombre_capacidad -> env_var requerida
+    # Global map: capability_name -> required env_var
     CAPABILITY_ENV_MAP: dict[str, str] = {
         "gumroad": "GUMROAD_TOKEN",
         "stripe": "STRIPE_SECRET_KEY",
@@ -105,29 +105,29 @@ class BaseAgent(ABC):
         self._consecutive_failures = 0
         self._circuit_open = False
         self._circuit_open_until: float = 0.0
-        logger.info("[%s] Agente inicializado", self.name)
+        logger.info("[%s] Agent initialized", self.name)
 
-    # ── CICLO DE VIDA ─────────────────────────────────────
+    # ── LIFECYCLE ──────────────────────────────────────────
 
     async def start(self) -> None:
         await self._register_in_supabase()
-        logger.info("[%s] Agente listo", self.name)
+        logger.info("[%s] Agent ready", self.name)
 
     async def stop(self) -> None:
         await self._http.aclose()
-        logger.info("[%s] Agente detenido", self.name)
+        logger.info("[%s] Agent stopped", self.name)
 
-    # ── EJECUCIÓN PRINCIPAL ───────────────────────────────
+    # ── MAIN EXECUTION ─────────────────────────────────────
 
     async def run(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Punto de entrada principal con circuit breaker."""
+        """Main entry point with circuit breaker."""
         if not self._is_circuit_available():
             wait_secs = int(self._circuit_open_until - time.monotonic())
             return {
                 "success": False,
                 "error": (
-                    f"{self.name}: circuit breaker abierto — demasiados fallos consecutivos. "
-                    f"Vuelve a intentar en ~{wait_secs}s."
+                    f"{self.name}: circuit breaker open — too many consecutive failures. "
+                    f"Try again in ~{wait_secs}s."
                 ),
                 "circuit_open": True,
             }
@@ -148,7 +148,7 @@ class BaseAgent(ABC):
                 self._consecutive_failures += 1
                 self._check_circuit_breaker()
                 logger.warning(
-                    "[%s] Tarea fallida: %s", self.name, result.get("error", "sin detalle")
+                    "[%s] Task failed: %s", self.name, result.get("error", "no detail")
                 )
             result["agent_metrics"] = {
                 "tasks_attempted": self.metrics.tasks_attempted,
@@ -160,20 +160,20 @@ class BaseAgent(ABC):
             self.metrics.tasks_failed += 1
             self._consecutive_failures += 1
             self._check_circuit_breaker()
-            logger.error("[%s] Excepcion en _execute: %s", self.name, exc, exc_info=True)
+            logger.error("[%s] Exception in _execute: %s", self.name, exc, exc_info=True)
             return {"success": False, "error": str(exc), "agent": self.name}
 
     @abstractmethod
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Implementar en cada agente concreto."""
+        """Implement in each concrete agent."""
 
     # ── CAPABILITY CHECK ──────────────────────────────────
 
     def check_capabilities(self) -> dict[str, Any]:
         """
-        Verifica en tiempo real que puede y que NO puede hacer este agente.
-        Nunca simula — reporta el estado real de cada dependencia de API.
-        Llamar desde Telegram con /agentes para ver estado completo.
+        Checks in real time what this agent can and CANNOT do.
+        Never simulates — reports the real status of each API dependency.
+        Call from Telegram with /agents to see full status.
         """
         available: list[str] = []
         unavailable: list[str] = []
@@ -191,9 +191,9 @@ class BaseAgent(ABC):
                 if val:
                     available.append(cap)
                 else:
-                    unavailable.append(f"{cap} [requiere {required_env}]")
+                    unavailable.append(f"{cap} [requires {required_env}]")
             else:
-                # Capacidad sin dependencia externa (ej: planificacion, IA base)
+                # Capability with no external dependency (e.g. planning, base AI)
                 available.append(cap)
 
         return {
@@ -205,7 +205,7 @@ class BaseAgent(ABC):
             "operational_pct": round(len(available) / max(len(self.capabilities), 1) * 100),
         }
 
-    # ── PENSAMIENTO CON IA ────────────────────────────────
+    # ── AI-POWERED THINKING ────────────────────────────────
 
     async def think(
         self,
@@ -217,17 +217,17 @@ class BaseAgent(ABC):
         inject_business_intelligence: bool = True,
     ) -> str | None:
         """
-        Llama a la IA y retorna texto.
-        Enfuerza una personalidad relajada, directa y sin rodeos.
+        Calls the AI and returns text.
+        Enforces a relaxed, direct, no-nonsense personality.
         """
-        # Personalidad y estilo de razonamiento
+        # Personality and reasoning style
         relaxed_persona = (
-            "\n\n[PERSONALITY & REASONING]: Eres ARIA. Habla de forma directa, inteligente y sin formalidades innecesarias. "
-            "Piensa paso a paso antes de responder. Sé exhaustiva: si el usuario pide análisis, análisis completo; "
-            "si pide estrategia, estrategia detallada con pasos accionables. "
-            "Nunca des respuestas vagas o incompletas. Si necesitas datos, busca; si no puedes buscar, dilo. "
-            "Usa markdown (listas, negritas, secciones) cuando mejore la claridad. "
-            "Si algo es imposible, dilo claro con alternativas reales. Si vas a monetizar, hazlo con confianza y detalle."
+            "\n\n[PERSONALITY & REASONING]: You are ARIA. Speak directly, intelligently, and without unnecessary formality. "
+            "Think step by step before responding. Be thorough: if the user asks for analysis, give a complete analysis; "
+            "if they ask for strategy, give a detailed strategy with actionable steps. "
+            "Never give vague or incomplete answers. If you need data, look it up; if you can't look it up, say so. "
+            "Use markdown (lists, bold, sections) when it improves clarity. "
+            "If something is impossible, say so clearly with real alternatives. If you're going to monetize, do it with confidence and detail."
         )
         system += relaxed_persona
 
@@ -240,8 +240,8 @@ class BaseAgent(ABC):
 
                 intelligence_context = (
                     f"\n\n[BUSINESS INTELLIGENCE]:\n"
-                    f'Técnicas: {SALES_TECHNIQUES["copywriting"]}\n'
-                    f'Vocabulario Persuasivo: {VOCABULARY_EXPANSION["persuasive_verbs"]}\n'
+                    f'Techniques: {SALES_TECHNIQUES["copywriting"]}\n'
+                    f'Persuasive Vocabulary: {VOCABULARY_EXPANSION["persuasive_verbs"]}\n'
                 )
                 system += intelligence_context
             except ImportError:
@@ -259,13 +259,13 @@ class BaseAgent(ABC):
                 return (
                     response.content if isinstance(response.content, str) else str(response.content)
                 )
-            logger.warning("[%s] think() sin respuesta de IA — proveedor no disponible", self.name)
+            logger.warning("[%s] think() got no AI response — provider unavailable", self.name)
             return None
         except Exception as exc:
             logger.error("[%s] think() error: %s", self.name, exc)
             return None
 
-    # ── APROBACIÓN HUMANA ─────────────────────────────────
+    # ── HUMAN APPROVAL ─────────────────────────────────────
 
     async def request_human_approval(
         self,
@@ -274,15 +274,15 @@ class BaseAgent(ABC):
         amount_usd: float = 0.0,
     ) -> dict[str, Any]:
         """
-        Solicita aprobacion del supervisor via Telegram.
-        ERROR EXPLICITO si Telegram no esta configurado — nunca aprueba automaticamente.
+        Requests supervisor approval via Telegram.
+        EXPLICIT ERROR if Telegram is not configured — never auto-approves.
         """
         if not settings.TELEGRAM_TOKEN or not settings.TELEGRAM_CHAT_ID:
             return {
                 "success": False,
                 "error": (
-                    "Aprobacion humana requerida pero TELEGRAM_TOKEN o TELEGRAM_CHAT_ID "
-                    "no estan configurados. Accion bloqueada por seguridad."
+                    "Human approval required but TELEGRAM_TOKEN or TELEGRAM_CHAT_ID "
+                    "is not configured. Action blocked for safety."
                 ),
                 "action_blocked": True,
             }
@@ -301,20 +301,20 @@ class BaseAgent(ABC):
             ).execute()
 
             msg = (
-                f"⚠️ <b>Aprobacion requerida</b>\n\n"
-                f"<b>Agente:</b> {self.name}\n"
-                f"<b>Accion:</b> {action}\n"
-                f"<b>Detalles:</b> {details}\n"
-                + (f"<b>Monto:</b> ${amount_usd:.2f}\n" if amount_usd > 0 else "")
+                f"⚠️ <b>Approval required</b>\n\n"
+                f"<b>Agent:</b> {self.name}\n"
+                f"<b>Action:</b> {action}\n"
+                f"<b>Details:</b> {details}\n"
+                + (f"<b>Amount:</b> ${amount_usd:.2f}\n" if amount_usd > 0 else "")
                 + f"\n<b>ID:</b> <code>{approval_id}</code>\n\n"
-                f"/aprobar {approval_id}  |  /rechazar {approval_id}"
+                f"/approve {approval_id}  |  /reject {approval_id}"
             )
             await self._send_telegram(msg)
             return {
                 "success": True,
                 "approval_id": approval_id,
                 "status": "pending",
-                "message": f"Aprobacion solicitada al supervisor (ID: {approval_id})",
+                "message": f"Approval requested from supervisor (ID: {approval_id})",
             }
         except Exception as exc:
             logger.error("[%s] request_approval error: %s", self.name, exc)
@@ -327,7 +327,7 @@ class BaseAgent(ABC):
         fn: Callable[[], Coroutine],
         amount_usd: float = 0.0,
     ) -> dict[str, Any]:
-        """Ejecuta fn() directamente o solicita aprobacion segun el monto."""
+        """Executes fn() directly or requests approval depending on the amount."""
         if amount_usd <= self.APPROVAL_THRESHOLD_USD and not self.REQUIRE_APPROVAL_FOR_PAYMENTS:
             return await fn()
         return await self.request_human_approval(action, details, amount_usd)
@@ -347,7 +347,7 @@ class BaseAgent(ABC):
                 }
             ).execute()
         except Exception as exc:
-            logger.warning("[%s] No se pudo registrar en Supabase: %s", self.name, exc)
+            logger.warning("[%s] Could not register in Supabase: %s", self.name, exc)
 
     async def _log(self, event: str, message: str, metadata: dict | None = None) -> None:
         try:
@@ -361,14 +361,14 @@ class BaseAgent(ABC):
                 }
             ).execute()
         except Exception as exc:
-            logger.debug("[%s] _log error (no critico): %s", self.name, exc)
+            logger.debug("[%s] _log error (non-critical): %s", self.name, exc)
 
     # ── TELEGRAM ──────────────────────────────────────────
 
     async def _send_telegram(self, message: str) -> bool:
-        """Envia mensaje Telegram. Retorna False (no excepcion) si no esta configurado."""
+        """Sends a Telegram message. Returns False (no exception) if not configured."""
         if not settings.TELEGRAM_TOKEN or not settings.TELEGRAM_CHAT_ID:
-            logger.warning("[%s] Telegram no configurado — mensaje no enviado", self.name)
+            logger.warning("[%s] Telegram not configured — message not sent", self.name)
             return False
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -394,7 +394,7 @@ class BaseAgent(ABC):
         if time.monotonic() > self._circuit_open_until:
             self._circuit_open = False
             self._consecutive_failures = 0
-            logger.info("[%s] Circuit breaker cerrado — reiniciando", self.name)
+            logger.info("[%s] Circuit breaker closed — resetting", self.name)
             return True
         return False
 
@@ -404,7 +404,7 @@ class BaseAgent(ABC):
             self._circuit_open = True
             self._circuit_open_until = time.monotonic() + cooldown
             logger.error(
-                "[%s] Circuit breaker ABIERTO por %ds (%d fallos consecutivos)",
+                "[%s] Circuit breaker OPEN for %ds (%d consecutive failures)",
                 self.name,
                 cooldown,
                 self._consecutive_failures,
@@ -412,7 +412,7 @@ class BaseAgent(ABC):
 
 
 def _get_db():
-    """Helper para obtener cliente Supabase."""
+    """Helper to get the Supabase client."""
     from apps.core.memory.supabase_client import get_db
 
     return get_db()._client

@@ -1,15 +1,15 @@
 """
-browser_operator.py — Operación Web Autónoma para ARIA AI.
+browser_operator.py — Autonomous Web Operation for ARIA AI.
 
-Integra Browser Use y Playwright para que ARIA pueda:
-  - Navegar y operar sitios web reales como un humano
-  - Realizar acciones complejas (clicks, inputs, scrolls)
-  - Interactuar con aplicaciones SaaS y portales de marketing
-  - Automatizar flujos de trabajo en el navegador
+Integrates Browser Use and Playwright so ARIA can:
+  - Navigate and operate real websites like a human
+  - Perform complex actions (clicks, inputs, scrolls)
+  - Interact with SaaS applications and marketing portals
+  - Automate browser workflows
 
-ARIA ya no solo lee la web, ahora la opera.
+ARIA no longer just reads the web — now it operates it.
 
-Referencia:
+Reference:
   - Browser Use: https://github.com/browser-use/browser-use
   - Playwright: https://playwright.dev/python/
 """
@@ -20,31 +20,31 @@ import logging
 
 logger = logging.getLogger("aria.browser_operator")
 
-# ── Playwright Import con fallback ───────────────────────────────────────────
+# ── Playwright import with fallback ──────────────────────────────────────────
 try:
     from playwright.async_api import async_playwright
 
     PLAYWRIGHT_AVAILABLE = True
-    logger.info("[Playwright] Librería cargada correctamente.")
+    logger.info("[Playwright] Library loaded successfully.")
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
-    logger.warning("[Playwright] playwright no instalado.")
+    logger.warning("[Playwright] playwright not installed.")
 
-# ── Browser Use Import con fallback ──────────────────────────────────────────
+# ── Browser Use import with fallback ─────────────────────────────────────────
 try:
     from browser_use import Agent as BrowserAgent  # noqa: F401
 
     BROWSER_USE_AVAILABLE = True
-    logger.info("[Browser Use] Librería cargada correctamente.")
+    logger.info("[Browser Use] Library loaded successfully.")
 except ImportError:
     BROWSER_USE_AVAILABLE = False
-    logger.warning("[Browser Use] browser-use no instalado.")
+    logger.warning("[Browser Use] browser-use not installed.")
 
 
 class AriaBrowserOperator:
     """
-    Operador de Navegador para ARIA AI.
-    Permite la ejecución de tareas complejas en la web.
+    Browser operator for ARIA AI.
+    Enables execution of complex tasks on the web.
     """
 
     def __init__(self, headless: bool = True) -> None:
@@ -53,47 +53,47 @@ class AriaBrowserOperator:
         self._playwright = None
 
     async def start(self):
-        """Inicia la instancia de Playwright."""
+        """Starts the Playwright instance."""
         if not PLAYWRIGHT_AVAILABLE:
             return
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        logger.info("[BrowserOperator] Navegador iniciado (headless=%s)", self.headless)
+        logger.info("[BrowserOperator] Browser started (headless=%s)", self.headless)
 
     async def stop(self):
-        """Cierra el navegador."""
+        """Closes the browser."""
         if self._browser:
             await self._browser.close()
         if self._playwright:
             await self._playwright.stop()
-        logger.info("[BrowserOperator] Navegador cerrado.")
+        logger.info("[BrowserOperator] Browser closed.")
 
     async def run_task(self, instruction: str) -> str:
         """
-        Ejecuta una tarea en el navegador usando Browser Use.
+        Executes a task in the browser using Browser Use.
 
         Args:
-            instruction: Tarea en lenguaje natural (ej: 'Busca los precios de la competencia en X sitio')
+            instruction: Task in natural language (e.g. 'Look up competitor prices on X site')
         """
         if not BROWSER_USE_AVAILABLE:
-            return "Browser Use no está disponible para ejecutar tareas complejas."
+            return "Browser Use is not available to run complex tasks."
 
         try:
-            # Browser Use Agent requiere un LLM para orquestar la navegación
-            # Aquí se integraría con el ai_client de Aria
-            logger.info("[BrowserOperator] Ejecutando tarea: %s", instruction)
+            # Browser Use Agent requires an LLM to orchestrate navigation
+            # This would integrate with Aria's ai_client here
+            logger.info("[BrowserOperator] Running task: %s", instruction)
 
-            # Nota: La implementación real requiere pasar el LLM configurado
+            # Note: The real implementation requires passing the configured LLM
             # agent = BrowserAgent(task=instruction, llm=get_ai_client().get_model())
             # result = await agent.run()
 
-            return f"Tarea '{instruction}' simulada con éxito (Browser Use)."
+            return f"Task '{instruction}' simulated successfully (Browser Use)."
         except Exception as exc:
-            logger.error("[BrowserOperator] Error ejecutando tarea: %s", exc)
-            return f"Error en la operación web: {exc}"
+            logger.error("[BrowserOperator] Error running task: %s", exc)
+            return f"Error in web operation: {exc}"
 
     async def take_screenshot(self, url: str, path: str):
-        """Toma una captura de pantalla de una URL."""
+        """Takes a screenshot of a URL."""
         if not self._browser:
             await self.start()
 
@@ -102,9 +102,9 @@ class AriaBrowserOperator:
             await page.goto(url)
             await page.screenshot(path=path)
             await page.close()
-            logger.info("[BrowserOperator] Captura de pantalla guardada en %s", path)
+            logger.info("[BrowserOperator] Screenshot saved to %s", path)
         except Exception as exc:
-            logger.error("[BrowserOperator] Error tomando captura: %s", exc)
+            logger.error("[BrowserOperator] Error taking screenshot: %s", exc)
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ _browser_operator_instance: AriaBrowserOperator | None = None
 
 
 def get_browser_operator() -> AriaBrowserOperator:
-    """Retorna el singleton del operador de navegador."""
+    """Returns the browser operator singleton."""
     global _browser_operator_instance
     if _browser_operator_instance is None:
         _browser_operator_instance = AriaBrowserOperator()

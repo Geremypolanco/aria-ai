@@ -39,14 +39,14 @@ class AriaAgent:
     ) -> str:
         """Process a message through ARIA's reasoning with multi-provider fallback."""
         if not self.client:
-            return """⚠️ **ARIA no está completamente inicializada**
+            return """⚠️ **ARIA is not fully initialized**
 
-Para activar todas mis capacidades, configura al menos una de estas API keys en tu `.env`:
-- `HF_TOKEN` (HuggingFace - motor principal, gratis)
-- `GROQ_API_KEY` (Groq - respaldo rápido)
-- `OPENAI_API_KEY` (OpenAI - respaldo secundario)
+To activate all my capabilities, configure at least one of these API keys in your `.env`:
+- `HF_TOKEN` (HuggingFace - primary engine, free)
+- `GROQ_API_KEY` (Groq - fast fallback)
+- `OPENAI_API_KEY` (OpenAI - secondary fallback)
 
-Mientras tanto, puedes usar el dashboard para ver el estado del sistema."""
+In the meantime, you can use the dashboard to see the system status."""
 
         full_system = system or build_system_prompt()
         try:
@@ -74,17 +74,17 @@ Mientras tanto, puedes usar el dashboard para ver el estado del sistema."""
             logger.error(
                 "All AI providers failed: %s", response.error if response else "no response"
             )
-            return "⚠️ Todos los proveedores de IA fallaron. Intenta de nuevo en un momento."
+            return "⚠️ All AI providers failed. Try again in a moment."
         except Exception as e:
             logger.error(f"AriaAgent.think error: {e}")
-            return """⚠️ **Error interno**
+            return """⚠️ **Internal error**
 
-Posibles causas:
-- API key inválida o sin fondos
-- Timeout en la conexión
-- Modelo temporalmente no disponible
+Possible causes:
+- Invalid API key or out of funds
+- Connection timeout
+- Model temporarily unavailable
 
-Intenta de nuevo o verifica tu configuración."""
+Try again or check your configuration."""
 
     async def think_json(
         self,
@@ -112,16 +112,16 @@ Intenta de nuevo o verifica tu configuración."""
         language: str = "python",
     ) -> str:
         """Generate code using ARIA's code-optimized model."""
-        system = f"""Eres un ingeniero de software experto en {language.upper()}.
+        system = f"""You are a software engineer expert in {language.upper()}.
 
-DIRECTRICES:
-1. Genera código limpio, eficiente y bien documentado
-2. Sigue las mejores prácticas de {language}
-3. Incluye manejo de errores
-4. Agrega comentarios explicativos
-5. Si es aplicable, incluye ejemplos de uso
+GUIDELINES:
+1. Generate clean, efficient, well-documented code
+2. Follow {language} best practices
+3. Include error handling
+4. Add explanatory comments
+5. If applicable, include usage examples
 
-Lenguaje objetivo: {language}"""
+Target language: {language}"""
         return await self.think(
             message=prompt,
             system=system,
@@ -133,21 +133,21 @@ Lenguaje objetivo: {language}"""
     async def research(
         self,
         topic: str,
-        depth: str = "completa",
+        depth: str = "complete",
     ) -> str:
         """Deep research on any topic."""
-        system = f"""Eres un investigador académico experto realizando una investigación {depth} sobre: {topic}
+        system = f"""You are an expert academic researcher conducting {depth} research on: {topic}
 
-ESTRUCTURA DE RESPUESTA:
-1. **Resumen Ejecutivo** - Visión general en 2-3 oraciones
-2. **Contexto y Antecedentes** - Información fundamental necesaria
-3. **Análisis Principal** - Desglose detallado del tema
-4. **Hallazgos Clave** - Los descubrimientos más importantes
-5. **Implicaciones** - Qué significa esto en la práctica
-6. **Conclusiones** - Síntesis final
-7. **Referencias** - Fuentes y recursos adicionales"""
+RESPONSE STRUCTURE:
+1. **Executive Summary** - Overview in 2-3 sentences
+2. **Context and Background** - Necessary foundational information
+3. **Main Analysis** - Detailed breakdown of the topic
+4. **Key Findings** - The most important discoveries
+5. **Implications** - What this means in practice
+6. **Conclusions** - Final synthesis
+7. **References** - Sources and additional resources"""
         return await self.think(
-            message=f"Investiga a fondo: {topic}",
+            message=f"Research thoroughly: {topic}",
             system=system,
             model=AIModel.STRATEGY,
             temperature=0.3,
@@ -160,14 +160,14 @@ ESTRUCTURA DE RESPUESTA:
         analysis_type: str = "general",
     ) -> str:
         """Analyze data, code, text, or any content."""
-        system = f"""Eres un analista experto realizando un análisis de tipo: {analysis_type}
+        system = f"""You are an expert analyst performing a {analysis_type} analysis
 
-Proporciona:
-1. Resumen de lo que se está analizando
-2. Puntos clave y patrones identificados
-3. Problemas o áreas de mejora (si aplica)
-4. Recomendaciones accionables
-5. Puntuación o evaluación general"""
+Provide:
+1. Summary of what is being analyzed
+2. Key points and patterns identified
+3. Problems or areas for improvement (if applicable)
+4. Actionable recommendations
+5. Overall score or evaluation"""
         return await self.think(
             message=data,
             system=system,

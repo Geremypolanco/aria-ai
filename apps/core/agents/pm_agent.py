@@ -1,6 +1,6 @@
 """
-pm_agent.py — Project Manager Agent con Google Suite + HuggingFace Suite.
-Investigación de mercado completa: web, YouTube, libros, tendencias, NLP, imágenes.
+pm_agent.py — Project Manager Agent with Google Suite + HuggingFace Suite.
+Complete market research: web, YouTube, books, trends, NLP, images.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class PMAgent(BaseAgent):
     def __init__(self) -> None:
         super().__init__(
             name="pm",
-            description="Investigación de mercado y gestión de proyectos — análisis completo con Google + HuggingFace",
+            description="Market research and project management — full analysis with Google + HuggingFace",
             capabilities=[
                 "market_research",
                 "competitor_analysis",
@@ -40,34 +40,34 @@ class PMAgent(BaseAgent):
 
         results: dict[str, Any] = {"success": True, "agent": "pm_agent", "niche": niche}
 
-        # ── 1. Investigación de mercado completa con Google Suite
+        # ── 1. Full market research with Google Suite
         market_data = await self._deep_market_research(niche, language)
         results["market_research"] = market_data
 
-        # ── 2. Análisis de sentimiento del mercado con HuggingFace
+        # ── 2. Market sentiment analysis with HuggingFace
         if deep_research:
             sentiment_data = await self._analyze_market_sentiment(market_data, niche)
             results["market_sentiment"] = sentiment_data
 
-        # ── 3. Oportunidades de nicho con YouTube + NER
+        # ── 3. Niche opportunities with YouTube + NER
         opportunities = await self._find_opportunities(niche, market_data)
         results["opportunities"] = opportunities
 
-        # ── 4. Síntesis final con IA
+        # ── 4. Final synthesis with AI
         strategy = await self._generate_strategy(niche, task, results)
         results["strategy"] = strategy
 
-        # ── 5. Guardar en Supabase
+        # ── 5. Save to Supabase
         await self._save_research(niche, results)
         await self._log(
             "market_research_complete",
-            f"Nicho: {niche} | Tendencias: {len(market_data.get('trending_topics',[]))}",
+            f"Niche: {niche} | Trends: {len(market_data.get('trending_topics',[]))}",
         )
 
         return results
 
     async def _deep_market_research(self, niche: str, language: str) -> dict[str, Any]:
-        """Investigación completa usando TODAS las APIs de Google."""
+        """Full research using ALL Google APIs."""
         import asyncio
 
         try:
@@ -75,7 +75,7 @@ class PMAgent(BaseAgent):
 
             google = GoogleSuite()
 
-            # Ejecutar todas las búsquedas en paralelo
+            # Run all searches in parallel
             market_task = google.full_market_research(niche, language)
             trends_rt = google.trends_realtime("US")
             kg_task = google.knowledge_graph_search(niche)
@@ -91,7 +91,7 @@ class PMAgent(BaseAgent):
                 return_exceptions=True,
             )
 
-            # Enriquecer con NLP si hay datos web
+            # Enrich with NLP if there's web data
             web_text = " ".join(
                 [
                     r.get("snippet", "")
@@ -126,13 +126,13 @@ class PMAgent(BaseAgent):
             return {"error": str(exc)}
 
     async def _analyze_market_sentiment(self, market_data: dict, niche: str) -> dict[str, Any]:
-        """Analiza el sentimiento del mercado con HuggingFace."""
+        """Analyzes market sentiment with HuggingFace."""
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
             hf = HuggingFaceSuite()
 
-            # Recopilar textos del mercado
+            # Gather market texts
             texts = []
             for item in market_data.get("market_overview", {}).get("web_results", [])[:5]:
                 if item.get("snippet"):
@@ -142,7 +142,7 @@ class PMAgent(BaseAgent):
                     texts.append(video["title"])
 
             if not texts:
-                return {"error": "Sin textos para analizar"}
+                return {"error": "No texts to analyze"}
 
             return await hf.analyze_market_sentiment(niche, texts)
         except Exception as exc:
@@ -150,7 +150,7 @@ class PMAgent(BaseAgent):
             return {"error": str(exc)}
 
     async def _find_opportunities(self, niche: str, market_data: dict) -> list[dict]:
-        """Encuentra oportunidades de productos usando clasificación zero-shot + YouTube."""
+        """Finds product opportunities using zero-shot classification + YouTube."""
         opportunities = []
         try:
             from apps.core.tools.google_suite import GoogleSuite
@@ -159,19 +159,19 @@ class PMAgent(BaseAgent):
             google = GoogleSuite()
             hf = HuggingFaceSuite()
 
-            # Buscar videos de alto rendimiento sobre el nicho
+            # Search for high-performing videos about the niche
             yt_search = await google.youtube_search(
                 f"best {niche} products 2025 review", max_results=10, order="viewCount"
             )
 
             if yt_search.get("success") and yt_search.get("results"):
-                # Obtener stats de los top videos
+                # Get stats for the top videos
                 video_ids = [v["id"] for v in yt_search["results"][:5] if v.get("id")]
                 if video_ids:
                     video_stats = await google.youtube_video_details(video_ids)
                     if video_stats.get("success"):
                         for v in video_stats.get("videos", [])[:5]:
-                            # Clasificar si es oportunidad real
+                            # Classify whether it's a real opportunity
                             cls = await hf.classify_zero_shot(
                                 v.get("title", ""),
                                 [
@@ -202,7 +202,7 @@ class PMAgent(BaseAgent):
         return opportunities[:10]
 
     async def _generate_strategy(self, niche: str, task: str, data: dict) -> dict[str, Any]:
-        """Genera estrategia final con todos los datos recopilados."""
+        """Generates the final strategy from all the gathered data."""
         context_summary = {
             "trending_topics": data.get("market_research", {}).get("trending_topics", [])[:5],
             "sentiment": data.get("market_sentiment", {}).get("overall", ""),
@@ -211,21 +211,21 @@ class PMAgent(BaseAgent):
         }
 
         strategy_prompt = (
-            f"Como PM experto en productos digitales, analiza estos datos de mercado y genera una estrategia:\n"
-            f"Nicho: {niche}\n"
-            f"Tarea: {task}\n"
-            f"Datos: {context_summary}\n\n"
-            "Genera un JSON con:\n"
-            "- top_3_products: [3 ideas de productos digitales para crear]\n"
-            "- target_audience: descripción del público objetivo\n"
-            "- pricing_strategy: rango de precios recomendado\n"
-            "- content_angles: [3 ángulos de contenido únicos]\n"
-            "- risk_level: bajo/medio/alto\n"
-            "- expected_revenue_month1: estimación primer mes en USD"
+            f"As an expert PM in digital products, analyze this market data and generate a strategy:\n"
+            f"Niche: {niche}\n"
+            f"Task: {task}\n"
+            f"Data: {context_summary}\n\n"
+            "Generate a JSON with:\n"
+            "- top_3_products: [3 digital product ideas to create]\n"
+            "- target_audience: description of the target audience\n"
+            "- pricing_strategy: recommended price range\n"
+            "- content_angles: [3 unique content angles]\n"
+            "- risk_level: low/medium/high\n"
+            "- expected_revenue_month1: first-month estimate in USD"
         )
 
         response = await self.think(
-            system="Eres un PM experto en productos digitales. Responde SOLO con JSON válido.",
+            system="You are an expert PM in digital products. Respond ONLY with valid JSON.",
             user=strategy_prompt,
             model=AIModel.ANALYTICAL,
         )
@@ -252,4 +252,4 @@ class PMAgent(BaseAgent):
                 metadata={k: str(v)[:500] for k, v in data.items() if k != "strategy"},
             )
         except Exception as exc:
-            logger.warning("[PMAgent] Error guardando: %s", exc)
+            logger.warning("[PMAgent] Error saving: %s", exc)

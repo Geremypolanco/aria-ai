@@ -1,11 +1,11 @@
 """
-orchestrator.py — Director central de ARIA AI. Prioridad absoluta: MONETIZACION.
+orchestrator.py — Central director of ARIA AI. Absolute priority: MONETIZATION.
 
-Mejoras v4:
-- Proactividad 24/7 reforzada
-- Prioridad en Shopify, Zapier y High-Ticket
-- Expansion automatica de busqueda en WebTools
-- Fix: Dashboard de ingresos unificado con tabla 'revenue'
+v4 improvements:
+- Reinforced 24/7 proactivity
+- Priority on Shopify, Zapier, and High-Ticket
+- Automatic search expansion in WebTools
+- Fix: unified revenue dashboard with the 'revenue' table
 """
 
 from __future__ import annotations
@@ -27,15 +27,15 @@ TELEGRAM_API = "https://api.telegram.org/bot"
 
 class Orchestrator(BaseAgent):
     """
-    Director central del sistema ARIA AI.
-    Mision: generar ingresos reales de forma autonoma.
-    Motor IA: HuggingFace (primario) → Groq → OpenAI
+    Central director of the ARIA AI system.
+    Mission: generate real revenue autonomously.
+    AI engine: HuggingFace (primary) → Groq → OpenAI
     """
 
     def __init__(self) -> None:
         super().__init__(
             name="orchestrator",
-            description="Director central — monetizacion autonoma y coordinacion de agentes",
+            description="Central director — autonomous monetization and agent coordination",
             capabilities=["market_analysis", "planning", "coordination", "reporting"],
         )
         self._agents: dict[str, BaseAgent] = {}
@@ -45,13 +45,14 @@ class Orchestrator(BaseAgent):
         return await self.run_cycle()
 
     async def execute_mission(self, mission_text: str) -> dict[str, Any]:
-        """Ejecuta una misión específica bajo demanda (ej: desde Telegram)."""
-        logger.info("[Orchestrator] Ejecutando misión: %s", mission_text)
+        """Executes a specific mission on demand (e.g. from Telegram)."""
+        logger.info("[Orchestrator] Running mission: %s", mission_text)
 
-        # Misión de creación multimedia/software mejorada
+        # Enhanced multimedia/software creation mission
+        # (bilingual match against user input mission text — left untranslated)
         m_lower = mission_text.lower()
         if any(x in m_lower for x in ["create", "genera", "crea", "haz", "dibuja"]):
-            # Identificar formato
+            # Identify format
             fmt = "image"
             if any(x in m_lower for x in ["video", "clip", "película"]):
                 fmt = "video"
@@ -62,62 +63,62 @@ class Orchestrator(BaseAgent):
 
             agent = await self._get_agent("content")
             if agent:
-                logger.info(f"[Orchestrator] Delegando creación de {fmt} al ContentAgent")
+                logger.info(f"[Orchestrator] Delegating {fmt} creation to ContentAgent")
                 return await agent.execute(
                     {"task": "creative_creation", "format": fmt, "topic": mission_text}
                 )
 
-        return {"success": False, "error": "Misión no reconocida o agente no disponible"}
+        return {"success": False, "error": "Mission not recognized or agent not available"}
 
-    # ── CICLO PRINCIPAL ───────────────────────────────────────────
+    # ── MAIN CYCLE ───────────────────────────────────────────
 
     async def run_cycle(self) -> dict[str, Any]:
         """
-        Ciclo autonomo completo:
-        1. Inteligencia de mercado real (internet)
-        2. Plan de accion con IA (HF primario)
-        3. Ejecucion en paralelo por prioridad
-        4. Logging en Supabase
-        5. Reporte por Telegram
+        Full autonomous cycle:
+        1. Real market intelligence (internet)
+        2. AI action plan (HF primary)
+        3. Parallel execution by priority
+        4. Logging to Supabase
+        5. Telegram report
         """
         self._cycle_count += 1
         cycle_start = time.time()
-        logger.info("[Orchestrator] ─── CICLO #%d INICIADO ───", self._cycle_count)
+        logger.info("[Orchestrator] ─── CYCLE #%d STARTED ───", self._cycle_count)
 
-        # Asegurar que los agentes estén cargados
+        # Make sure agents are loaded
         if not self._agents:
             self._auto_discover_agents()
 
-        # Log inicio en Supabase
+        # Log start to Supabase
         cycle_id = await self._log_cycle_start()
 
-        # 1. Inteligencia de mercado REAL
+        # 1. REAL market intelligence
         intelligence = await self._gather_market_intelligence()
 
-        # 2. Plan de monetizacion con IA (HuggingFace primario)
+        # 2. Monetization plan with AI (HuggingFace primary)
         plan = await self._generate_monetization_plan(intelligence)
         if not plan.get("missions"):
             plan = self._fallback_monetization_plan()
 
-        # 3. Monetizacion siempre primero
+        # 3. Monetization always comes first
         plan = self._enforce_monetization_priority(plan)
 
         logger.info(
-            "[Orchestrator] Plan: %d misiones — foco: %s",
+            "[Orchestrator] Plan: %d missions — focus: %s",
             len(plan["missions"]),
-            plan.get("focus", "monetizacion"),
+            plan.get("focus", "monetization"),
         )
 
-        # 4. Ejecutar misiones en paralelo por prioridad
+        # 4. Run missions in parallel by priority
         results = await self._execute_by_priority(plan["missions"])
 
         cycle_time = time.time() - cycle_start
         revenue_summary = self._extract_revenue_summary(results)
 
-        # 5. Log resultado en Supabase
+        # 5. Log the result to Supabase
         await self._log_cycle_end(cycle_id, results, revenue_summary)
 
-        # 6. Reportar por Telegram
+        # 6. Report via Telegram
         await self._send_cycle_report(results, intelligence, revenue_summary, cycle_time)
 
         return {
@@ -132,7 +133,7 @@ class Orchestrator(BaseAgent):
     # ── SUPABASE LOGGING ──────────────────────────────────────────
 
     async def _log_cycle_start(self) -> str | None:
-        """Registra inicio del ciclo en Supabase."""
+        """Logs the cycle start to Supabase."""
         try:
             from apps.core.tools.db_setup import log_to_supabase
 
@@ -149,7 +150,7 @@ class Orchestrator(BaseAgent):
     async def _log_cycle_end(
         self, cycle_id: str | None, results: list[dict], revenue: dict
     ) -> None:
-        """Registra fin del ciclo en Supabase."""
+        """Logs the cycle end to Supabase."""
         try:
             from apps.core.tools.db_setup import log_to_supabase
 
@@ -171,47 +172,47 @@ class Orchestrator(BaseAgent):
         except Exception as exc:
             logger.debug("[Orchestrator] DB log end error: %s", exc)
 
-    # ── INTELIGENCIA DE MERCADO REAL ─────────────────────────────
+    # ── REAL MARKET INTELLIGENCE ─────────────────────────────
 
     async def _gather_market_intelligence(self) -> dict[str, Any]:
-        """Recopila inteligencia de mercado REAL desde internet."""
+        """Gathers REAL market intelligence from the internet."""
         try:
             from apps.core.tools.web_tools import WebTools
 
             wt = WebTools()
-            logger.info("[Orchestrator] Accediendo a internet para inteligencia de mercado...")
+            logger.info("[Orchestrator] Accessing the internet for market intelligence...")
             intel = await wt.gather_market_intelligence(
                 focus="digital products passive income AI tools saas affiliate marketing"
             )
             all_titles = intel.get("trending_titles", [])
             intel["top_opportunity"] = (
-                all_titles[0] if all_titles else "mercado digital en expansion"
+                all_titles[0] if all_titles else "expanding digital market"
             )
             intel["sources_used"] = intel.get("sources_available", [])
             logger.info(
-                "[Orchestrator] Inteligencia: %d fuentes, %d tendencias",
+                "[Orchestrator] Intelligence: %d sources, %d trends",
                 intel.get("sources_count", 0),
                 intel.get("total_data_points", 0),
             )
             return intel
         except Exception as exc:
-            logger.error("[Orchestrator] Error inteligencia: %s", exc)
+            logger.error("[Orchestrator] Intelligence error: %s", exc)
             return {
                 "error": str(exc),
                 "sources_used": [],
                 "trending_titles": [],
-                "top_opportunity": "productos digitales con IA",
+                "top_opportunity": "AI-powered digital products",
             }
 
-    # ── PLAN DE MONETIZACION CON IA ───────────────────────────────
+    # ── AI MONETIZATION PLAN ───────────────────────────────
 
     async def _generate_monetization_plan(self, intelligence: dict[str, Any]) -> dict[str, Any]:
         """
-        Genera plan de accion usando IA detallado.
+        Generates a detailed action plan using AI.
         """
         ai = get_ai_client()
         if not ai:
-            logger.error("[Orchestrator] AI client no disponible")
+            logger.error("[Orchestrator] AI client not available")
             return {}
 
         trending = intelligence.get("trending_titles", [])[:8]
@@ -221,43 +222,43 @@ class Orchestrator(BaseAgent):
         reddit_title = reddit_top[0].get("title", "") if reddit_top else ""
 
         system_prompt = (
-            "Eres el director estrategico de ARIA AI, un sistema de monetizacion autonoma proactiva 24/7. "
-            "Tu mision es identificar oportunidades de ingresos masivos y ejecutarlas sin omitir ningun detalle. "
-            "Priorizas Shopify, Zapier y servicios High-Ticket sobre contenido SEO tradicional. "
-            "Responde SOLO con JSON valido sin markdown."
+            "You are the strategic director of ARIA AI, a proactive 24/7 autonomous monetization system. "
+            "Your mission is to identify massive revenue opportunities and execute them without omitting any detail. "
+            "You prioritize Shopify, Zapier, and High-Ticket services over traditional SEO content. "
+            "Respond ONLY with valid JSON, no markdown."
         )
 
-        user_prompt = f"""CONTEXTO DEL MERCADO ({datetime.now(UTC).strftime('%Y-%m-%d')}):
-- Tendencia HackerNews: {hn_title or 'No disponible'}
-- Tendencia Reddit: {reddit_title or 'No disponible'}
-- Trending topics: {', '.join(trending[:5]) or 'IA, negocios digitales, automatizacion'}
+        user_prompt = f"""MARKET CONTEXT ({datetime.now(UTC).strftime('%Y-%m-%d')}):
+- HackerNews trend: {hn_title or 'Not available'}
+- Reddit trend: {reddit_title or 'Not available'}
+- Trending topics: {', '.join(trending[:5]) or 'AI, digital business, automation'}
 
-REGLAS DE ORO:
-1. No omitas detalles: cada mision debe tener un 'target_topic' especifico y ambicioso.
-2. Monetizacion Directa: Prioriza al agente 'ecommerce' y 'cfo' para Shopify y High-Ticket.
-3. Calidad: Los productos deben ser de alta calidad, con listings optimizados y SEO.
+GOLDEN RULES:
+1. Don't omit details: each mission must have a specific, ambitious 'target_topic'.
+2. Direct monetization: prioritize the 'ecommerce' and 'cfo' agents for Shopify and High-Ticket.
+3. Quality: products must be high quality, with optimized listings and SEO.
 
-AGENTES DISPONIBLES:
-- ecommerce: gestiona Shopify, crea productos, listings optimizados, inventario, imagenes y videos.
-- cfo: gestiona pagos, Gumroad, y estrategia de ventas High-Ticket ($997+).
-- content: genera articulos SEO con links de afiliado.
-- pm: investiga nichos rentables y estrategias de automatizacion Zapier.
-- social: distribuye contenido en redes via Buffer.
-- investor: busca capital real, contacta VCs/Angels y crea pitch decks.
+AVAILABLE AGENTS:
+- ecommerce: manages Shopify, creates products, optimized listings, inventory, images, and videos.
+- cfo: manages payments, Gumroad, and High-Ticket sales strategy ($997+).
+- content: generates SEO articles with affiliate links.
+- pm: researches profitable niches and Zapier automation strategies.
+- social: distributes content on social media via Buffer.
+- investor: seeks real capital, contacts VCs/Angels, and creates pitch decks.
 
-Genera el plan de monetizacion detallado. JSON esperado:
+Generate the detailed monetization plan. Expected JSON:
 {{
-  "focus": "descripcion estrategica del foco de hoy",
-  "market_opportunity": "oportunidad detectada en tendencias",
+  "focus": "strategic description of today's focus",
+  "market_opportunity": "opportunity detected in trends",
   "estimated_revenue_usd": 0,
   "missions": [
     {{
       "agent": "ecommerce",
       "task": "full_ecommerce_pipeline",
       "priority": 1,
-      "target_topic": "producto/servicio especifico de alto valor",
+      "target_topic": "specific high-value product/service",
       "revenue_target_usd": 500,
-      "rationale": "explicacion detallada de por que este producto hoy"
+      "rationale": "detailed explanation of why this product today"
     }}
   ]
 }}"""
@@ -271,15 +272,15 @@ Genera el plan de monetizacion detallado. JSON esperado:
                 agent_name="orchestrator",
             )
             if plan and plan.get("missions"):
-                logger.info("[Orchestrator] Plan IA (HF): %s", plan.get("focus", ""))
+                logger.info("[Orchestrator] AI plan (HF): %s", plan.get("focus", ""))
                 return plan
         except Exception as exc:
-            logger.error("[Orchestrator] Error generando plan: %s", exc)
+            logger.error("[Orchestrator] Error generating plan: %s", exc)
 
         return {}
 
     def _enforce_monetization_priority(self, plan: dict) -> dict:
-        """Garantiza que content y cfo SIEMPRE esten en el plan."""
+        """Guarantees content and cfo are ALWAYS in the plan."""
         missions = plan.get("missions", [])
         existing_agents = {m.get("agent") for m in missions}
 
@@ -290,9 +291,9 @@ Genera el plan de monetizacion detallado. JSON esperado:
                     "agent": "ecommerce",
                     "task": "full_ecommerce_pipeline",
                     "priority": 1,
-                    "target_topic": "productos premium para nicho tech/IA",
+                    "target_topic": "premium products for the tech/AI niche",
                     "revenue_target_usd": 500,
-                    "rationale": "Shopify + Zapier = ingresos escalables",
+                    "rationale": "Shopify + Zapier = scalable revenue",
                 },
             )
 
@@ -303,9 +304,9 @@ Genera el plan de monetizacion detallado. JSON esperado:
                     "agent": "cfo",
                     "task": "high_ticket_sales_strategy",
                     "priority": 2,
-                    "target_topic": "servicios de consultoria IA high-ticket",
+                    "target_topic": "high-ticket AI consulting services",
                     "revenue_target_usd": 1000,
-                    "rationale": "Ventas high-ticket maximizan el ROI",
+                    "rationale": "High-ticket sales maximize ROI",
                 },
             )
 
@@ -314,40 +315,40 @@ Genera el plan de monetizacion detallado. JSON esperado:
         return plan
 
     def _fallback_monetization_plan(self) -> dict:
-        """Plan de emergencia cuando la IA no responde."""
+        """Emergency plan for when the AI doesn't respond."""
         return {
-            "focus": "monetizacion multicanal — e-commerce Shopify + contenido + high-ticket",
-            "market_opportunity": "e-commerce y servicios premium con IA en expansion",
+            "focus": "multi-channel monetization — Shopify e-commerce + content + high-ticket",
+            "market_opportunity": "expanding e-commerce and premium AI services",
             "missions": [
                 {
                     "agent": "ecommerce",
                     "task": "full_ecommerce_pipeline",
                     "priority": 1,
-                    "target_topic": "productos de alto valor con IA",
+                    "target_topic": "high-value AI products",
                     "revenue_target_usd": 500,
-                    "rationale": "Shopify + Zapier + High-Ticket = maximos ingresos",
+                    "rationale": "Shopify + Zapier + High-Ticket = maximum revenue",
                 },
                 {
                     "agent": "content",
                     "task": "full_pipeline",
                     "priority": 2,
-                    "target_topic": "herramientas de IA para e-commerce 2025",
+                    "target_topic": "AI tools for e-commerce 2025",
                     "revenue_target_usd": 50,
                 },
                 {
                     "agent": "cfo",
                     "task": "create_and_sell_ebook",
                     "priority": 3,
-                    "target_topic": "guia de automatizacion con IA y Shopify",
+                    "target_topic": "AI and Shopify automation guide",
                     "revenue_target_usd": 100,
                 },
             ],
         }
 
-    # ── EJECUCION DE MISIONES ────────────────────────────────────
+    # ── MISSION EXECUTION ────────────────────────────────────
 
     async def _execute_by_priority(self, missions: list[dict]) -> list[dict]:
-        """Ejecuta misiones en paralelo por grupos de prioridad."""
+        """Runs missions in parallel by priority groups."""
         if not missions:
             return []
 
@@ -360,7 +361,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
         for priority in sorted(groups.keys()):
             group = groups[priority]
             logger.info(
-                "[Orchestrator] Prioridad %d: %s",
+                "[Orchestrator] Priority %d: %s",
                 priority,
                 [m.get("agent") for m in group],
             )
@@ -381,7 +382,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
         return all_results
 
     async def _run_mission(self, mission: dict) -> dict:
-        """Ejecuta una mision individual."""
+        """Runs a single mission."""
         agent_name = mission.get("agent", "")
         task = mission.get("task", "")
         topic = mission.get("target_topic", "")
@@ -392,32 +393,32 @@ Genera el plan de monetizacion detallado. JSON esperado:
                 return {
                     "agent": agent_name,
                     "success": False,
-                    "error": f"Agente '{agent_name}' no encontrado",
+                    "error": f"Agent '{agent_name}' not found",
                 }
 
-            logger.info("[Orchestrator] Ejecutando: %s -> %s (%s)", agent_name, task, topic)
+            logger.info("[Orchestrator] Running: %s -> %s (%s)", agent_name, task, topic)
             result = await agent.run(mission)
 
-            # Notificación de Zapier deshabilitada temporalmente a petición del usuario
+            # Zapier notification temporarily disabled at the user's request
             # if result.get("success") and agent_name in ["cfo", "ecommerce"] and result.get("shop_url"):
             #     await self._notify_zapier_new_product(result)
 
             return result
         except Exception as exc:
-            logger.error("[Orchestrator] Error en mision %s: %s", agent_name, exc)
+            logger.error("[Orchestrator] Error in mission %s: %s", agent_name, exc)
             return {"agent": agent_name, "success": False, "error": str(exc)}
 
     async def _get_agent(self, name: str) -> BaseAgent | None:
-        """Obtiene o carga un agente por nombre."""
+        """Gets or loads an agent by name."""
         if name in self._agents:
             return self._agents[name]
 
-        # Auto-discovery si no esta cargado
+        # Auto-discovery if not loaded
         self._auto_discover_agents()
         return self._agents.get(name)
 
     def _auto_discover_agents(self) -> None:
-        """Carga dinamicamente todos los agentes disponibles."""
+        """Dynamically loads all available agents."""
         try:
             from apps.core.agents.business.investor_agent import InvestorAgent
             from apps.core.agents.cfo_agent import CFOAgent
@@ -431,27 +432,27 @@ Genera el plan de monetizacion detallado. JSON esperado:
             self._agents["ecommerce"] = EcommerceAgent()
             self._agents["investor"] = InvestorAgent()
 
-            # Agentes opcionales o en desarrollo
+            # Optional or in-development agents
             try:
                 from apps.core.agents.affiliate_agent import AffiliateAgent
 
                 self._agents["affiliate"] = AffiliateAgent()
             except ImportError:
-                logger.debug("[Orchestrator] AffiliateAgent no disponible")
+                logger.debug("[Orchestrator] AffiliateAgent not available")
 
             try:
                 from apps.core.agents.social_agent import SocialAgent
 
                 self._agents["social"] = SocialAgent()
             except ImportError:
-                logger.debug("[Orchestrator] SocialAgent no disponible")
+                logger.debug("[Orchestrator] SocialAgent not available")
 
-            logger.info("[Orchestrator] %d agentes cargados correctamente", len(self._agents))
+            logger.info("[Orchestrator] %d agents loaded successfully", len(self._agents))
         except Exception as exc:
-            logger.error("[Orchestrator] Error en auto-discovery: %s", exc)
+            logger.error("[Orchestrator] Error in auto-discovery: %s", exc)
 
     def _extract_revenue_summary(self, results: list[dict]) -> dict:
-        """Calcula resumen de ingresos y exitos del ciclo."""
+        """Calculates a summary of the cycle's revenue and successes."""
         summary = {
             "total_revenue_usd": 0.0,
             "items_published": 0,
@@ -472,7 +473,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
         return summary
 
     async def get_status(self) -> dict[str, Any]:
-        """Retorna el estado actual del Orchestrator para el bot de Telegram."""
+        """Returns the Orchestrator's current status for the Telegram bot."""
         if not self._agents:
             self._auto_discover_agents()
 
@@ -487,7 +488,7 @@ Genera el plan de monetizacion detallado. JSON esperado:
     async def _send_cycle_report(
         self, results: list, intelligence: dict, revenue: dict, duration: float
     ) -> None:
-        """Envia reporte del ciclo a Telegram con screenshots si existen."""
+        """Sends the cycle report to Telegram with screenshots if any exist."""
         import html as _html
 
         from apps.core.tools.telegram_bot import get_bot
@@ -498,21 +499,21 @@ Genera el plan de monetizacion detallado. JSON esperado:
         ok = revenue["missions_failed"] == 0
         icon = "✅" if ok else "⚠️"
         total_rev = revenue["total_revenue_usd"]
-        foco = _html.escape(intelligence.get("top_opportunity", "Monetización"))
+        foco = _html.escape(intelligence.get("top_opportunity", "Monetization"))
         misiones = f"{revenue['missions_successful']}/{len(results)}"
 
         kw = 11
         data_rows = [
-            f"{'Duración':<{kw}} {duration:.1f}s",
-            f"{'Ingresos':<{kw}} ${total_rev:.2f}",
-            f"{'Foco':<{kw}} {foco}",
-            f"{'Misiones':<{kw}} {misiones}",
+            f"{'Duration':<{kw}} {duration:.1f}s",
+            f"{'Revenue':<{kw}} ${total_rev:.2f}",
+            f"{'Focus':<{kw}} {foco}",
+            f"{'Missions':<{kw}} {misiones}",
         ]
         if revenue.get("products_listed", 0) > 0:
-            data_rows.append(f"{'Productos':<{kw}} {revenue['products_listed']}")
+            data_rows.append(f"{'Products':<{kw}} {revenue['products_listed']}")
 
         sections = [
-            f"{icon} <b>CICLO #{self._cycle_count}  ·  COMPLETADO</b>",
+            f"{icon} <b>CYCLE #{self._cycle_count}  ·  COMPLETE</b>",
             "<pre>" + "\n".join(data_rows) + "</pre>",
         ]
 
@@ -525,14 +526,14 @@ Genera el plan de monetizacion detallado. JSON esperado:
 
         await bot.notify_owner("\n".join(sections), already_html=True)
 
-        # Enviar screenshots si hay alguno en los resultados
+        # Send screenshots if any are present in the results
         if chat_id:
             for r in results:
                 if r.get("product_screenshot"):
                     await bot._send_photo(
                         chat_id,
                         r["product_screenshot"],
-                        caption=f"📸 Producto · {r.get('agent', 'ecommerce')}",
+                        caption=f"📸 Product · {r.get('agent', 'ecommerce')}",
                     )
                 market_research = r.get("market_research", {})
                 if isinstance(market_research, dict) and market_research.get("screenshots"):
@@ -540,14 +541,14 @@ Genera el plan de monetizacion detallado. JSON esperado:
                         await bot._send_photo(
                             chat_id,
                             ss_path,
-                            caption=f"🔍 Análisis · {r.get('agent', 'ecommerce')}",
+                            caption=f"🔍 Analysis · {r.get('agent', 'ecommerce')}",
                         )
 
     async def start(self) -> None:
-        """Inicializacion del orquestador."""
+        """Orchestrator initialization."""
         self._auto_discover_agents()
-        logger.info("[Orchestrator] Sistema listo.")
+        logger.info("[Orchestrator] System ready.")
 
     async def stop(self) -> None:
-        """Limpieza del orquestador."""
-        logger.info("[Orchestrator] Apagando...")
+        """Orchestrator cleanup."""
+        logger.info("[Orchestrator] Shutting down...")

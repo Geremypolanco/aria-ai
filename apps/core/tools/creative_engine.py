@@ -1,6 +1,6 @@
 """
-creative_engine.py — Motor de creación multimedia y software de ARIA AI.
-Generación de música, video, manga, libros, software y videojuegos.
+creative_engine.py — ARIA AI's multimedia and software creation engine.
+Generates music, video, manga, books, software, and video games.
 """
 
 from __future__ import annotations
@@ -17,20 +17,20 @@ logger = logging.getLogger("aria.creative_engine")
 
 
 class CreativeEngine:
-    """Motor para crear cualquier cosa monetizable: música, libros, apps, etc."""
+    """Engine for creating anything monetizable: music, books, apps, etc."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=120.0)
         self._hf_headers = {"Authorization": f"Bearer {settings.hf_key or ''}"}
 
-    # ── MÚSICA Y AUDIO ────────────────────────────────────
+    # ── MUSIC AND AUDIO ────────────────────────────────────
 
     async def generate_music(self, prompt: str, duration: int = 30) -> dict[str, Any]:
-        """Genera música usando MusicGen o modelos similares en HF."""
+        """Generates music using MusicGen or similar models on HF."""
         if not settings.hf_key:
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
-            # Usando facebook/musicgen-small como base
+            # Using facebook/musicgen-small as the base model
             res = await self._http.post(
                 "https://api-inference.huggingface.co/models/facebook/musicgen-small",
                 headers=self._hf_headers,
@@ -43,25 +43,25 @@ class CreativeEngine:
                     "audio_base64": audio_b64,
                     "content_type": "audio/wav",
                     "format": "music",
-                    "description": f"Música generada: {prompt}",
+                    "description": f"Generated music: {prompt}",
                 }
             return {"success": False, "error": f"HF MusicGen Error {res.status_code}"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    # ── VIDEO Y ANIMACIÓN ─────────────────────────────────
+    # ── VIDEO AND ANIMATION ────────────────────────────────
 
     async def generate_video(self, prompt: str) -> dict[str, Any]:
-        """Genera clips de video (Text-to-Video).
+        """Generates video clips (Text-to-Video).
 
-        Hugging Face retiró los modelos text-to-video de la Inference API
-        serverless — el antiguo endpoint ``damo-vilab/text-to-video-ms-1.7b``
-        ahora devuelve 404/503 y por eso ARIA "no generaba videos". El proveedor
-        real es el Space de Wan2.2 (ZeroGPU). Su cola puede tardar, así que esto
-        es apto para misiones asíncronas, no tiempo real.
+        Hugging Face retired the text-to-video models from the serverless
+        Inference API — the old ``damo-vilab/text-to-video-ms-1.7b`` endpoint
+        now returns 404/503, which is why ARIA "wasn't generating videos". The
+        real provider is the Wan2.2 Space (ZeroGPU). Its queue can take a
+        while, so this is suited to async missions, not real time.
         """
         if not settings.hf_key:
-            return {"success": False, "error": "HF_TOKEN no configurado"}
+            return {"success": False, "error": "HF_TOKEN not configured"}
         try:
             from apps.core.tools.huggingface_suite import HuggingFaceSuite
 
@@ -74,41 +74,41 @@ class CreativeEngine:
                         if resp.status_code == 200:
                             raw = resp.content
                     except Exception as exc:  # noqa: BLE001
-                        logger.warning("[creative] no pude descargar el video: %s", exc)
+                        logger.warning("[creative] could not download the video: %s", exc)
                 if raw:
                     return {
                         "success": True,
                         "video_bytes": raw,
                         "video_base64": base64.b64encode(raw).decode(),
                         "content_type": "video/mp4",
-                        "description": f"Video generado: {prompt}",
+                        "description": f"Generated video: {prompt}",
                     }
                 if r.get("video_url"):
                     return {
                         "success": True,
                         "video_url": r["video_url"],
-                        "description": f"Video generado: {prompt}",
+                        "description": f"Generated video: {prompt}",
                     }
-            return {"success": False, "error": r.get("error", "Proveedor de video no disponible")}
+            return {"success": False, "error": r.get("error", "Video provider unavailable")}
         except Exception as exc:  # noqa: BLE001
             logger.error("[creative] generate_video failed: %s", exc)
             return {"success": False, "error": str(exc)}
 
-    # ── MANGA, ANIME Y LIBROS ──────────────────────────────
+    # ── MANGA, ANIME, AND BOOKS ─────────────────────────────
 
     async def create_manga_page(self, story_panel: str) -> dict[str, Any]:
-        """Crea una página de manga/cómic usando modelos especializados."""
+        """Creates a manga/comic page using specialized models."""
         prompt = f"manga style, black and white, high detail, {story_panel}"
         from apps.core.tools.content_tools import ContentTools
 
         ct = ContentTools()
-        # Usamos FLUX o SDXL con estilo manga
+        # Using FLUX or SDXL with manga style
         return await ct.generate_and_upload_image(prompt, public_id=f"manga_{hash(story_panel)}")
 
     async def create_book_structure(self, topic: str, target_audience: str) -> dict[str, Any]:
-        """Genera la estructura completa y contenido de un libro para venta."""
-        # Esto usa la lógica de pensamiento de ARIA para estructurar un eBook
-        # Se integraría con una herramienta de conversión a PDF/ePub
+        """Generates the complete structure and content of a book for sale."""
+        # This uses ARIA's thinking logic to structure an eBook
+        # Would integrate with a PDF/ePub conversion tool
         return {
             "success": True,
             "title": f"The Future of {topic}",
@@ -121,13 +121,13 @@ class CreativeEngine:
             "monetization_ready": True,
         }
 
-    # ── SOFTWARE, APPS Y JUEGOS ───────────────────────────
+    # ── SOFTWARE, APPS, AND GAMES ───────────────────────────
 
     async def generate_software_module(
         self, requirements: str, language: str = "python"
     ) -> dict[str, Any]:
-        """Genera código funcional para una aplicación o módulo de software."""
-        # Usa Qwen2.5-Coder via AIClient
+        """Generates functional code for an application or software module."""
+        # Uses Qwen2.5-Coder via AIClient
         from apps.core.tools.ai_client import AIModel, get_ai_client
 
         ai = get_ai_client()
@@ -146,19 +146,19 @@ class CreativeEngine:
         return {"success": False, "error": "Code generation failed"}
 
     async def create_landing_page(self, product_name: str, features: list[str]) -> dict[str, Any]:
-        """Genera el HTML/CSS de una landing page de alta conversión."""
+        """Generates the HTML/CSS for a high-conversion landing page."""
         requirements = f"Landing page for {product_name} with features: {', '.join(features)}. Modern UI, Tailwind CSS."
         return await self.generate_software_module(requirements, language="html")
 
-    # ── VISUALIZACIÓN Y SCREENSHOTS ───────────────────────
+    # ── VISUALIZATION AND SCREENSHOTS ───────────────────────
 
     async def create_image(self, prompt: str, sector: str = "general") -> dict[str, Any]:
-        """Genera una imagen real usando Hugging Face y notifica a Zapier."""
-        logger.info("[CreativeEngine] Generando imagen para sector %s: %s", sector, prompt)
+        """Generates a real image using Hugging Face and notifies Zapier."""
+        logger.info("[CreativeEngine] Generating image for sector %s: %s", sector, prompt)
         try:
             import urllib.parse
 
-            # Generación real vía Pollinations (proxy rápido y gratuito para HF/SD)
+            # Real generation via Pollinations (fast, free proxy for HF/SD)
             prompt_enc = urllib.parse.quote(prompt)
             image_url = f"https://image.pollinations.ai/prompt/{prompt_enc}?width=1024&height=1024&nologo=true"
 
@@ -170,7 +170,7 @@ class CreativeEngine:
                 "prompt": prompt,
             }
 
-            # Notificar a Zapier inmediatamente de la nueva creación
+            # Notify Zapier immediately of the new creation
             try:
                 from apps.core.tools.zapier_connector import ZapierConnector
 
@@ -180,19 +180,19 @@ class CreativeEngine:
                     {"type": "image", "image_url": image_url, "prompt": prompt, "sector": sector},
                 )
             except Exception as e:
-                logger.warning("[CreativeEngine] No se pudo notificar a Zapier: %s", e)
+                logger.warning("[CreativeEngine] Could not notify Zapier: %s", e)
 
             return result
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def take_screenshot(self, url: str) -> dict[str, Any]:
-        """Simula o utiliza un servicio de screenshot real para mostrar resultados."""
-        # En un entorno real usaría Playwright o una API de screenshots
+        """Simulates or uses a real screenshot service to display results."""
+        # In a real environment this would use Playwright or a screenshot API
         if not settings.SCREENSHOT_API_KEY:
-            return {"success": False, "error": "SCREENSHOT_API_KEY no configurado"}
+            return {"success": False, "error": "SCREENSHOT_API_KEY not configured"}
 
-        # Ejemplo con servicio externo
+        # Example with an external service
         import urllib.parse
 
         api_url = (

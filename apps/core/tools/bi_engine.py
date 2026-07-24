@@ -1,17 +1,17 @@
 """
-bi_engine.py — Business Intelligence para ARIA AI.
+bi_engine.py — Business Intelligence for ARIA AI.
 
-Integra Metabase y Apache Superset para:
-  - Dashboards ejecutivos de ingresos y KPIs (Metabase)
-  - Análisis avanzado de datos de negocio (Apache Superset)
-  - Reportes automáticos de performance de agentes
-  - Visualización de funnels y revenue attribution
-  - Executive Dashboard para el futuro de Aria
+Integrates Metabase and Apache Superset for:
+  - Executive revenue and KPI dashboards (Metabase)
+  - Advanced business data analysis (Apache Superset)
+  - Automatic agent performance reports
+  - Funnel visualization and revenue attribution
+  - Executive Dashboard for Aria's future
 
-Ambos se despliegan vía Docker y se integran con la base de datos
-Supabase/PostgreSQL existente de Aria.
+Both are deployed via Docker and integrate with Aria's existing
+Supabase/PostgreSQL database.
 
-Referencia:
+Reference:
   - Metabase: https://github.com/metabase/metabase
   - Apache Superset: https://github.com/apache/superset
 """
@@ -30,7 +30,7 @@ try:
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
-    logger.warning("[BI Engine] httpx no disponible")
+    logger.warning("[BI Engine] httpx not available")
 
 
 # ── Metabase Client ──────────────────────────────────────────────────────────
@@ -38,31 +38,31 @@ except ImportError:
 
 class AriaMetabaseClient:
     """
-    Cliente de Metabase para ARIA AI.
+    Metabase client for ARIA AI.
 
-    Metabase es el dashboard open source más accesible.
-    Permite a ARIA crear y gestionar dashboards ejecutivos
-    sin necesidad de SQL avanzado.
+    Metabase is the most accessible open-source dashboard tool.
+    Lets ARIA create and manage executive dashboards
+    without needing advanced SQL.
 
-    Capacidades:
-    - Crear preguntas (queries) automáticamente
-    - Gestionar dashboards de KPIs
-    - Generar reportes automáticos
-    - Enviar alertas cuando métricas caen
+    Capabilities:
+    - Automatically create questions (queries)
+    - Manage KPI dashboards
+    - Generate automatic reports
+    - Send alerts when metrics drop
 
-    Integra con:
-    - CFO Agent (reportes financieros)
-    - ExecutionPipeline (métricas de ejecución)
-    - PostHog (funnels de conversión)
+    Integrates with:
+    - CFO Agent (financial reports)
+    - ExecutionPipeline (execution metrics)
+    - PostHog (conversion funnels)
 
-    Uso:
+    Usage:
         client = AriaMetabaseClient()
         await client.initialize()
 
-        # Crear dashboard de revenue
+        # Create revenue dashboard
         dashboard = await client.create_revenue_dashboard()
 
-        # Ejecutar query
+        # Run query
         results = await client.run_query(
             "SELECT SUM(amount) FROM sales WHERE date > NOW() - INTERVAL '30 days'"
         )
@@ -83,15 +83,15 @@ class AriaMetabaseClient:
 
     async def initialize(self) -> bool:
         """
-        Inicializa la sesión con Metabase.
-        Returns True si la conexión fue exitosa.
+        Initializes the session with Metabase.
+        Returns True if the connection succeeded.
         """
         if not HTTPX_AVAILABLE:
-            logger.warning("[Metabase] httpx no disponible")
+            logger.warning("[Metabase] httpx not available")
             return False
 
         if not self._password:
-            logger.info("[Metabase] Password no configurado. Metabase disponible vía Docker.")
+            logger.info("[Metabase] Password not configured. Metabase available via Docker.")
             return False
 
         try:
@@ -106,17 +106,17 @@ class AriaMetabaseClient:
                 if response.status_code == 200:
                     self._session_token = response.json().get("id", "")
                     self._initialized = True
-                    logger.info("[Metabase] Sesión iniciada correctamente")
+                    logger.info("[Metabase] Session started successfully")
                     return True
-                logger.warning("[Metabase] Error de autenticación: %d", response.status_code)
+                logger.warning("[Metabase] Authentication error: %d", response.status_code)
                 return False
 
         except Exception as exc:
-            logger.warning("[Metabase] No se pudo conectar a %s: %s", self._host, exc)
+            logger.warning("[Metabase] Could not connect to %s: %s", self._host, exc)
             return False
 
     def _get_headers(self) -> dict[str, str]:
-        """Headers de autenticación para Metabase API."""
+        """Authentication headers for the Metabase API."""
         return {
             "X-Metabase-Session": self._session_token,
             "Content-Type": "application/json",
@@ -128,14 +128,14 @@ class AriaMetabaseClient:
         database_id: int | None = None,
     ) -> dict[str, Any]:
         """
-        Ejecuta una query SQL en Metabase.
+        Runs a SQL query in Metabase.
 
         Args:
-            sql: Query SQL a ejecutar
-            database_id: ID de la base de datos (default: 1)
+            sql: SQL query to run
+            database_id: Database ID (default: 1)
 
         Returns:
-            Resultados de la query
+            Query results
         """
         if not self._initialized:
             await self.initialize()
@@ -143,9 +143,9 @@ class AriaMetabaseClient:
         if not self._initialized:
             return {
                 "success": False,
-                "error": "Metabase no disponible",
+                "error": "Metabase not available",
                 "sql": sql,
-                "note": "Despliega Metabase con: docker-compose up metabase",
+                "note": "Deploy Metabase with: docker-compose up metabase",
             }
 
         try:
@@ -183,19 +183,19 @@ class AriaMetabaseClient:
         description: str = "",
     ) -> dict[str, Any]:
         """
-        Crea un nuevo dashboard en Metabase.
+        Creates a new dashboard in Metabase.
 
         Args:
-            name: Nombre del dashboard
-            description: Descripción
+            name: Dashboard name
+            description: Description
 
         Returns:
-            Dict con el ID y URL del dashboard creado
+            Dict with the ID and URL of the created dashboard
         """
         if not self._initialized:
             return {
                 "success": False,
-                "error": "Metabase no disponible",
+                "error": "Metabase not available",
                 "name": name,
             }
 
@@ -226,22 +226,22 @@ class AriaMetabaseClient:
 
     async def create_revenue_dashboard(self) -> dict[str, Any]:
         """
-        Crea el dashboard ejecutivo de Revenue para ARIA.
+        Creates ARIA's executive Revenue dashboard.
 
-        Incluye:
-        - Ingresos totales del mes
-        - Ventas por canal
-        - Top productos
-        - Funnel de conversión
-        - ROI por agente
+        Includes:
+        - Total revenue for the month
+        - Sales by channel
+        - Top products
+        - Conversion funnel
+        - ROI by agent
         """
         result = await self.create_dashboard(
             name="ARIA Revenue Dashboard",
-            description="Dashboard ejecutivo de ingresos y KPIs de ARIA AI",
+            description="Executive revenue and KPI dashboard for ARIA AI",
         )
 
         if result.get("success"):
-            logger.info("[Metabase] Revenue Dashboard creado: %s", result.get("url"))
+            logger.info("[Metabase] Revenue Dashboard created: %s", result.get("url"))
 
         return result
 
@@ -250,13 +250,13 @@ class AriaMetabaseClient:
         days: int = 30,
     ) -> dict[str, Any]:
         """
-        Obtiene el resumen de ingresos de los últimos N días.
+        Gets the revenue summary for the last N days.
 
         Args:
-            days: Número de días a analizar
+            days: Number of days to analyze
 
         Returns:
-            Resumen de ingresos con métricas clave
+            Revenue summary with key metrics
         """
         sql = f"""
         SELECT
@@ -272,12 +272,12 @@ class AriaMetabaseClient:
         return await self.run_query(sql)
 
     def get_status(self) -> dict[str, Any]:
-        """Estado del cliente Metabase."""
+        """Status of the Metabase client."""
         return {
             "host": self._host,
             "initialized": self._initialized,
             "password_configured": bool(self._password),
-            "note": "Despliega con: docker-compose up metabase -d",
+            "note": "Deploy with: docker-compose up metabase -d",
         }
 
 
@@ -286,26 +286,26 @@ class AriaMetabaseClient:
 
 class AriaSupersetClient:
     """
-    Cliente de Apache Superset para ARIA AI.
+    Apache Superset client for ARIA AI.
 
-    Superset es más avanzado que Metabase para análisis complejos.
-    Ideal para el Executive Dashboard futuro de ARIA con:
-    - Análisis multidimensional de ingresos
-    - Dashboards interactivos con drill-down
-    - Alertas y reportes programados
-    - Integración con múltiples fuentes de datos
+    Superset is more advanced than Metabase for complex analysis.
+    Ideal for ARIA's future Executive Dashboard with:
+    - Multidimensional revenue analysis
+    - Interactive dashboards with drill-down
+    - Scheduled alerts and reports
+    - Integration with multiple data sources
 
-    Integra con:
-    - CFO Agent (análisis financiero avanzado)
-    - Graphiti (visualización del grafo de conocimiento)
-    - PostHog (funnels avanzados)
-    - Prometheus (métricas de sistema)
+    Integrates with:
+    - CFO Agent (advanced financial analysis)
+    - Graphiti (knowledge graph visualization)
+    - PostHog (advanced funnels)
+    - Prometheus (system metrics)
 
-    Uso:
+    Usage:
         client = AriaSupersetClient()
         await client.initialize()
 
-        # Ejecutar query
+        # Run query
         results = await client.run_sql_query(
             database_id=1,
             sql="SELECT * FROM revenue_attribution LIMIT 100"
@@ -326,12 +326,12 @@ class AriaSupersetClient:
         self._initialized = False
 
     async def initialize(self) -> bool:
-        """Inicializa la sesión con Apache Superset."""
+        """Initializes the session with Apache Superset."""
         if not HTTPX_AVAILABLE:
             return False
 
         if not self._password or self._password == "admin":
-            logger.info("[Superset] Usando credenciales default. Disponible vía Docker.")
+            logger.info("[Superset] Using default credentials. Available via Docker.")
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -350,17 +350,17 @@ class AriaSupersetClient:
                     tokens = response.json()
                     self._access_token = tokens.get("access_token", "")
                     self._initialized = True
-                    logger.info("[Superset] Sesión iniciada correctamente")
+                    logger.info("[Superset] Session started successfully")
                     return True
-                logger.warning("[Superset] Error de autenticación: %d", response.status_code)
+                logger.warning("[Superset] Authentication error: %d", response.status_code)
                 return False
 
         except Exception as exc:
-            logger.warning("[Superset] No se pudo conectar a %s: %s", self._host, exc)
+            logger.warning("[Superset] Could not connect to %s: %s", self._host, exc)
             return False
 
     def _get_headers(self) -> dict[str, str]:
-        """Headers de autenticación para Superset API."""
+        """Authentication headers for the Superset API."""
         return {
             "Authorization": f"Bearer {self._access_token}",
             "Content-Type": "application/json",
@@ -373,15 +373,15 @@ class AriaSupersetClient:
         schema: str = "public",
     ) -> dict[str, Any]:
         """
-        Ejecuta una query SQL en Superset.
+        Runs a SQL query in Superset.
 
         Args:
-            sql: Query SQL
-            database_id: ID de la base de datos
-            schema: Schema de la base de datos
+            sql: SQL query
+            database_id: Database ID
+            schema: Database schema
 
         Returns:
-            Resultados de la query
+            Query results
         """
         if not self._initialized:
             await self.initialize()
@@ -389,9 +389,9 @@ class AriaSupersetClient:
         if not self._initialized:
             return {
                 "success": False,
-                "error": "Superset no disponible",
+                "error": "Superset not available",
                 "sql": sql,
-                "note": "Despliega Superset con: docker-compose up superset",
+                "note": "Deploy Superset with: docker-compose up superset",
             }
 
         try:
@@ -431,19 +431,19 @@ class AriaSupersetClient:
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Crea un chart en Superset.
+        Creates a chart in Superset.
 
         Args:
-            name: Nombre del chart
-            chart_type: Tipo de visualización ('line', 'bar', 'pie', 'table', etc.)
-            datasource_id: ID del datasource
-            params: Parámetros de configuración del chart
+            name: Chart name
+            chart_type: Visualization type ('line', 'bar', 'pie', 'table', etc.)
+            datasource_id: Datasource ID
+            params: Chart configuration parameters
 
         Returns:
-            Dict con el ID y URL del chart
+            Dict with the chart's ID and URL
         """
         if not self._initialized:
-            return {"success": False, "error": "Superset no disponible"}
+            return {"success": False, "error": "Superset not available"}
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -478,19 +478,19 @@ class AriaSupersetClient:
 
     async def create_executive_dashboard(self) -> dict[str, Any]:
         """
-        Crea el Executive Dashboard de ARIA en Superset.
+        Creates ARIA's Executive Dashboard in Superset.
 
-        Incluye charts de:
-        - Revenue por canal y producto
-        - Funnel de conversión completo
-        - Performance de agentes
-        - Análisis de competidores
-        - ROI de experimentos A/B
+        Includes charts for:
+        - Revenue by channel and product
+        - Complete conversion funnel
+        - Agent performance
+        - Competitor analysis
+        - A/B experiment ROI
         """
         if not self._initialized:
             return {
                 "success": False,
-                "note": "Superset no disponible. Despliega con: docker-compose up superset -d",
+                "note": "Superset not available. Deploy with: docker-compose up superset -d",
             }
 
         try:
@@ -523,29 +523,29 @@ class AriaSupersetClient:
             return {"success": False, "error": str(exc)}
 
     def get_status(self) -> dict[str, Any]:
-        """Estado del cliente Superset."""
+        """Status of the Superset client."""
         return {
             "host": self._host,
             "initialized": self._initialized,
-            "note": "Despliega con: docker-compose up superset -d",
+            "note": "Deploy with: docker-compose up superset -d",
         }
 
 
-# ── Motor Unificado de Business Intelligence ─────────────────────────────────
+# ── Unified Business Intelligence Engine ─────────────────────────────────────
 
 
 class AriaBIEngine:
     """
-    Motor unificado de Business Intelligence para ARIA AI.
+    Unified Business Intelligence engine for ARIA AI.
 
-    Combina Metabase (dashboards accesibles) y Apache Superset
-    (análisis avanzado) para proporcionar inteligencia de negocio completa.
+    Combines Metabase (accessible dashboards) and Apache Superset
+    (advanced analysis) to provide complete business intelligence.
 
-    Integra con:
-    - CFO Agent (reportes financieros)
-    - ExecutionPipeline (métricas de ejecución)
-    - PostHog (funnels de conversión)
-    - Prometheus (métricas de sistema)
+    Integrates with:
+    - CFO Agent (financial reports)
+    - ExecutionPipeline (execution metrics)
+    - PostHog (conversion funnels)
+    - Prometheus (system metrics)
     - Graphiti (revenue attribution)
     """
 
@@ -566,7 +566,7 @@ class AriaBIEngine:
         )
 
     async def initialize_all(self) -> dict[str, bool]:
-        """Inicializa todos los clientes de BI."""
+        """Initializes all BI clients."""
         metabase_ok = await self.metabase.initialize()
         superset_ok = await self.superset.initialize()
 
@@ -577,18 +577,18 @@ class AriaBIEngine:
 
     async def setup_aria_dashboards(self) -> dict[str, Any]:
         """
-        Configura todos los dashboards de ARIA.
+        Sets up all of ARIA's dashboards.
 
-        Crea:
-        - Revenue Dashboard en Metabase
-        - Executive Dashboard en Superset
+        Creates:
+        - Revenue Dashboard in Metabase
+        - Executive Dashboard in Superset
         """
         results = {}
 
-        # Revenue Dashboard en Metabase
+        # Revenue Dashboard in Metabase
         results["metabase_revenue"] = await self.metabase.create_revenue_dashboard()
 
-        # Executive Dashboard en Superset
+        # Executive Dashboard in Superset
         results["superset_executive"] = await self.superset.create_executive_dashboard()
 
         return {
@@ -601,18 +601,18 @@ class AriaBIEngine:
         days: int = 30,
     ) -> dict[str, Any]:
         """
-        Genera un reporte de ingresos usando Metabase.
+        Generates a revenue report using Metabase.
 
         Args:
-            days: Número de días a analizar
+            days: Number of days to analyze
 
         Returns:
-            Reporte de ingresos con métricas clave
+            Revenue report with key metrics
         """
         return await self.metabase.get_revenue_summary(days=days)
 
     def get_status(self) -> dict[str, Any]:
-        """Estado completo del motor de BI."""
+        """Full status of the BI engine."""
         return {
             "metabase": self.metabase.get_status(),
             "superset": self.superset.get_status(),
@@ -628,7 +628,7 @@ _bi_engine_instance: AriaBIEngine | None = None
 
 
 def get_bi_engine() -> AriaBIEngine:
-    """Retorna el singleton del motor de Business Intelligence."""
+    """Returns the Business Intelligence engine singleton."""
     global _bi_engine_instance
     if _bi_engine_instance is None:
         import os

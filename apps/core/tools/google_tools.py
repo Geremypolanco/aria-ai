@@ -1,5 +1,5 @@
 """
-google_tools.py — Integración con Google APIs: YouTube, Search Console, Trends.
+google_tools.py — Integration with Google APIs: YouTube, Search Console, Trends.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ logger = logging.getLogger("aria.google_tools")
 
 
 class GoogleTools:
-    """Integración con Google APIs: YouTube Data API y Search Console."""
+    """Integration with Google APIs: YouTube Data API and Search Console."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=20.0)
@@ -25,9 +25,9 @@ class GoogleTools:
         return bool(self._api_key)
 
     async def youtube_search_trending(self, query: str, max_results: int = 10) -> dict[str, Any]:
-        """Busca videos trending en YouTube sobre un tema."""
+        """Searches for trending videos on YouTube about a topic."""
         if not self._configured():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.get(
                 "https://www.googleapis.com/youtube/v3/search",
@@ -63,9 +63,9 @@ class GoogleTools:
             return {"success": False, "error": str(exc)}
 
     async def youtube_get_video_stats(self, video_id: str) -> dict[str, Any]:
-        """Obtiene estadísticas de un video de YouTube."""
+        """Gets statistics for a YouTube video."""
         if not self._configured():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.get(
                 "https://www.googleapis.com/youtube/v3/videos",
@@ -74,7 +74,7 @@ class GoogleTools:
             if res.status_code == 200:
                 items = res.json().get("items", [])
                 if not items:
-                    return {"success": False, "error": "Video no encontrado"}
+                    return {"success": False, "error": "Video not found"}
                 item = items[0]
                 stats = item.get("statistics", {})
                 return {
@@ -91,8 +91,8 @@ class GoogleTools:
 
     async def get_trending_searches(self, geo: str = "US", language: str = "en") -> dict[str, Any]:
         """
-        Obtiene temas trending via Google Trends RSS.
-        No requiere API key — usa el feed público.
+        Gets trending topics via the Google Trends RSS feed.
+        Does not require an API key — uses the public feed.
         """
         try:
             res = await self._http.get(
@@ -117,8 +117,8 @@ class GoogleTools:
 
     async def analyze_keyword_opportunity(self, keyword: str) -> dict[str, Any]:
         """
-        Analiza oportunidad de un keyword usando YouTube como proxy de demanda.
-        Más videos de baja calidad = mayor oportunidad.
+        Analyzes the opportunity for a keyword using YouTube as a demand proxy.
+        More low-quality videos = greater opportunity.
         """
         search_res = await self.youtube_search_trending(keyword, max_results=20)
         if not search_res.get("success"):
@@ -136,8 +136,8 @@ class GoogleTools:
             "opportunity_score": opportunity_score,
             "top_channels": channels[:5],
             "recommendation": (
-                "Alto potencial"
+                "High potential"
                 if opportunity_score >= 7
-                else "Competencia moderada" if opportunity_score >= 4 else "Mercado saturado"
+                else "Moderate competition" if opportunity_score >= 4 else "Saturated market"
             ),
         }

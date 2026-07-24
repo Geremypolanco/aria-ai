@@ -1,11 +1,11 @@
 """
-game_builder.py — Generación de videojuegos completos para ARIA AI.
-Genera código, assets prompts, y estructura de proyecto empaquetados en ZIP.
+game_builder.py — Full video game generation for ARIA AI.
+Generates code, asset prompts, and project structure packaged as a ZIP.
 
-Engines soportados:
-  - pygame   (Python — juegos 2D clásicos)
-  - phaser   (JavaScript/HTML5 — juegos web, self-contained)
-  - godot    (GDScript — motor open source profesional)
+Supported engines:
+  - pygame   (Python — classic 2D games)
+  - phaser   (JavaScript/HTML5 — self-contained web games)
+  - godot    (GDScript — professional open-source engine)
 """
 
 from __future__ import annotations

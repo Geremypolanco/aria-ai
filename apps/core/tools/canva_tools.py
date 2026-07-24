@@ -1,6 +1,6 @@
 """
-canva_tools.py — Creación de diseños via Canva Connect API.
-Genera imágenes, infografías y materiales de marketing automáticamente.
+canva_tools.py — Design creation via the Canva Connect API.
+Automatically generates images, infographics, and marketing materials.
 """
 
 from __future__ import annotations
@@ -17,14 +17,14 @@ CANVA_API = "https://api.canva.com/rest/v1"
 
 
 class CanvaTools:
-    """Diseño automatizado via Canva Connect API."""
+    """Automated design via the Canva Connect API."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
         self._access_token: str | None = None
 
     async def _get_token(self) -> str | None:
-        """Obtiene access token via OAuth2 client credentials."""
+        """Gets an access token via OAuth2 client credentials."""
         if self._access_token:
             return self._access_token
         if not settings.CANVA_CLIENT_ID or not settings.CANVA_CLIENT_SECRET:
@@ -54,10 +54,10 @@ class CanvaTools:
         return None
 
     async def list_designs(self, limit: int = 10) -> dict[str, Any]:
-        """Lista los diseños existentes en Canva."""
+        """Lists existing designs in Canva."""
         token = await self._get_token()
         if not token:
-            return {"success": False, "error": "Canva no configurado (CLIENT_ID/SECRET)"}
+            return {"success": False, "error": "Canva not configured (CLIENT_ID/SECRET)"}
         try:
             res = await self._http.get(
                 f"{CANVA_API}/designs",
@@ -84,10 +84,10 @@ class CanvaTools:
         design_type: str = "SOCIAL_MEDIA_POST",
         title: str = "ARIA AI Post",
     ) -> dict[str, Any]:
-        """Crea un nuevo diseño en Canva."""
+        """Creates a new design in Canva."""
         token = await self._get_token()
         if not token:
-            return {"success": False, "error": "Canva no configurado"}
+            return {"success": False, "error": "Canva not configured"}
         try:
             res = await self._http.post(
                 f"{CANVA_API}/designs",
@@ -108,10 +108,10 @@ class CanvaTools:
             return {"success": False, "error": str(exc)}
 
     async def export_design(self, design_id: str, format: str = "PNG") -> dict[str, Any]:
-        """Exporta un diseño de Canva como imagen."""
+        """Exports a Canva design as an image."""
         token = await self._get_token()
         if not token:
-            return {"success": False, "error": "Canva no configurado"}
+            return {"success": False, "error": "Canva not configured"}
         try:
             res = await self._http.post(
                 f"{CANVA_API}/exports",

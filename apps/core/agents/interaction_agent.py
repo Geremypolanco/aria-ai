@@ -1,12 +1,12 @@
 """
-interaction_agent.py — Agente de Interacción para ARIA.
+interaction_agent.py — Interaction Agent for ARIA.
 
-Capacidades de Manus:
-- Navegación web con Chromium headless
-- Ejecución de comandos shell
-- Gestión de archivos
-- Interacción con el usuario
-- Manejo de credenciales
+Manus-style capabilities:
+- Web navigation with headless Chromium
+- Shell command execution
+- File management
+- User interaction
+- Credential handling
 """
 
 from __future__ import annotations
@@ -22,12 +22,12 @@ logger = logging.getLogger("aria.interaction_agent")
 
 
 class InteractionAgent(BaseAgent):
-    """Agente de interacción con capacidades de navegación y shell."""
+    """Interaction agent with web navigation and shell capabilities."""
 
     def __init__(self) -> None:
         super().__init__(
             name="interaction",
-            description="Interacción — navegación web, shell, gestión de archivos",
+            description="Interaction — web navigation, shell, file management",
             capabilities=[
                 "web_navigation",
                 "shell_execution",
@@ -40,11 +40,11 @@ class InteractionAgent(BaseAgent):
         self.current_directory = Path.cwd()
 
     async def _execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        """Punto de entrada principal."""
+        """Main entry point."""
         action = context.get("action", "")
         params = context.get("params", {})
 
-        logger.info(f"[InteractionAgent] Ejecutando acción: {action}")
+        logger.info(f"[InteractionAgent] Running action: {action}")
 
         try:
             if action == "navigate":
@@ -63,14 +63,14 @@ class InteractionAgent(BaseAgent):
                 return await self._fill_form(params.get("form_data", {}))
             if action == "screenshot":
                 return await self._take_screenshot(params.get("filename", "screenshot.png"))
-            return {"success": False, "error": f"Acción no reconocida: {action}"}
+            return {"success": False, "error": f"Unrecognized action: {action}"}
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error ejecutando acción: {exc}")
+            logger.error(f"[InteractionAgent] Error running action: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _navigate(self, url: str) -> dict[str, Any]:
-        """Navega a una URL usando Chromium headless."""
+        """Navigates to a URL using headless Chromium."""
         try:
             from playwright.async_api import async_playwright
 
@@ -80,11 +80,11 @@ class InteractionAgent(BaseAgent):
 
                 await page.goto(url, wait_until="networkidle", timeout=30000)
 
-                # Obtener contenido
+                # Get content
                 content = await page.content()
                 title = await page.title()
 
-                # Extraer links
+                # Extract links
                 links = await page.evaluate(
                     """
                     () => Array.from(document.querySelectorAll('a')).map(a => ({
@@ -106,12 +106,12 @@ class InteractionAgent(BaseAgent):
                 }
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error navegando: {exc}")
+            logger.error(f"[InteractionAgent] Error navigating: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _execute_shell(self, command: str) -> dict[str, Any]:
-        """Ejecuta un comando shell."""
-        logger.info(f"[InteractionAgent] Ejecutando comando: {command[:80]}")
+        """Executes a shell command."""
+        logger.info(f"[InteractionAgent] Running command: {command[:80]}")
 
         try:
             process = await asyncio.create_subprocess_shell(
@@ -132,12 +132,12 @@ class InteractionAgent(BaseAgent):
             }
 
         except TimeoutError:
-            return {"success": False, "error": "Comando excedió timeout de 60 segundos"}
+            return {"success": False, "error": "Command exceeded the 60-second timeout"}
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
     async def _write_file(self, path: str, content: str) -> dict[str, Any]:
-        """Escribe un archivo."""
+        """Writes a file."""
         try:
             file_path = self.current_directory / path
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,16 +150,16 @@ class InteractionAgent(BaseAgent):
             }
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error escribiendo archivo: {exc}")
+            logger.error(f"[InteractionAgent] Error writing file: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _read_file(self, path: str) -> dict[str, Any]:
-        """Lee un archivo."""
+        """Reads a file."""
         try:
             file_path = self.current_directory / path
 
             if not file_path.exists():
-                return {"success": False, "error": f"Archivo no encontrado: {path}"}
+                return {"success": False, "error": f"File not found: {path}"}
 
             content = file_path.read_text()
 
@@ -171,16 +171,16 @@ class InteractionAgent(BaseAgent):
             }
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error leyendo archivo: {exc}")
+            logger.error(f"[InteractionAgent] Error reading file: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _list_files(self, directory: str) -> dict[str, Any]:
-        """Lista archivos en un directorio."""
+        """Lists files in a directory."""
         try:
             dir_path = self.current_directory / directory
 
             if not dir_path.exists():
-                return {"success": False, "error": f"Directorio no encontrado: {directory}"}
+                return {"success": False, "error": f"Directory not found: {directory}"}
 
             files = []
             for item in dir_path.iterdir():
@@ -200,19 +200,19 @@ class InteractionAgent(BaseAgent):
             }
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error listando archivos: {exc}")
+            logger.error(f"[InteractionAgent] Error listing files: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _click_element(self, selector: str) -> dict[str, Any]:
-        """Hace click en un elemento de la página."""
+        """Clicks an element on the page."""
         try:
 
             if not self.browser_context:
-                return {"success": False, "error": "No hay navegador activo"}
+                return {"success": False, "error": "No active browser"}
 
             page = self.browser_context.pages[0] if self.browser_context.pages else None
             if not page:
-                return {"success": False, "error": "No hay página activa"}
+                return {"success": False, "error": "No active page"}
 
             await page.click(selector)
 
@@ -223,19 +223,19 @@ class InteractionAgent(BaseAgent):
             }
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error haciendo click: {exc}")
+            logger.error(f"[InteractionAgent] Error clicking: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _fill_form(self, form_data: dict[str, str]) -> dict[str, Any]:
-        """Rellena un formulario en la página."""
+        """Fills out a form on the page."""
         try:
 
             if not self.browser_context:
-                return {"success": False, "error": "No hay navegador activo"}
+                return {"success": False, "error": "No active browser"}
 
             page = self.browser_context.pages[0] if self.browser_context.pages else None
             if not page:
-                return {"success": False, "error": "No hay página activa"}
+                return {"success": False, "error": "No active page"}
 
             filled_fields = []
 
@@ -250,19 +250,19 @@ class InteractionAgent(BaseAgent):
             }
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error rellenando formulario: {exc}")
+            logger.error(f"[InteractionAgent] Error filling form: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def _take_screenshot(self, filename: str) -> dict[str, Any]:
-        """Toma una captura de pantalla."""
+        """Takes a screenshot."""
         try:
 
             if not self.browser_context:
-                return {"success": False, "error": "No hay navegador activo"}
+                return {"success": False, "error": "No active browser"}
 
             page = self.browser_context.pages[0] if self.browser_context.pages else None
             if not page:
-                return {"success": False, "error": "No hay página activa"}
+                return {"success": False, "error": "No active page"}
 
             screenshot_path = self.current_directory / filename
             await page.screenshot(path=str(screenshot_path))
@@ -274,11 +274,11 @@ class InteractionAgent(BaseAgent):
             }
 
         except Exception as exc:
-            logger.error(f"[InteractionAgent] Error tomando screenshot: {exc}")
+            logger.error(f"[InteractionAgent] Error taking screenshot: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def change_directory(self, path: str) -> bool:
-        """Cambia el directorio de trabajo."""
+        """Changes the working directory."""
         try:
             new_path = self.current_directory / path
             if new_path.exists() and new_path.is_dir():
@@ -289,9 +289,9 @@ class InteractionAgent(BaseAgent):
             return False
 
     async def cleanup(self) -> None:
-        """Limpia recursos."""
+        """Cleans up resources."""
         if self.browser_context:
             try:
                 await self.browser_context.close()
             except Exception as exc:
-                logger.error(f"[InteractionAgent] Error limpiando navegador: {exc}")
+                logger.error(f"[InteractionAgent] Error cleaning up browser: {exc}")

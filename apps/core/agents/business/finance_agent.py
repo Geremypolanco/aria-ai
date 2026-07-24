@@ -1,5 +1,5 @@
 """
-Finance Agent — Tracking de revenue, costos, P&L y forecasting autónomo.
+Finance Agent — Autonomous revenue tracking, cost analysis, P&L, and forecasting.
 """
 
 from __future__ import annotations
@@ -14,15 +14,15 @@ logger = logging.getLogger("aria.business.finance")
 
 class FinanceAgent(BaseAgent):
     IDENTITY = (
-        "Eres el Finance Agent de ARIA AI. Rastreos revenue, costos y P&L en tiempo real. "
-        "Generas forecasts, detectas oportunidades de ahorro, y alertas cuando los números "
-        "no cuadran. Operas con datos reales de Stripe, PayPal y Shopify."
+        "You are ARIA AI's Finance Agent. You track revenue, costs, and P&L in real time. "
+        "You generate forecasts, detect savings opportunities, and raise alerts when the numbers "
+        "don't add up. You operate with real data from Stripe, PayPal, and Shopify."
     )
 
     def __init__(self) -> None:
         super().__init__(
             name="finance",
-            description="Revenue tracking, P&L, forecasting, análisis de costos y métricas financieras",
+            description="Revenue tracking, P&L, forecasting, cost analysis, and financial metrics",
             capabilities=[
                 "revenue_tracking",
                 "cost_analysis",

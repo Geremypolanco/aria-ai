@@ -1,19 +1,19 @@
 """
-google_suite.py — Suite completa de Google APIs para ARIA AI.
+google_suite.py — Complete Google APIs suite for ARIA AI.
 
-APIs integradas (todas con GOOGLE_API_KEY):
-  - Custom Search API (búsqueda web + imágenes)
-  - Cloud Vision API (análisis de imágenes, OCR, etiquetas, objetos, logos)
-  - Cloud Natural Language API (sentimiento, entidades, categorías, sintaxis)
-  - Cloud Translation API (100+ idiomas bidireccional)
-  - Cloud Text-to-Speech API (voces neuronales en múltiples idiomas)
-  - Cloud Speech-to-Text API (transcripción de audio)
-  - YouTube Data API v3 (búsqueda, stats, comentarios, canales, playlists)
-  - Books API (búsqueda de libros)
-  - Knowledge Graph Search API (entidades del Knowledge Graph)
-  - PageSpeed Insights API (análisis de velocidad y SEO)
-  - Fact Check Tools API (verificación de hechos)
-  - Google Trends via RSS (sin key requerida)
+Integrated APIs (all with GOOGLE_API_KEY):
+  - Custom Search API (web + image search)
+  - Cloud Vision API (image analysis, OCR, labels, objects, logos)
+  - Cloud Natural Language API (sentiment, entities, categories, syntax)
+  - Cloud Translation API (100+ languages, bidirectional)
+  - Cloud Text-to-Speech API (neural voices in multiple languages)
+  - Cloud Speech-to-Text API (audio transcription)
+  - YouTube Data API v3 (search, stats, comments, channels, playlists)
+  - Books API (book search)
+  - Knowledge Graph Search API (Knowledge Graph entities)
+  - PageSpeed Insights API (speed and SEO analysis)
+  - Fact Check Tools API (fact verification)
+  - Google Trends via RSS (no key required)
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ BASE = "https://www.googleapis.com"
 
 
 class GoogleSuite:
-    """Suite completa de APIs de Google para ARIA AI."""
+    """Complete Google APIs suite for ARIA AI."""
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
@@ -43,14 +43,14 @@ class GoogleSuite:
         return bool(self._key)
 
     def _p(self, extra: dict | None = None) -> dict:
-        """Params base con API key."""
+        """Base params with API key."""
         params = {"key": self._key}
         if extra:
             params.update(extra)
         return params
 
     # ══════════════════════════════════════════════════════════════
-    # 1. CUSTOM SEARCH API — Búsqueda web e imágenes
+    # 1. CUSTOM SEARCH API — Web and image search
     # ══════════════════════════════════════════════════════════════
 
     async def web_search(
@@ -61,9 +61,9 @@ class GoogleSuite:
         country: str = "US",
         site_restrict: str = "",
     ) -> dict[str, Any]:
-        """Búsqueda web completa via Google Custom Search."""
+        """Full web search via Google Custom Search."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "key": self._key,
@@ -101,9 +101,9 @@ class GoogleSuite:
             return await self._serp_fallback(query, num)
 
     async def _serp_fallback(self, query: str, num: int = 10) -> dict[str, Any]:
-        """Fallback a SerpAPI si Custom Search falla."""
+        """Fallback to SerpAPI if Custom Search fails."""
         if not settings.SERP_API_KEY:
-            return {"success": False, "error": "Custom Search y SerpAPI no disponibles"}
+            return {"success": False, "error": "Custom Search and SerpAPI both unavailable"}
         try:
             res = await self._http.get(
                 "https://serpapi.com/search",
@@ -122,12 +122,12 @@ class GoogleSuite:
                 return {"success": True, "query": query, "results": results, "source": "serpapi"}
         except Exception:
             pass
-        return {"success": False, "error": "Búsqueda web no disponible"}
+        return {"success": False, "error": "Web search unavailable"}
 
     async def image_search(self, query: str, num: int = 10) -> dict[str, Any]:
-        """Búsqueda de imágenes via Custom Search."""
+        """Image search via Custom Search."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "key": self._key,
@@ -159,7 +159,7 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 2. CLOUD VISION API — Análisis completo de imágenes
+    # 2. CLOUD VISION API — Full image analysis
     # ══════════════════════════════════════════════════════════════
 
     async def vision_analyze(
@@ -169,13 +169,13 @@ class GoogleSuite:
         features: list[str] | None = None,
     ) -> dict[str, Any]:
         """
-        Análisis completo de imagen con Vision API.
-        Features disponibles: LABEL_DETECTION, TEXT_DETECTION, OBJECT_LOCALIZATION,
+        Full image analysis with the Vision API.
+        Available features: LABEL_DETECTION, TEXT_DETECTION, OBJECT_LOCALIZATION,
         FACE_DETECTION, LOGO_DETECTION, IMAGE_PROPERTIES, SAFE_SEARCH_DETECTION,
         LANDMARK_DETECTION, WEB_DETECTION, DOCUMENT_TEXT_DETECTION
         """
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         if not features:
             features = [
                 "LABEL_DETECTION",
@@ -191,7 +191,7 @@ class GoogleSuite:
             elif image_bytes:
                 image_payload["content"] = base64.b64encode(image_bytes).decode()
             else:
-                return {"success": False, "error": "Se requiere image_url o image_bytes"}
+                return {"success": False, "error": "image_url or image_bytes is required"}
 
             body = {
                 "requests": [
@@ -210,19 +210,19 @@ class GoogleSuite:
                 r = (res.json().get("responses") or [{}])[0]
                 result: dict[str, Any] = {"success": True}
 
-                # Labels (objetos detectados)
+                # Labels (detected objects)
                 if "labelAnnotations" in r:
                     result["labels"] = [
                         {"label": l["description"], "confidence": round(l["score"], 3)}
                         for l in r["labelAnnotations"][:10]
                     ]
-                # Texto detectado (OCR)
+                # Detected text (OCR)
                 if "textAnnotations" in r:
                     result["full_text"] = (
                         r["textAnnotations"][0]["description"] if r["textAnnotations"] else ""
                     )
                     result["text_blocks"] = [t["description"] for t in r["textAnnotations"][1:5]]
-                # Objetos localizados
+                # Localized objects
                 if "localizedObjectAnnotations" in r:
                     result["objects"] = [
                         {"name": o["name"], "confidence": round(o["score"], 3)}
@@ -231,7 +231,7 @@ class GoogleSuite:
                 # Logos
                 if "logoAnnotations" in r:
                     result["logos"] = [l["description"] for l in r["logoAnnotations"]]
-                # Web detection (páginas similares)
+                # Web detection (similar pages)
                 if "webDetection" in r:
                     web = r["webDetection"]
                     result["web_entities"] = [
@@ -240,7 +240,7 @@ class GoogleSuite:
                     result["similar_images"] = [
                         p["url"] for p in web.get("fullMatchingImages", [])[:3]
                     ]
-                # Propiedades de imagen
+                # Image properties
                 if "imagePropertiesAnnotation" in r:
                     colors = (
                         r["imagePropertiesAnnotation"].get("dominantColors", {}).get("colors", [])
@@ -252,7 +252,7 @@ class GoogleSuite:
                         }
                         for c in colors[:5]
                     ]
-                # Safe search
+                # Safe Search
                 if "safeSearchAnnotation" in r:
                     result["safe_search"] = r["safeSearchAnnotation"]
 
@@ -266,26 +266,26 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def vision_ocr(self, image_url: str = "", image_bytes: bytes = b"") -> dict[str, Any]:
-        """Extrae texto de una imagen (OCR)."""
+        """Extracts text from an image (OCR)."""
         result = await self.vision_analyze(
             image_url=image_url, image_bytes=image_bytes, features=["DOCUMENT_TEXT_DETECTION"]
         )
         return {"success": result.get("success", False), "text": result.get("full_text", "")}
 
     # ══════════════════════════════════════════════════════════════
-    # 3. CLOUD NATURAL LANGUAGE API — NLP completo
+    # 3. CLOUD NATURAL LANGUAGE API — Full NLP
     # ══════════════════════════════════════════════════════════════
 
     async def nlp_analyze(self, text: str, language: str = "") -> dict[str, Any]:
-        """Análisis NLP completo: sentimiento, entidades, categorías, sintaxis."""
+        """Full NLP analysis: sentiment, entities, categories, syntax."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             doc = {"content": text, "type": "PLAIN_TEXT"}
             if language:
                 doc["language"] = language
 
-            # Ejecutar los 3 análisis en paralelo
+            # Run the 3 analyses in parallel
             import asyncio
 
             sentiment_task = self._nlp_request("analyzeSentiment", doc)
@@ -304,9 +304,9 @@ class GoogleSuite:
                     "score": round(s.get("score", 0), 3),
                     "magnitude": round(s.get("magnitude", 0), 3),
                     "label": (
-                        "positivo"
+                        "positive"
                         if s.get("score", 0) > 0.1
-                        else "negativo" if s.get("score", 0) < -0.1 else "neutro"
+                        else "negative" if s.get("score", 0) < -0.1 else "neutral"
                     ),
                 }
 
@@ -343,28 +343,28 @@ class GoogleSuite:
         return res.json() if res.status_code == 200 else {}
 
     async def analyze_sentiment(self, text: str) -> dict[str, Any]:
-        """Análisis de sentimiento rápido."""
+        """Quick sentiment analysis."""
         r = await self.nlp_analyze(text)
         return {"success": r.get("success"), "sentiment": r.get("sentiment", {})}
 
     async def extract_entities(self, text: str) -> dict[str, Any]:
-        """Extrae entidades nombradas (personas, lugares, organizaciones)."""
+        """Extracts named entities (people, places, organizations)."""
         r = await self.nlp_analyze(text)
         return {"success": r.get("success"), "entities": r.get("entities", [])}
 
     async def classify_content(self, text: str) -> dict[str, Any]:
-        """Clasifica contenido en categorías de Google (1000+ categorías)."""
+        """Classifies content into Google categories (1000+ categories)."""
         r = await self.nlp_analyze(text)
         return {"success": r.get("success"), "categories": r.get("categories", [])}
 
     # ══════════════════════════════════════════════════════════════
-    # 4. CLOUD TRANSLATION API — 133 idiomas
+    # 4. CLOUD TRANSLATION API — 133 languages
     # ══════════════════════════════════════════════════════════════
 
     async def translate(self, text: str, target: str, source: str = "") -> dict[str, Any]:
-        """Traduce texto a cualquiera de los 133 idiomas soportados."""
+        """Translates text into any of the 133 supported languages."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             body: dict[str, Any] = {"q": text, "target": target, "format": "text"}
             if source:
@@ -387,9 +387,9 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def detect_language(self, text: str) -> dict[str, Any]:
-        """Detecta el idioma de un texto."""
+        """Detects the language of a text."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.post(
                 f"{BASE}/language/translate/v2/detect",
@@ -408,7 +408,7 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def translate_batch(self, texts: list[str], target: str) -> list[str]:
-        """Traduce una lista de textos al idioma destino."""
+        """Translates a list of texts into the target language."""
         import asyncio
 
         tasks = [self.translate(t, target) for t in texts]
@@ -419,7 +419,7 @@ class GoogleSuite:
         ]
 
     async def translate_content_multilang(self, text: str, targets: list[str]) -> dict[str, str]:
-        """Traduce texto a múltiples idiomas simultáneamente."""
+        """Translates text into multiple languages simultaneously."""
         import asyncio
 
         tasks = [self.translate(text, lang) for lang in targets]
@@ -430,7 +430,7 @@ class GoogleSuite:
         }
 
     # ══════════════════════════════════════════════════════════════
-    # 5. CLOUD TEXT-TO-SPEECH API — Voces neuronales
+    # 5. CLOUD TEXT-TO-SPEECH API — Neural voices
     # ══════════════════════════════════════════════════════════════
 
     async def text_to_speech(
@@ -441,9 +441,9 @@ class GoogleSuite:
         speaking_rate: float = 1.0,
         pitch: float = 0.0,
     ) -> dict[str, Any]:
-        """Convierte texto a voz con voces neuronales de Google."""
+        """Converts text to speech using Google's neural voices."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             body = {
                 "input": {"text": text[:5000]},
@@ -475,9 +475,9 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def list_tts_voices(self, language_code: str = "") -> dict[str, Any]:
-        """Lista todas las voces disponibles (400+ voces en 50+ idiomas)."""
+        """Lists all available voices (400+ voices in 50+ languages)."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {"key": self._key}
             if language_code:
@@ -505,7 +505,7 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 6. CLOUD SPEECH-TO-TEXT API — Transcripción de audio
+    # 6. CLOUD SPEECH-TO-TEXT API — Audio transcription
     # ══════════════════════════════════════════════════════════════
 
     async def speech_to_text(
@@ -515,9 +515,9 @@ class GoogleSuite:
         audio_encoding: str = "OGG_OPUS",
         sample_rate: int = 16000,
     ) -> dict[str, Any]:
-        """Transcribe audio a texto con Speech-to-Text API."""
+        """Transcribes audio to text with the Speech-to-Text API."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             body = {
                 "config": {
@@ -556,7 +556,7 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 7. YOUTUBE DATA API v3 — Completo
+    # 7. YOUTUBE DATA API v3 — Full
     # ══════════════════════════════════════════════════════════════
 
     async def youtube_search(
@@ -567,9 +567,9 @@ class GoogleSuite:
         video_type: str = "video",
         language: str = "",
     ) -> dict[str, Any]:
-        """Búsqueda completa en YouTube."""
+        """Full YouTube search."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "part": "snippet",
@@ -612,9 +612,9 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def youtube_video_details(self, video_ids: list[str]) -> dict[str, Any]:
-        """Detalles completos de videos: stats, contenido, tags, monetización."""
+        """Full video details: stats, content, tags, monetization."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.get(
                 f"{BASE}/youtube/v3/videos",
@@ -654,9 +654,9 @@ class GoogleSuite:
     async def youtube_channel_details(
         self, channel_id: str = "", username: str = ""
     ) -> dict[str, Any]:
-        """Detalles completos de un canal de YouTube."""
+        """Full details of a YouTube channel."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "part": "snippet,statistics,brandingSettings,contentDetails",
@@ -670,7 +670,7 @@ class GoogleSuite:
             if res.status_code == 200:
                 items = res.json().get("items", [])
                 if not items:
-                    return {"success": False, "error": "Canal no encontrado"}
+                    return {"success": False, "error": "Channel not found"}
                 c = items[0]
                 return {
                     "success": True,
@@ -691,9 +691,9 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def youtube_comments(self, video_id: str, max_results: int = 20) -> dict[str, Any]:
-        """Obtiene comentarios de un video (útil para análisis de mercado)."""
+        """Gets comments from a video (useful for market analysis)."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.get(
                 f"{BASE}/youtube/v3/commentThreads",
@@ -727,9 +727,9 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def youtube_trending(self, region: str = "US", category_id: str = "0") -> dict[str, Any]:
-        """Videos trending de YouTube por región y categoría."""
+        """Trending YouTube videos by region and category."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "part": "snippet,statistics",
@@ -765,9 +765,9 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def youtube_search_captions(self, video_id: str) -> dict[str, Any]:
-        """Lista los subtítulos disponibles en un video."""
+        """Lists the captions available on a video."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.get(
                 f"{BASE}/youtube/v3/captions",
@@ -795,15 +795,15 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 8. KNOWLEDGE GRAPH SEARCH API — Entidades del grafo de conocimiento
+    # 8. KNOWLEDGE GRAPH SEARCH API — Knowledge graph entities
     # ══════════════════════════════════════════════════════════════
 
     async def knowledge_graph_search(
         self, query: str, languages: list[str] | None = None, limit: int = 5
     ) -> dict[str, Any]:
-        """Busca entidades en el Knowledge Graph de Google."""
+        """Searches for entities in Google's Knowledge Graph."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {"query": query, "limit": limit, "indent": True, "key": self._key}
             if languages:
@@ -831,13 +831,13 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 9. PAGESPEED INSIGHTS API — SEO y velocidad
+    # 9. PAGESPEED INSIGHTS API — SEO and speed
     # ══════════════════════════════════════════════════════════════
 
     async def pagespeed_analyze(self, url: str, strategy: str = "mobile") -> dict[str, Any]:
-        """Analiza velocidad y SEO de cualquier URL."""
+        """Analyzes speed and SEO for any URL."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.get(
                 f"{BASE}/pagespeedonline/v5/runPagespeed",
@@ -881,15 +881,15 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 10. BOOKS API — Investigación de mercado editorial
+    # 10. BOOKS API — Publishing market research
     # ══════════════════════════════════════════════════════════════
 
     async def books_search(
         self, query: str, max_results: int = 10, language: str = ""
     ) -> dict[str, Any]:
-        """Busca libros en Google Books (útil para investigación de nichos)."""
+        """Searches for books on Google Books (useful for niche research)."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             params = {
                 "q": query,
@@ -926,13 +926,13 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 11. FACT CHECK TOOLS API — Verificación de hechos
+    # 11. FACT CHECK TOOLS API — Fact verification
     # ══════════════════════════════════════════════════════════════
 
     async def fact_check(self, query: str) -> dict[str, Any]:
-        """Verifica un hecho o claim usando Google Fact Check API."""
+        """Verifies a fact or claim using the Google Fact Check API."""
         if not self._ok():
-            return {"success": False, "error": "GOOGLE_API_KEY no configurado"}
+            return {"success": False, "error": "GOOGLE_API_KEY not configured"}
         try:
             res = await self._http.get(
                 f"{BASE}/factchecktools/v1alpha1/claims:search",
@@ -964,11 +964,11 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     # ══════════════════════════════════════════════════════════════
-    # 12. GOOGLE TRENDS — Sin API key (RSS público)
+    # 12. GOOGLE TRENDS — No API key required (public RSS)
     # ══════════════════════════════════════════════════════════════
 
     async def trends_daily(self, geo: str = "US") -> dict[str, Any]:
-        """Trending searches diarios de Google Trends."""
+        """Google Trends daily trending searches."""
         try:
             res = await self._http.get(
                 "https://trends.google.com/trends/trendingsearches/daily/rss",
@@ -988,7 +988,7 @@ class GoogleSuite:
             return {"success": False, "error": str(exc)}
 
     async def trends_realtime(self, geo: str = "US", category: str = "all") -> dict[str, Any]:
-        """Trending searches en tiempo real de Google."""
+        """Google real-time trending searches."""
         try:
             url = f"https://trends.google.com/trends/api/realtimetrends?hl=en-US&tz=-360&cat={category}&geo={geo}&fi=0&fs=0&ri=300&rs=20&sort=0"
             res = await self._http.get(url, timeout=15.0)
@@ -1008,13 +1008,13 @@ class GoogleSuite:
         return await self.trends_daily(geo)
 
     # ══════════════════════════════════════════════════════════════
-    # HELPER: Análisis de mercado completo con todas las APIs
+    # HELPER: Complete market analysis using all APIs
     # ══════════════════════════════════════════════════════════════
 
     async def full_market_research(self, niche: str, language: str = "es") -> dict[str, Any]:
         """
-        Investigación de mercado completa usando todas las APIs de Google.
-        Combina: Web Search + YouTube + Books + Knowledge Graph + Trends + NLP.
+        Complete market research using all of Google's APIs.
+        Combines: Web Search + YouTube + Books + Knowledge Graph + Trends + NLP.
         """
         import asyncio
 
