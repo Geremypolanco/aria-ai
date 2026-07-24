@@ -161,5 +161,25 @@ jobs:
         continue-on-error: true  # Advisory, not blocking
 
       - name: Dependency vulnerability audit
-        run: pip-audit -r apps/core/requirements.txt --ignore-vuln GHSA-jfh8-c2jp-5 || true
-        continue-on-error: true
+        # Blocking as of the 2026-07-24 security pass, which cleared 56 known
+        # vulnerabilities across 10 packages down to the ones ignored below.
+        # Each ignored ID is a deliberate, documented deferral, not an oversight:
+        #  - mcp (PYSEC-2026-1617/3483/3482): fix requires pydantic>=2.11, a
+        #    cascading bump across every Pydantic model in the app — tracked
+        #    as its own follow-up, not something to force through this gate.
+        #  - protobuf (PYSEC-2026-1805): transitive-only (no direct pin here);
+        #    revisit once a direct dependency forces a newer resolution.
+        #  - pytest (PYSEC-2026-1845), black (PYSEC-2026-2120/2121): dev/CI-only
+        #    tooling, not part of the running service's attack surface; left
+        #    pinned to avoid an unvalidated pytest-asyncio compatibility jump.
+        # Remove an entry here only after actually bumping the package.
+        run: |
+          pip-audit -r apps/core/requirements.txt \
+            --ignore-vuln GHSA-jfh8-c2jp-5 \
+            --ignore-vuln PYSEC-2026-1617 \
+            --ignore-vuln PYSEC-2026-3483 \
+            --ignore-vuln PYSEC-2026-3482 \
+            --ignore-vuln PYSEC-2026-1805 \
+            --ignore-vuln PYSEC-2026-1845 \
+            --ignore-vuln PYSEC-2026-2120 \
+            --ignore-vuln PYSEC-2026-2121

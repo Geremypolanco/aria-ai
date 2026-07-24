@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     REQUIRE_APPROVAL_FOR_PAYMENTS: bool = True
     REQUIRE_APPROVAL_FOR_DEPLOYS: bool = False
     MAX_SPEND_WITHOUT_APPROVAL_USD: float = 0.0
+    # InfraTools.execute_system_command runs raw shell with only a trivially
+    # bypassable substring blocklist — a real RCE primitive if ever reachable
+    # (owner-only tool gates exist upstream, but prompt injection into an
+    # owner's own chat is a realistic way to trigger it). Off by default; an
+    # operator must deliberately opt in per-deployment.
+    ALLOW_SYSTEM_COMMANDS: bool = False
 
     # ── NOTIFICATIONS ─────────────────────────────────────
     TELEGRAM_TOKEN: str = ""

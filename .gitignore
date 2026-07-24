@@ -26,3 +26,7 @@ node_modules/
 *.db
 *.sqlite
 *.sqlite3
+
+# Local secrets/config directory (SecretsManager encryption key + encrypted
+# secrets store) — must never be committed. See apps/core/config_pkg/secrets_manager.py.
+.aria/

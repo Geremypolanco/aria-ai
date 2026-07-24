@@ -99,10 +99,14 @@ def _conversation_id(user: dict | None, session_id: str | None = None) -> str:
     return base
 
 
-# ── lightweight in-process rate limiter (no external dependency) ───────────
-# Sliding-window per (client-ip, bucket). Protects expensive/public endpoints
-# from abuse and cost blow-ups. For multi-instance deployments a shared store
-# (Redis) would be stronger, but this bounds abuse on a single instance.
+# ── rate limiter ────────────────────────────────────────────────────────────
+# Sliding-window per (client-ip, bucket), protecting expensive/public endpoints
+# from abuse and cost blow-ups. When Upstash is configured, the cap is enforced
+# in a shared fixed-window counter there first, so it holds across every
+# Fly.io machine, not just the process that happened to handle the request;
+# the in-process sliding window below is the fallback (Upstash unset, or a
+# transient error talking to it — infra hiccups must never fail-closed and
+# lock every signed-in user out of chat).
 import time as _time  # noqa: E402
 from collections import defaultdict, deque  # noqa: E402
 
@@ -145,9 +149,7 @@ async def _track(event: str) -> None:
         pass
 
 
-def _rate_ok(request: Request, bucket: str, limit: int, window: float) -> bool:
-    """Return True if this client is under `limit` requests in `window` seconds."""
-    key = f"{bucket}:{_client_ip(request)}"
+def _rate_ok_memory(key: str, limit: int, window: float) -> bool:
     now = _time.time()
     hits = _RATE_HITS[key]
     while hits and hits[0] <= now - window:
@@ -160,6 +162,32 @@ def _rate_ok(request: Request, bucket: str, limit: int, window: float) -> bool:
             if not _RATE_HITS[k]:
                 del _RATE_HITS[k]
     return True
+
+
+async def _rate_ok(request, bucket: str, limit: int, window: float) -> bool:
+    """Return True if this client is under `limit` requests in `window` seconds.
+
+    Tries the shared Upstash counter first (so the cap is real across multiple
+    Fly.io machines); falls back to the in-process sliding window if Upstash
+    isn't configured or errors out. `request` may be an HTTP Request or a
+    WebSocket — both expose `.headers`/`.client`, which is all `_client_ip` needs.
+    """
+    key = f"{bucket}:{_client_ip(request)}"
+    if getattr(settings, "UPSTASH_REDIS_REST_URL", None):
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            rate_key = f"ratelimit:{key}"
+            current = await cache._cmd("INCR", rate_key)
+            if current is not None:
+                if current == 1:
+                    await cache._cmd("EXPIRE", rate_key, int(window))
+                return int(current) <= limit
+            # Upstash reachable but returned nothing usable — fall through.
+        except Exception as exc:  # noqa: BLE001 — never let limiter infra 500 a request
+            logger.debug("[rate_limit] distributed check failed, using in-memory: %s", exc)
+    return _rate_ok_memory(key, limit, window)
 
 
 def _json_for_script(obj) -> str:
@@ -641,7 +669,7 @@ async def admin_login_page():
 
 @app.post("/admin/login")
 async def admin_login(request: Request, password: str = Form(...)):
-    if not _rate_ok(request, "admin_login", 10, 900):
+    if not await _rate_ok(request, "admin_login", 10, 900):
         return HTMLResponse(
             _LOGIN_HTML.format(
                 error='<div class="err">Too many attempts. Try again later.</div>', notice=""
@@ -1049,7 +1077,7 @@ async def signup_submit(
     name: str = Form(""),
 ):
     await _track("signup_submitted")
-    if not _rate_ok(request, "signup", 10, 3600):
+    if not await _rate_ok(request, "signup", 10, 3600):
         return HTMLResponse(
             _auth_page("signup", "Too many attempts — please wait a minute.", email),
             status_code=429,
@@ -1080,7 +1108,7 @@ async def login_submit(
     password: str = Form(...),
 ):
     await _track("login_submitted")
-    if not _rate_ok(request, "login", 20, 900):
+    if not await _rate_ok(request, "login", 20, 900):
         return HTMLResponse(
             _auth_page("login", "Too many attempts — please wait a moment.", email),
             status_code=429,
@@ -1822,7 +1850,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
     start = time.time()
 
     # Rate limit + require sign-in (prevents anonymous/abusive LLM cost).
-    if not _rate_ok(request, "chat", 30, 60):
+    if not await _rate_ok(request, "chat", 30, 60):
         return {
             "reply": "You're sending messages too fast. Please wait a moment and try again.",
             "model_used": "ratelimited",
@@ -1984,7 +2012,7 @@ async def support_chat(req: SupportRequest, request: Request):
 
     start = time.time()
 
-    if not _rate_ok(request, "support", 20, 60):
+    if not await _rate_ok(request, "support", 20, 60):
         return {
             "reply": "You're sending messages too fast. Please wait a moment and try again.",
             "source": "ratelimited",
@@ -2022,7 +2050,7 @@ async def generate_code(req: ChatRequest, request: Request):
 
     if not _current_user(request):
         return {"reply": "Please sign in to use this endpoint.", "unauthorized": True}
-    if not _rate_ok(request, "code", 20, 60):
+    if not await _rate_ok(request, "code", 20, 60):
         return {"reply": "Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
@@ -2044,7 +2072,7 @@ async def research(req: ChatRequest, request: Request):
 
     if not _current_user(request):
         return {"reply": "Please sign in to use this endpoint.", "unauthorized": True}
-    if not _rate_ok(request, "research", 20, 60):
+    if not await _rate_ok(request, "research", 20, 60):
         return {"reply": "Rate limit reached — please slow down.", "ratelimited": True}
     start = time.time()
     try:
@@ -2083,7 +2111,7 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
             status_code=401,
         )
     # Workflows open several subagents per call → deliberately low limit.
-    if not _rate_ok(request, "workflow", 6, 300):
+    if not await _rate_ok(request, "workflow", 6, 300):
         return JSONResponse(
             {
                 "ok": False,
@@ -2164,7 +2192,7 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
     """
     if not _current_user(request):
         return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
-    if not _rate_ok(request, "workflow", 6, 300):
+    if not await _rate_ok(request, "workflow", 6, 300):
         return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=429)
     if _PANIC["on"]:
         return JSONResponse({"ok": False, "error": "paused"}, status_code=503)
@@ -2263,7 +2291,8 @@ async def api_status():
         if client:
             status["ai"] = client.get_health_summary()
     except Exception as e:
-        status["ai"] = {"error": str(e)}
+        logger.warning(f"api_status ai health check failed: {e}")
+        status["ai"] = {"error": "unavailable"}
     return status
 
 
@@ -2281,7 +2310,7 @@ async def run_mission(req: RunRequest, request: Request):
 
     if not _is_owner_user(request):
         return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
-    if not _rate_ok(request, "run", 10, 60):
+    if not await _rate_ok(request, "run", 10, 60):
         return JSONResponse({"success": False, "error": "rate_limited"}, status_code=429)
     start = time.time()
     try:
@@ -2303,7 +2332,7 @@ async def run_mission(req: RunRequest, request: Request):
         }
     except Exception as e:
         logger.error(f"Run error: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "mission_failed"}
 
 
 @app.get("/api/v1/tools")
@@ -2342,7 +2371,7 @@ async def content_operate(req: ContentOperateRequest, request: Request):
     """
     if not _is_owner_user(request):
         return JSONResponse({"success": False, "error": "forbidden"}, status_code=403)
-    if not _rate_ok(request, "content_operate", 10, 300):
+    if not await _rate_ok(request, "content_operate", 10, 300):
         return JSONResponse({"success": False, "error": "rate_limited"}, status_code=429)
     try:
         from apps.core.tools.content_operator import get_content_operator
@@ -2393,15 +2422,19 @@ async def content_selftest(request: Request):
 
 
 @app.get("/api/v1/activepieces/selftest")
-async def activepieces_selftest():
-    """Check that the Activepieces MCP bridge is reachable and list available tools."""
+async def activepieces_selftest(request: Request):
+    """Check that the Activepieces MCP bridge is reachable and list available tools.
+    Owner-only: reveals internal infrastructure/integration state (same rule as
+    the Zapier selftest at /api/v1/content/selftest)."""
+    if not _is_owner_user(request):
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     try:
         from apps.core.tools.activepieces_mcp import get_activepieces_mcp
 
         return await get_activepieces_mcp().self_test()
     except Exception as e:
         logger.error(f"Activepieces selftest error: {e}")
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": "selftest_failed"}
 
 
 @app.post("/api/v1/code/execute")
@@ -2411,7 +2444,7 @@ async def code_execute(req: CodeExecRequest, request: Request):
     if not _current_user(request):
         return {"success": False, "error": "Please sign in to run code."}
     # Tighter than chat: execution is heavier and more abusable than a text reply.
-    if not _rate_ok(request, "code_exec", 10, 60):
+    if not await _rate_ok(request, "code_exec", 10, 60):
         return {"success": False, "error": "Too many runs — please wait a moment and try again."}
     if len(req.code) > 20000:
         return {"success": False, "error": "Code is too long to run (20,000 character limit)."}
@@ -2429,7 +2462,7 @@ async def code_execute(req: CodeExecRequest, request: Request):
         return result
     except Exception as e:
         logger.error(f"Code execute error: {e}")
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Something went wrong running that. Please try again."}
 
 
 # ── WEBSOCKET ─────────────────────────────────────────────
@@ -2459,7 +2492,7 @@ async def websocket_chat(ws: WebSocket):
         while True:
             data = await ws.receive_text()
 
-            if not _rate_ok(ws, "ws_chat", 30, 60):
+            if not await _rate_ok(ws, "ws_chat", 30, 60):
                 await ws.send_json({"error": "You're sending messages too fast."})
                 continue
             if _PANIC["on"]:

@@ -49,7 +49,19 @@ class CodeExecutor:
             return {"success": False, "error": str(e)}
 
     async def execute_shell_command(self, command: str, timeout: int = 30) -> dict[str, Any]:
-        """Executes a shell command."""
+        """Executes a shell command.
+
+        Disabled unless ARIA_ALLOW_SYSTEM_COMMANDS is explicitly set — see
+        apps/core/tools/infra_tools.py's execute_system_command for why a
+        substring blocklist alone isn't a real control here."""
+        from apps.core.config import settings
+
+        if not getattr(settings, "ALLOW_SYSTEM_COMMANDS", False):
+            return {
+                "success": False,
+                "error": "Shell command execution is disabled on this deployment.",
+            }
+
         # List of forbidden commands
         forbidden = ["rm -rf /", "mkfs", "shutdown", "reboot"]
         if any(f in command for f in forbidden):

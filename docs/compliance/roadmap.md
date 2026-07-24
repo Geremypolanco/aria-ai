@@ -28,9 +28,12 @@ licensed professional, and platform-terms violations.
 
 Follow-ups:
 
-- [ ] Wire `apps/core/agents/compliance_agent.py` (or a slim version of it) into
-      the action path as a second, deterministic check for high-risk actions
-      (publishing, code execution, outreach). Today it exists but is not invoked.
+- [x] `apps/core/agents/compliance_agent.py` is wired into the action path via
+      `BaseAgent.execute_with_approval()` — `cfo_agent.py`'s ebook-publish flow
+      routes through it today (fail-closed: an unreachable/erroring reviewer
+      blocks + requires human review rather than defaulting to allow). Only one
+      agent action is wired so far; extending this to every high-risk action
+      (outreach, code execution, future agent-initiated spend) is still open.
 - [ ] Log boundary refusals for review.
 
 ## Security controls
@@ -39,13 +42,15 @@ Follow-ups:
 | --- | --- | --- |
 | HTTPS everywhere + HSTS | In place | `_SECURITY_HEADERS` middleware, `main.py` |
 | Security response headers (nosniff, frame, referrer, permissions, COOP, CSP frame-ancestors) | In place | `main.py` |
-| OAuth-only sign-in (Google/GitHub); no password storage | In place | `auth`, Terms |
-| Payments via Stripe; no card storage | In place | Terms |
-| Secrets in environment, not in code | In place | deploy config |
+| OAuth-only sign-in (Google/GitHub) + email/password (PBKDF2-HMAC-SHA256, 200k iterations); signed HMAC session cookie | In place | `auth`, `auth_accounts` |
+| Payments via Stripe; no card storage; checkout-session replay/account-mismatch guarded | In place | `main.py` billing routes |
+| Secrets in environment, not in code; `.aria/secrets/` (local key store) gitignored, never committed | In place | `config.py`, `.gitignore` |
 | Strict Content-Security-Policy (script-src) | Roadmap | needs inline-script refactor |
-| Tighten CORS (currently `allow_origins=["*"]`) to known origins | Roadmap | `main.py` CORS middleware |
+| CORS restricted to an explicit origin allowlist (not `*` — `allow_credentials=True` forbids that anyway) | In place | `main.py` CORS middleware |
+| Rate limiting: shared distributed counter (Upstash) with in-process fallback, applied to every costed/abusable endpoint | In place | `main.py` `_rate_ok` |
 | Centralized audit logging of security events | In progress | `execution_audit`, expand coverage |
-| Dependency/vulnerability scanning in CI | In progress | CI "Security Audit" job |
+| Dependency/vulnerability scanning in CI | In progress | CI "Security Audit" job: `pip-audit` is now a blocking merge gate (with a documented, minimal ignore list — see `ci.yml`); `bandit` is still advisory-only pending triage |
+| Raw shell execution tools (`InfraTools.execute_system_command`, `CodeExecutor.execute_shell_command`) disabled by default, opt-in via `ALLOW_SYSTEM_COMMANDS` | In place | `infra_tools.py`, `code_executor.py` |
 | Documented access control & least privilege | Roadmap | — |
 
 ## SOC 2 Type II — In progress

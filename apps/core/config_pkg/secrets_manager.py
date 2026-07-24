@@ -40,14 +40,32 @@ class SecretsManager:
         self._load_secrets()
 
     def _load_or_create_cipher(self) -> Fernet:
-        """Loads or creates a Fernet encryption key."""
+        """Loads or creates a Fernet encryption key.
+
+        Precedence: ``ARIA_SECRETS_KEY`` env var, then the on-disk key file,
+        else generate + persist a fresh one. The on-disk path is gitignored
+        (``.aria/``) and must never be committed — a key that ever lands in
+        version control must be treated as compromised, since anyone with
+        repo/history access could then decrypt everything it protects.
+        """
+        import os as _os
+
+        env_key = _os.environ.get("ARIA_SECRETS_KEY")
+        if env_key:
+            return Fernet(env_key.encode())
+
         if self.key_file.exists():
             key = self.key_file.read_bytes()
         else:
             key = Fernet.generate_key()
             self.key_file.write_bytes(key)
             self.key_file.chmod(0o600)  # Owner read-only
-            logger.info("[Secrets] Encryption key generated")
+            logger.warning(
+                "[Secrets] New encryption key generated at %s — back it up (or set "
+                "ARIA_SECRETS_KEY) before relying on this for anything persistent; "
+                "losing it makes any stored secrets unrecoverable.",
+                self.key_file,
+            )
 
         return Fernet(key)
 

@@ -1,17 +1,17 @@
 # ── Framework principal ──────────────────────────────────
-fastapi==0.115.0
+fastapi==0.135.0  # security: 0.115.0 pinned starlette 0.38.6, which had several CVEs; 0.135.0 pulls in a patched starlette
 uvicorn[standard]==0.30.6
 
 # ── Configuración ─────────────────────────────────────────
 pydantic==2.8.2
 pydantic-settings==2.8.1  # >=2.5.2 requerido por el SDK mcp (compatible con pydantic 2.8.2)
-python-dotenv==1.0.1
+python-dotenv==1.2.2  # security: 1.0.1 had PYSEC-2026-2270
 
 # ── IA ────────────────────────────────────────────────────
 httpx==0.27.2
 groq==0.11.0
 openai==1.51.0
-Pillow==10.4.0
+Pillow==12.3.0  # security: 10.4.0 had multiple CVEs, see pip-audit
 
 # ── Base de datos ─────────────────────────────────────────
 supabase==2.7.4
@@ -33,11 +33,11 @@ ShopifyAPI==12.6.0
 
 # ── Contenido multimedia ──────────────────────────────────
 cloudinary==1.41.0
-requests==2.32.3
+requests==2.33.1  # security: 2.32.3 had PYSEC-2026-1872/2275
 aiofiles==24.1.0
 
 # ── Utilidades ────────────────────────────────────────────
-python-multipart==0.0.12
+python-multipart==0.0.32  # security: 0.0.12 had multiple DoS CVEs
 tenacity==9.0.0
 
 # ── IA adicional (Solo si es necesario) ───────────────────────
@@ -90,7 +90,7 @@ ruff==0.6.9
 black==24.10.0
 mypy==1.11.2
 bandit[toml]==1.7.10
-cryptography>=42.0.0,<44  # AES-256-GCM for connector token encryption at rest
+cryptography>=48.0.1,<50  # AES-256-GCM for connector token encryption at rest; security: <44 had several CVEs
 
 # Fallback ffmpeg binary for the video engine (apt ffmpeg is primary)
 imageio-ffmpeg

@@ -132,6 +132,10 @@ class AriaAgentDashboard extends HTMLElement {
         <div class="flex flex-wrap items-center gap-2">
           <span class="h-2 w-2 flex-none rounded-full bg-emerald-500"></span>
           <span class="font-mono text-xs text-stone-500">${MISSION_LABEL}</span>
+          <span
+            class="rounded-full border border-stone-200 bg-stone-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400"
+            title="This panel illustrates how ARIA's agent orchestration and spend-approval flow will work — no real money moves here."
+          >Illustrative preview</span>
           <span data-wallet-chip class="ml-auto inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-stone-900 px-3 py-1 text-[11px] font-bold text-white">
             <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M6 15h2"/></svg>
             <span data-wallet-amount>${fmt(this._balance)}</span> available
