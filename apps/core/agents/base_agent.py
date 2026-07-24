@@ -55,7 +55,9 @@ class BaseAgent(ABC):
     """
 
     APPROVAL_THRESHOLD_USD: float = float(getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 0.0))
-    REQUIRE_APPROVAL_FOR_PAYMENTS: bool = True
+    REQUIRE_APPROVAL_FOR_PAYMENTS: bool = bool(
+        getattr(settings, "REQUIRE_APPROVAL_FOR_PAYMENTS", True)
+    )
 
     # Global map: capability_name -> required env_var
     CAPABILITY_ENV_MAP: dict[str, str] = {
@@ -325,7 +327,20 @@ class BaseAgent(ABC):
         fn: Callable[[], Coroutine],
         amount_usd: float = 0.0,
     ) -> dict[str, Any]:
-        """Executes fn() directly or requests approval depending on the amount."""
+        """Runs the action past ComplianceAgent first, then either executes fn()
+        directly or requests human approval depending on the amount."""
+        from apps.core.agents.compliance_agent import get_compliance_agent
+
+        review = await get_compliance_agent().run(
+            {"action_type": action, "description": details, "amount_usd": amount_usd}
+        )
+        if not review.get("approved", True):
+            return {
+                "success": False,
+                "compliance_blocked": True,
+                "reason": review.get("reason", "Blocked by compliance review"),
+            }
+
         if amount_usd <= self.APPROVAL_THRESHOLD_USD and not self.REQUIRE_APPROVAL_FOR_PAYMENTS:
             return await fn()
         return await self.request_human_approval(action, details, amount_usd)
