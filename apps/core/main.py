@@ -1955,12 +1955,12 @@ class WorkflowRequest(BaseModel):
 
 @app.post("/api/v1/workflow")
 async def dynamic_workflow(req: WorkflowRequest, request: Request):
-    """ARIA Dynamic Workflows — el patrón insignia de las IA frontera 2026.
+    """ARIA Dynamic Workflows — the flagship pattern of 2026 frontier AI.
 
-    Descompone un objetivo en subtareas, ejecuta subagentes en paralelo enrutando
-    cada uno al modelo óptimo, verifica cada resultado de forma adversarial y
-    sintetiza la entrega final. Requiere sesión; es costoso, así que va con un
-    límite de tasa más estricto y respeta el freeze global y el tope de gasto.
+    Decomposes a goal into subtasks, runs subagents in parallel routing each
+    to the optimal model, adversarially verifies each result, and synthesizes
+    the final deliverable. Requires a session; it's expensive, so it carries a
+    stricter rate limit and respects the global freeze and spend cap.
     """
     import time
 
@@ -2043,10 +2043,11 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
 
 @app.post("/api/v1/workflow/stream")
 async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
-    """Streaming (SSE) de /api/v1/workflow — emite cada subagente en cuanto
-    termina para que el dashboard renderice el flujo en vivo. Mismos guards que
-    la ruta no-streaming (comparte el bucket de rate limit para que cambiar de
-    endpoint no evada el tope). El cliente cae al POST normal si el stream falla.
+    """Streaming (SSE) version of /api/v1/workflow — emits each subagent as
+    soon as it finishes so the dashboard can render the flow live. Same guards
+    as the non-streaming route (shares its rate-limit bucket so switching
+    endpoints doesn't dodge the cap). The client falls back to the plain POST
+    if the stream fails.
     """
     if not _current_user(request):
         return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
@@ -2114,10 +2115,10 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
 
 @app.get("/api/v1/workflow/runs")
 async def workflow_runs(request: Request):
-    """Panel de uso del usuario: agregados de por vida + últimos flujos.
+    """User usage panel: lifetime aggregates + recent workflow runs.
 
-    Es la base del modelo 'cobra por resultado' — `deliverables` cuenta flujos
-    completados, no tokens. Cada usuario ve solo lo suyo.
+    This is the basis of the "charge for outcomes" model — `deliverables`
+    counts completed workflows, not tokens. Each user sees only their own.
     """
     if not _current_user(request):
         return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
