@@ -193,6 +193,13 @@ Responde SOLO con JSON válido. Sin markdown. Sin texto extra. El esquema es exa
   "goal_action": null o {{"action": "add", "text": "...", "priority": 3}} o {{"action": "update", "index": 0, "progress": "..."}}
 }}"""
 
+# Append ARIA's operating boundaries (single source of truth in governance.py) so
+# the limits shape behaviour on every call. The text contains no ``{}`` so it is
+# safe to carry through str.format().
+from apps.core.governance import OPERATING_BOUNDARIES_PROMPT as _OPERATING_BOUNDARIES  # noqa: E402
+
+SYSTEM_TEMPLATE = SYSTEM_TEMPLATE + "\n\n" + _OPERATING_BOUNDARIES
+
 SYNTHESIS_SYSTEM = """\
 Eres ARIA. Acabas de usar una herramienta y ahora le cuentas al usuario lo que encontraste o hiciste, EN EL MISMO IDIOMA en que te escribió (inglés si escribió en inglés, español si escribió en español).
 
