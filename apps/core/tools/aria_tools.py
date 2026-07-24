@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import tempfile
 from typing import Any
 
 import httpx
@@ -316,6 +317,9 @@ class APIDiscoveryTool:
         try:
             # Use OpenAPI Generator
             spec_json = json.dumps(openapi_spec)
+            # A unique dir per call — a fixed shared path is a symlink/TOCTOU risk
+            # and would let concurrent calls clobber each other's output.
+            out_dir = tempfile.mkdtemp(prefix="aria_generated_client_")
 
             result = subprocess.run(
                 [
@@ -326,7 +330,7 @@ class APIDiscoveryTool:
                     "-g",
                     language,
                     "-o",
-                    "/tmp/generated_client",
+                    out_dir,
                 ],
                 input=spec_json,
                 capture_output=True,
@@ -337,6 +341,7 @@ class APIDiscoveryTool:
             return {
                 "success": result.returncode == 0,
                 "output": result.stdout,
+                "output_dir": out_dir,
                 "error": result.stderr if result.returncode != 0 else "",
             }
         except Exception as exc:

@@ -439,9 +439,10 @@ class SalesforceConnection(BaseConnector):
 
     async def list_leads(self, tokens: dict, limit: int = 20) -> list[dict]:
         """List CRM leads."""
+        # Force int so a non-numeric limit raises here instead of reaching the query.
         query = (
-            f"SELECT Id, FirstName, LastName, Email, Company, Phone, Status "
-            f"FROM Lead ORDER BY CreatedDate DESC LIMIT {limit}"
+            f"SELECT Id, FirstName, LastName, Email, Company, Phone, Status "  # nosec B608 - only interpolated value is int(limit), not free text
+            f"FROM Lead ORDER BY CreatedDate DESC LIMIT {int(limit)}"
         )
         records = await self.soql_query(tokens, query)
         return [
@@ -487,9 +488,10 @@ class SalesforceConnection(BaseConnector):
 
     async def list_opportunities(self, tokens: dict, limit: int = 20) -> list[dict]:
         """List CRM opportunities."""
+        # Force int so a non-numeric limit raises here instead of reaching the query.
         query = (
-            f"SELECT Id, Name, StageName, CloseDate, Amount, AccountId "
-            f"FROM Opportunity ORDER BY CreatedDate DESC LIMIT {limit}"
+            f"SELECT Id, Name, StageName, CloseDate, Amount, AccountId "  # nosec B608 - only interpolated value is int(limit), not free text
+            f"FROM Opportunity ORDER BY CreatedDate DESC LIMIT {int(limit)}"
         )
         records = await self.soql_query(tokens, query)
         return [

@@ -84,28 +84,41 @@ class HFConnector:
             logger.error(f"Error searching for datasets on Hugging Face: {e}")
             return []
 
-    async def download_model(self, model_id: str, local_path: str) -> str | None:
+    async def download_model(
+        self, model_id: str, local_path: str, revision: str | None = None
+    ) -> str | None:
+        """Download a model snapshot. Pass `revision` (a commit SHA or tag) to pin
+        an exact version — without it, Hub-side changes to the repo's default
+        branch are pulled in silently on every call. model_id is caller-supplied
+        and there's no single safe default to pin here, so this is opt-in."""
         if not _HF_AVAILABLE:
             return None
         try:
             from huggingface_hub import snapshot_download
 
             downloaded_path = snapshot_download(
-                repo_id=model_id, local_dir=local_path, token=self.token
-            )
+                repo_id=model_id, local_dir=local_path, token=self.token, revision=revision
+            )  # nosec B615 - revision is pinnable by the caller; model_id is dynamic
             logger.info(f"Model {model_id} downloaded to: {downloaded_path}")
             return downloaded_path
         except Exception as e:
             logger.error(f"Error downloading model {model_id}: {e}")
             return None
 
-    async def download_dataset(self, dataset_id: str, local_path: str) -> str | None:
+    async def download_dataset(
+        self, dataset_id: str, local_path: str, revision: str | None = None
+    ) -> str | None:
+        """Download a dataset. Pass `revision` (a commit SHA or tag) to pin an
+        exact version — see download_model's docstring for why there's no safe
+        default to pin here."""
         if not _HF_AVAILABLE:
             return None
         try:
             from datasets import load_dataset
 
-            load_dataset(dataset_id, cache_dir=local_path)
+            load_dataset(
+                dataset_id, cache_dir=local_path, revision=revision
+            )  # nosec B615 - revision is pinnable by the caller; dataset_id is dynamic
             logger.info(f"Dataset {dataset_id} downloaded to: {local_path}")
             return local_path
         except Exception as e:

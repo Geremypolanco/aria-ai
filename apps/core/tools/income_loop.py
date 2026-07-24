@@ -2279,7 +2279,9 @@ Output JSON:
                 ]
                 import hashlib as _pf_hash
 
-                _pf_idx = int(_pf_hash.md5(title.encode()).hexdigest(), 16) % len(_pf_fallbacks)
+                _pf_idx = int(
+                    _pf_hash.md5(title.encode(), usedforsecurity=False).hexdigest(), 16
+                ) % len(_pf_fallbacks)
                 product_data = _pf_fallbacks[_pf_idx]
                 logger.info(
                     "[IncomeLoop] product_factory: using hardcoded fallback product (AI unavailable)"
@@ -3151,7 +3153,9 @@ JSON:
                 ]
                 import hashlib as _hash
 
-                _idx = int(_hash.md5(topic_str.encode()).hexdigest(), 16) % len(_fallback_products)
+                _idx = int(
+                    _hash.md5(topic_str.encode(), usedforsecurity=False).hexdigest(), 16
+                ) % len(_fallback_products)
                 product = _fallback_products[_idx]
                 logger.info(
                     "[IncomeLoop] shopify_listing: using fallback product #%d (AI unavailable)",
@@ -3478,7 +3482,9 @@ JSON:
                 ]
                 import hashlib as _hash2
 
-                _idx2 = int(_hash2.md5(topic_str.encode()).hexdigest(), 16) % len(_ebook_fallbacks)
+                _idx2 = int(
+                    _hash2.md5(topic_str.encode(), usedforsecurity=False).hexdigest(), 16
+                ) % len(_ebook_fallbacks)
                 ebook = _ebook_fallbacks[_idx2]
                 logger.info(
                     "[IncomeLoop] ebook_factory: using fallback ebook #%d (AI unavailable)", _idx2
@@ -4444,9 +4450,10 @@ JSON:
                 ]
                 import hashlib as _hash_lm
 
-                _lm_i = int(_hash_lm.md5(str(random.random()).encode()).hexdigest(), 16) % len(
-                    _lm_fallbacks
-                )
+                _lm_i = int(
+                    _hash_lm.md5(str(random.random()).encode(), usedforsecurity=False).hexdigest(),
+                    16,
+                ) % len(_lm_fallbacks)
                 _lm_name, _lm_desc, _lm_price = _lm_fallbacks[_lm_i]
                 _lm_gr = await _gt_lm.create_product(
                     name=_lm_name,
@@ -6447,7 +6454,9 @@ JSON:
                 ]
                 import hashlib as _hash3
 
-                _t_idx = int(_hash3.md5(topic.encode()).hexdigest(), 16) % len(_thread_fallbacks)
+                _t_idx = int(
+                    _hash3.md5(topic.encode(), usedforsecurity=False).hexdigest(), 16
+                ) % len(_thread_fallbacks)
                 thread = _thread_fallbacks[_t_idx]
                 logger.info(
                     "[IncomeLoop] viral_thread: using fallback thread #%d (AI unavailable)", _t_idx

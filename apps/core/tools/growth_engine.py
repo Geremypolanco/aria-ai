@@ -163,7 +163,7 @@ class AriaGrowthBookEngine:
     ) -> Any:
         """Deterministic hash-based assignment when GrowthBook is not available."""
         hash_input = f"{experiment_id}_{user_id}"
-        hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
+        hash_value = int(hashlib.md5(hash_input.encode(), usedforsecurity=False).hexdigest(), 16)
 
         if weights:
             # Weighted distribution

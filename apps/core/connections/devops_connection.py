@@ -272,9 +272,9 @@ class AWSS3Connection:
                     headers={"Authorization": auth, "x-amz-date": time_str, "host": host},
                 )
                 r.raise_for_status()
-                import xml.etree.ElementTree as ET
+                from defusedxml.ElementTree import fromstring
 
-                root = ET.fromstring(r.text)
+                root = fromstring(r.text)
                 ns = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
                 return [
                     {

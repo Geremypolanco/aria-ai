@@ -75,7 +75,9 @@ class KnowledgeBase:
         chunks = self._split_text(text)
         added = 0
         for chunk_text in chunks:
-            cid = hashlib.md5(f"{source}:{chunk_text[:80]}".encode()).hexdigest()[:12]
+            cid = hashlib.md5(
+                f"{source}:{chunk_text[:80]}".encode(), usedforsecurity=False
+            ).hexdigest()[:12]
             if cid in self._chunks:
                 continue
             emb = await self._embed(chunk_text)
@@ -221,7 +223,7 @@ class KnowledgeBase:
         dims = 128
         vec = [0.0] * dims
         for w in text.lower().split():
-            h = int(hashlib.md5(w.encode()).hexdigest(), 16)
+            h = int(hashlib.md5(w.encode(), usedforsecurity=False).hexdigest(), 16)
             vec[h % dims] += 1.0
         norm = (sum(v**2 for v in vec) ** 0.5) or 1.0
         return [v / norm for v in vec]

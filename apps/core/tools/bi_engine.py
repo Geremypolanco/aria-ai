@@ -258,17 +258,18 @@ class AriaMetabaseClient:
         Returns:
             Revenue summary with key metrics
         """
-        sql = f"""
-        SELECT
-            DATE_TRUNC('day', created_at) as date,
-            SUM(amount_usd) as daily_revenue,
-            COUNT(*) as sales_count,
-            AVG(amount_usd) as avg_sale
-        FROM sales
-        WHERE created_at > NOW() - INTERVAL '{days} days'
-        GROUP BY 1
-        ORDER BY 1 DESC
-        """
+        # Force int so a non-numeric `days` raises here instead of reaching the query.
+        sql = (
+            "SELECT "  # nosec B608 - only interpolated value below is int(days)
+            "DATE_TRUNC('day', created_at) as date, "
+            "SUM(amount_usd) as daily_revenue, "
+            "COUNT(*) as sales_count, "
+            "AVG(amount_usd) as avg_sale "
+            "FROM sales "
+            f"WHERE created_at > NOW() - INTERVAL '{int(days)} days' "
+            "GROUP BY 1 "
+            "ORDER BY 1 DESC"
+        )
         return await self.run_query(sql)
 
     def get_status(self) -> dict[str, Any]:
