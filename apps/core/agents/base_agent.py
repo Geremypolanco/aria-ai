@@ -55,7 +55,9 @@ class BaseAgent(ABC):
     """
 
     APPROVAL_THRESHOLD_USD: float = float(getattr(settings, "MAX_SPEND_WITHOUT_APPROVAL_USD", 0.0))
-    REQUIRE_APPROVAL_FOR_PAYMENTS: bool = bool(getattr(settings, "REQUIRE_APPROVAL_FOR_PAYMENTS", True))
+    REQUIRE_APPROVAL_FOR_PAYMENTS: bool = bool(
+        getattr(settings, "REQUIRE_APPROVAL_FOR_PAYMENTS", True)
+    )
 
     # Global map: capability_name -> required env_var
     CAPABILITY_ENV_MAP: dict[str, str] = {
