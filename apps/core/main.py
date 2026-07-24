@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime
+from datetime import UTC, datetime
 
 import uvicorn
 from fastapi import BackgroundTasks, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
@@ -97,6 +97,35 @@ def _client_ip(request: Request) -> str:
     if fwd:
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+# Self-hosted funnel counters — no third-party analytics account, no
+# client-side script, no PII: just aggregate daily/lifetime counts of the
+# handful of events that answer "is anyone reaching this step at all."
+# /admin surfaces these; see admin_overview().
+TRACK_EVENTS = (
+    "landing_view",
+    "signup_page_view",
+    "signup_submitted",
+    "login_submitted",
+    "auth_success",
+    "checkout_started",
+    "checkout_agreed",
+)
+
+
+async def _track(event: str) -> None:
+    """Increment this event's lifetime + today counters. Best-effort: a
+    tracking failure must never affect the actual response."""
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        await cache.increment(f"aria:track:{event}:total")
+        await cache.increment(f"aria:track:{event}:{today}")
+    except Exception:
+        pass
 
 
 def _rate_ok(request: Request, bucket: str, limit: int, window: float) -> bool:
@@ -360,6 +389,7 @@ _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    await _track("landing_view")
     path = os.path.join(os.path.dirname(__file__), "templates", "index.html")
     try:
         with open(path, encoding="utf-8") as f:
@@ -646,7 +676,27 @@ async def admin_overview(request: Request):
         "frozen_users": led.frozen_users(),
         "connectors": get_store().get_all(),
         "panic": _PANIC["on"],
+        "traffic": await _read_traffic(),
     }
+
+
+async def _read_traffic() -> dict[str, dict[str, int]]:
+    """Lifetime + today counts for each funnel event (see TRACK_EVENTS).
+    Best-effort per key: a single failed read must not blank out the rest."""
+    from apps.core.memory.redis_client import get_cache
+
+    cache = get_cache()
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    out: dict[str, dict[str, int]] = {}
+    for event in TRACK_EVENTS:
+        total = 0
+        today_count = 0
+        with suppress(Exception):
+            total = int(await cache.get(f"aria:track:{event}:total") or 0)
+        with suppress(Exception):
+            today_count = int(await cache.get(f"aria:track:{event}:{today}") or 0)
+        out[event] = {"total": total, "today": today_count}
+    return out
 
 
 @app.post("/admin/panic")
@@ -852,9 +902,10 @@ a.lnk{{color:#047857;text-decoration:none;font-weight:600}} a.lnk:hover{{text-de
 </div></body></html>"""
 
 
-def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResponse:
+async def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResponse:
     from apps.core import auth
 
+    await _track("auth_success")
     resp = RedirectResponse("/app", status_code=303)
     resp.set_cookie(
         auth.USER_COOKIE,
@@ -871,6 +922,7 @@ def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResp
 async def signup_page(request: Request):
     if _current_user(request):
         return RedirectResponse("/app", status_code=303)
+    await _track("signup_page_view")
     return HTMLResponse(_auth_page("signup"))
 
 
@@ -881,6 +933,7 @@ async def signup_submit(
     password: str = Form(...),
     name: str = Form(""),
 ):
+    await _track("signup_submitted")
     if not _rate_ok(request, "signup", 10, 3600):
         return HTMLResponse(
             _auth_page("signup", "Too many attempts — please wait a minute.", email),
@@ -895,7 +948,7 @@ async def signup_submit(
         await auth.remember_user(
             {"email": email.strip().lower(), "name": name, "provider": "email"}
         )
-    return _auth_success_redirect(email.strip().lower(), name.strip(), "email")
+    return await _auth_success_redirect(email.strip().lower(), name.strip(), "email")
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -911,6 +964,7 @@ async def login_submit(
     email: str = Form(...),
     password: str = Form(...),
 ):
+    await _track("login_submitted")
     if not _rate_ok(request, "login", 20, 900):
         return HTMLResponse(
             _auth_page("login", "Too many attempts — please wait a moment.", email),
@@ -921,7 +975,7 @@ async def login_submit(
     profile = await auth_accounts.verify_credentials(email, password)
     if not profile:
         return HTMLResponse(_auth_page("login", "Wrong email or password.", email), status_code=401)
-    return _auth_success_redirect(profile["email"], profile.get("name", ""), "email")
+    return await _auth_success_redirect(profile["email"], profile.get("name", ""), "email")
 
 
 def _oauth_redirect(url: str | None, state: str, fallback: str) -> RedirectResponse:
@@ -964,6 +1018,7 @@ async def _finish_login(profile: dict | None):
     if not profile or not profile.get("email"):
         return RedirectResponse("/login?e=failed", status_code=303)
     await auth.remember_user(profile)
+    await _track("auth_success")
     resp = RedirectResponse("/app", status_code=303)
     resp.set_cookie(
         auth.USER_COOKIE,
@@ -1277,10 +1332,12 @@ async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""
     tier = tier if tier in BILLING_PLANS else "pro"
     plan = BILLING_PLANS[tier]
 
+    await _track("checkout_started")
     # Enforce the no-refund acknowledgement before any charge can start.
     if agreed.lower() not in ("1", "true", "yes", "on"):
         return _checkout_confirm_page(tier, plan)
 
+    await _track("checkout_agreed")
     key = getattr(settings, "STRIPE_SECRET_KEY", None)
     if not key:
         # Billing not configured yet — send the user back with a clear flag.

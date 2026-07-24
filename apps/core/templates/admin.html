@@ -84,6 +84,15 @@
     </div>
   </section>
 
+  <!-- traffic funnel -->
+  <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50 p-5">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-600">Traffic funnel</h2>
+      <span class="mono text-[11px] text-zinc-400">self-hosted · no third-party analytics</span>
+    </div>
+    <div id="funnel" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7"></div>
+  </section>
+
   <!-- connector semaphore -->
   <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50 p-5">
     <div class="mb-3 flex items-center justify-between">
@@ -149,6 +158,26 @@ function render(d){
   document.getElementById('kUsers').textContent = d.user_count ?? 0;
   const frozen = (d.frozen_users||[]).length;
   document.getElementById('kFrozen').textContent = frozen + ' frozen (burn cap)';
+
+  // traffic funnel
+  const FUNNEL_LABELS = {
+    landing_view: 'Landing views',
+    signup_page_view: 'Signup page views',
+    signup_submitted: 'Signup attempts',
+    login_submitted: 'Login attempts',
+    auth_success: 'Signed in (any)',
+    checkout_started: 'Checkout started',
+    checkout_agreed: 'Checkout agreed',
+  };
+  const traffic = d.traffic || {};
+  document.getElementById('funnel').innerHTML = Object.keys(FUNNEL_LABELS).map(function(k){
+    const v = traffic[k] || {total: 0, today: 0};
+    return '<div class="rounded-xl border border-zinc-200 bg-zinc-50/60 px-3 py-3">'
+      + '<div class="text-[10.5px] font-semibold uppercase tracking-wide text-zinc-500">'+FUNNEL_LABELS[k]+'</div>'
+      + '<div class="mono mt-1 text-xl font-extrabold text-zinc-900">'+v.total+'</div>'
+      + '<div class="mt-0.5 text-[11px] text-zinc-500">'+v.today+' today</div>'
+      + '</div>';
+  }).join('');
 
   // connectors
   const dot = s => s==='online'?'bg-emerald-400':s==='degraded'?'bg-amber-400':s==='offline'?'bg-red-500':'bg-zinc-600';
