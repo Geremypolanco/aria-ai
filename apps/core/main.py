@@ -304,6 +304,31 @@ async def _no_cache_html(request: Request, call_next):
     return resp
 
 
+# Security response headers on every response. Concrete, testable controls that
+# map to SOC 2 (CC6), ISO/IEC 27001 (A.8/A.13) and HIPAA transmission-security
+# expectations. We intentionally do NOT set a strict Content-Security-Policy
+# script-src here because the app relies on inline scripts; tightening CSP is a
+# hardening item tracked in docs/compliance/roadmap.md.
+_SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=(), payment=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Content-Security-Policy": "frame-ancestors 'self'",
+}
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    """Attach baseline security headers to every response (see _SECURITY_HEADERS)."""
+    resp = await call_next(request)
+    for key, value in _SECURITY_HEADERS.items():
+        resp.headers.setdefault(key, value)
+    return resp
+
+
 # ── Feature routers (modular) ─────────────────────────────────────
 try:
     from apps.core.routes.clipper import router as clipper_router
@@ -461,6 +486,7 @@ _LEGAL_FILES = {
     "terms": "terms.html",
     "privacy": "privacy.html",
     "refund-policy": "refund-policy.html",
+    "trust": "trust.html",
 }
 
 
@@ -503,6 +529,17 @@ async def privacy():
 @app.get("/refunds")
 async def refunds():
     return RedirectResponse("/legal/refund-policy", status_code=301)
+
+
+@app.get("/trust", response_class=HTMLResponse)
+async def trust_center():
+    """Trust Center — security practices, compliance status, and Responsible AI."""
+    return _serve_legal("trust")
+
+
+@app.get("/security")
+async def security_redirect():
+    return RedirectResponse("/trust", status_code=301)
 
 
 def _serve_control_panel() -> HTMLResponse:
