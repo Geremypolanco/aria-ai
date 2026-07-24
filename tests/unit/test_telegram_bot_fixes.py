@@ -9,10 +9,10 @@
    raised ImportError on every single photo message, caught by the
    function's own except-and-return-"" — meaning ALL photo handling
    (VQA and image description) was permanently dead code, never reachable.
-3. _send_message()/_send_photo() are called by aria_commands.py,
-   deep_think.py, task_manager.py, and orchestrator.py, but only _send()/
-   _send_photo_bytes() existed on this class — every one of those callers'
-   notifications silently failed via their own except-and-pass.
+3. _send_message()/_send_photo() are called by deep_think.py, task_manager.py,
+   and orchestrator.py, but only _send()/_send_photo_bytes() existed on this
+   class — every one of those callers' notifications silently failed via
+   their own except-and-pass.
 """
 
 from __future__ import annotations

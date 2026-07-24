@@ -7,8 +7,12 @@ these actions. It must fail CLOSED: block the action and require human
 review instead.
 
 Found while building the SOC 2 / ISO 27001 / HIPAA technical gap-analysis —
-ComplianceAgent is reachable live via telegram_bot.py -> aria_commands.py ->
-AuditorAgent/execution_pipeline.py, not dead code.
+at the time, ComplianceAgent turned out to be unreachable from any live code
+path (the aria_commands.py module this docstring used to cite as the call
+chain never actually imported it, and has since been deleted as dead code).
+It is now wired in for real via base_agent.py's execute_with_approval(),
+which every costed/high-impact agent action funnels through — see
+test_base_agent_execute_with_approval.py for that integration.
 """
 
 from __future__ import annotations

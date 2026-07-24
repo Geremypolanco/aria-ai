@@ -1,7 +1,7 @@
 """
-Settings centralizados para Aria AI.
-Todos los secrets se cargan desde variables de entorno o Fly.io secrets.
-HuggingFace es el motor principal. Groq y OpenAI son respaldo.
+Centralized settings for Aria AI.
+All secrets are loaded from environment variables or Fly.io secrets.
+HuggingFace is the primary engine. Groq and OpenAI are fallback.
 """
 
 from pydantic import field_validator
@@ -9,27 +9,27 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # ── SISTEMA ───────────────────────────────────────────
+    # ── SYSTEM ────────────────────────────────────────────
     ENVIRONMENT: str = "production"
     PORT: int = 8000
-    OWNER_NAME: str = "Señor Polanco"
+    OWNER_NAME: str = "Geremy Polanco"
     OWNER_EMAIL: str | None = None
     CYCLE_INTERVAL_MINUTES: int = 60
     REQUIRE_APPROVAL_FOR_PAYMENTS: bool = True
     REQUIRE_APPROVAL_FOR_DEPLOYS: bool = False
     MAX_SPEND_WITHOUT_APPROVAL_USD: float = 0.0
 
-    # ── NOTIFICACIONES ────────────────────────────────────
+    # ── NOTIFICATIONS ─────────────────────────────────────
     TELEGRAM_TOKEN: str = ""
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
 
     @property
     def telegram_token(self) -> str:
-        """Devuelve el token de Telegram disponible."""
+        """Returns whichever Telegram token is available."""
         return self.TELEGRAM_TOKEN or self.TELEGRAM_BOT_TOKEN
 
-    # ── BASE DE DATOS ─────────────────────────────────────
+    # ── DATABASE ──────────────────────────────────────────
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
     UPSTASH_REDIS_REST_URL: str = ""
@@ -39,12 +39,13 @@ class Settings(BaseSettings):
     @field_validator("SUPABASE_URL", mode="before")
     @classmethod
     def fix_supabase_url(cls, v: str) -> str:
-        """Corrige URL del dashboard a URL REST del proyecto.
+        """Fixes a pasted dashboard URL into the project's REST URL.
 
-        Toma el segmento que sigue a "project/" específicamente, no "el último
-        segmento no vacío" — pegar la URL mientras se está en /editor, /sql,
-        /settings/api, etc. (el caso normal al copiarla del navegador) rompía
-        esto silenciosamente, generando un host inválido como "editor.supabase.co".
+        Takes the segment specifically following "project/", not "the last
+        non-empty segment" — pasting the URL while on /editor, /sql,
+        /settings/api, etc. (the normal case when copying it from the browser)
+        used to break this silently, producing an invalid host like
+        "editor.supabase.co".
         """
         if not v:
             return v
@@ -56,14 +57,14 @@ class Settings(BaseSettings):
                 return f"https://{project_ref}.supabase.co"
         return v
 
-    # ── HuggingFace (motor principal) ─────────────────────
+    # ── HuggingFace (primary engine) ───────────────────────
     HF_TOKEN: str | None = None
     HF_API_KEY: str | None = None
     HUGGING_FACE_TOKEN: str | None = None
 
     @property
     def hf_key(self) -> str | None:
-        """Compatibilidad con ai_client.py: devuelve el HF token."""
+        """Compatibility with ai_client.py: returns the HF token."""
         return self.HF_TOKEN or self.HF_API_KEY or self.HUGGING_FACE_TOKEN
 
     # ── AI video (layer 2): open-weights text-to-video on rented GPU ──
@@ -75,33 +76,33 @@ class Settings(BaseSettings):
     FAL_KEY: str | None = None
     FAL_VIDEO_MODEL: str = "fal-ai/ltx-video"
 
-    # ── Modelos HF primarios ───────────────────────────────
+    # ── Primary HF models ─────────────────────────────────
     HF_MODEL_STRATEGY: str = "Qwen/Qwen2.5-72B-Instruct"
     HF_MODEL_CODE: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
     HF_MODEL_FAST: str = "microsoft/Phi-3-mini-4k-instruct"
     HF_MODEL_CREATIVE: str = "HuggingFaceH4/zephyr-7b-beta"
 
-    # ── Modelos HF de respaldo ────────────────────────────
+    # ── Fallback HF models ────────────────────────────────
     HF_MODEL_STRATEGY_FB: str = "mistralai/Mistral-7B-Instruct-v0.3"
     HF_MODEL_CODE_FB: str = "microsoft/Phi-3.5-mini-instruct"
     HF_MODEL_FAST_FB: str = "google/flan-t5-large"
 
-    # ── Respaldo 1: Groq ──────────────────────────────────
+    # ── Fallback 1: Groq ──────────────────────────────────
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_MODEL_FAST: str = "llama-3.1-8b-instant"
     GROQ_MODEL_CODE: str = "llama-3.3-70b-versatile"
 
-    # ── Respaldo 2: OpenAI ────────────────────────────────
+    # ── Fallback 2: OpenAI ────────────────────────────────
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 
-    # ── IA Adicional ──────────────────────────────────────
+    # ── Additional AI ─────────────────────────────────────
     ANTHROPIC_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
     COHERE_API_KEY: str | None = None
 
-    # ── CONTENIDO / SEO ───────────────────────────────────
+    # ── CONTENT / SEO ─────────────────────────────────────
     NEWS_API_KEY: str | None = None
     SERP_API_KEY: str | None = None
     # Alternative web-search providers (free tiers, work from servers). Set either
@@ -111,7 +112,7 @@ class Settings(BaseSettings):
     PEXELS_API_KEY: str | None = None
     ELEVENLABS_API_KEY: str | None = None
 
-    # ── COMERCIO ──────────────────────────────────────────
+    # ── COMMERCE ──────────────────────────────────────────
     GUMROAD_TOKEN: str | None = None
     STRIPE_SECRET_KEY: str | None = None
     # Signing secret for the /billing/webhook endpoint (Stripe dashboard →
@@ -127,7 +128,7 @@ class Settings(BaseSettings):
     LEMONSQUEEZY_API_KEY: str | None = None
     LEMONSQUEEZY_STORE_ID: str | None = None
 
-    # ── REDES SOCIALES ────────────────────────────────────
+    # ── SOCIAL MEDIA ──────────────────────────────────────
     BUFFER_TOKEN: str | None = None
     AIRTABLE_TOKEN: str | None = None
     MAILCHIMP_API_KEY: str | None = None
@@ -162,7 +163,7 @@ class Settings(BaseSettings):
     # Screenshot API
     SCREENSHOT_API_KEY: str | None = None
 
-    # ── PUBLICACIÓN DE CONTENIDO ──────────────────────────
+    # ── CONTENT PUBLISHING ────────────────────────────────
     MEDIUM_TOKEN: str | None = None
     DEVTO_API_KEY: str | None = None
     HASHNODE_TOKEN: str | None = None
@@ -182,7 +183,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = None
     SMTP_FROM: str | None = None
 
-    # ── AFILIADOS ─────────────────────────────────────────
+    # ── AFFILIATES ────────────────────────────────────────
     AMAZON_ASSOCIATE_TAG: str | None = None
     CLICKBANK_AFFILIATE_ID: str | None = None
     HOTMART_AFFILIATE_ID: str | None = None
@@ -192,7 +193,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str | None = None
     CLOUDINARY_API_SECRET: str | None = None
 
-    # ── DESARROLLO ────────────────────────────────────────
+    # ── DEVELOPMENT ───────────────────────────────────────
     GITHUB_TOKEN: str | None = None
     GITHUB_USERNAME: str = "Geremypolanco"
     GITHUB_REPO: str | None = None
@@ -219,11 +220,11 @@ class Settings(BaseSettings):
     PISTON_API_URL: str | None = None
     SOCIAL_CONNECT_TOKEN: str = "aria"
 
-    # ── COMUNICACIÓN ──────────────────────────────────────
+    # ── COMMUNICATION ─────────────────────────────────────
     TWILIO_ACCOUNT_SID: str | None = None
     TWILIO_AUTH_TOKEN: str | None = None
 
-    # ── API PÚBLICA ───────────────────────────────────────
+    # ── PUBLIC API ────────────────────────────────────────
     ARIA_API_KEY: str | None = None
     # Owner-only password gating the /admin control panel (server-side).
     ADMIN_PASSWORD: str | None = None
@@ -247,13 +248,13 @@ class Settings(BaseSettings):
     YOUTUBE_WEBHOOK_SECRET: str | None = None
     YOUTUBE_API_KEY: str | None = None
 
-    # ── CREDENCIALES DE ARIA (para login stealth en plataformas) ──────────
+    # ── ARIA CREDENTIALS (for stealth login on platforms) ─────────────────
     ARIA_EMAIL: str | None = None
     ARIA_PASSWORD: str | None = None
 
-    # ── CONEXIONES OAuth (equivalente a MCP de Claude) ────────────────────
-    # Google OAuth (DIFERENTE de GOOGLE_API_KEY — para acceso a Gmail/Calendar/Drive)
-    # Obtén en: console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0
+    # ── OAuth CONNECTIONS (Claude's MCP equivalent) ───────────────────────
+    # Google OAuth (DIFFERENT from GOOGLE_API_KEY — for Gmail/Calendar/Drive access)
+    # Get it at: console.cloud.google.com → APIs & Services → Credentials → OAuth 2.0
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
     GITHUB_CLIENT_ID: str | None = None
@@ -279,11 +280,11 @@ class Settings(BaseSettings):
     STRIPE_CONNECT_CLIENT_ID: str | None = None
     # (TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET already declared below.)
 
-    # Slack OAuth (para enviar/leer mensajes en workspaces)
-    # Obtén en: api.slack.com/apps → Create App → OAuth & Permissions
+    # Slack OAuth (for sending/reading messages in workspaces)
+    # Get it at: api.slack.com/apps → Create App → OAuth & Permissions
     SLACK_CLIENT_ID: str | None = None
     SLACK_CLIENT_SECRET: str | None = None
-    SLACK_WEBHOOK_URL: str | None = None  # Modo simple: solo webhook URL
+    SLACK_WEBHOOK_URL: str | None = None  # Simple mode: webhook URL only
 
     # ── Microsoft / Zoom ──────────────────────────────────
     MICROSOFT_CLIENT_ID: str | None = None
@@ -298,7 +299,7 @@ class Settings(BaseSettings):
     SALESFORCE_CLIENT_ID: str | None = None
     SALESFORCE_CLIENT_SECRET: str | None = None
 
-    # ── Almacenamiento ────────────────────────────────────
+    # ── Storage ───────────────────────────────────────────
     DROPBOX_APP_KEY: str | None = None
     DROPBOX_APP_SECRET: str | None = None
     BOX_CLIENT_ID: str | None = None
@@ -309,7 +310,7 @@ class Settings(BaseSettings):
     CALENDLY_CLIENT_SECRET: str | None = None
     CALCOM_API_KEY: str | None = None
 
-    # ── Diseño ────────────────────────────────────────────
+    # ── Design ─────────────────────────────────────────────
     FIGMA_CLIENT_ID: str | None = None
     FIGMA_CLIENT_SECRET: str | None = None
     FIGMA_API_TOKEN: str | None = None
@@ -369,7 +370,7 @@ class Settings(BaseSettings):
     TWITCH_CLIENT_ID: str | None = None
     TWITCH_CLIENT_SECRET: str | None = None
 
-    # ── Gestión de Proyectos ──────────────────────────────
+    # ── Project Management ─────────────────────────────────
     ASANA_ACCESS_TOKEN: str | None = None
     TRELLO_API_KEY: str | None = None
     TRELLO_TOKEN: str | None = None
@@ -379,7 +380,7 @@ class Settings(BaseSettings):
     JIRA_API_TOKEN: str | None = None
     MONDAY_API_KEY: str | None = None
 
-    # ── Finanzas ──────────────────────────────────────────
+    # ── Finance ───────────────────────────────────────────
     QUICKBOOKS_CLIENT_ID: str | None = None
     QUICKBOOKS_CLIENT_SECRET: str | None = None
     ALPHA_VANTAGE_API_KEY: str | None = None

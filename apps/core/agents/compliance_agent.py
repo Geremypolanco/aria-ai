@@ -380,3 +380,17 @@ class ComplianceAgent(BaseAgent):
             "auto_approve_categories_count": len(AUTO_APPROVE_CATEGORIES),
             "prohibitions_sample": HARD_PROHIBITIONS[:5],
         }
+
+
+# ── SINGLETON ─────────────────────────────────────────────
+# A fresh instance per call would silently reset _violation_count each time,
+# defeating the 5-strikes emergency-brake escalation in _review_action() —
+# callers (base_agent.py's execute_with_approval) must share one instance.
+_compliance_agent: ComplianceAgent | None = None
+
+
+def get_compliance_agent() -> ComplianceAgent:
+    global _compliance_agent
+    if _compliance_agent is None:
+        _compliance_agent = ComplianceAgent()
+    return _compliance_agent
