@@ -119,6 +119,7 @@ AVAILABLE TOOLS (you execute them, not the user):
 - run_business_agent → activates a specialized business agent. Args: {{"agent": "ceo|marketing|sales|developer|research|content|finance", "mission": "...", "context": {{}}}}
 - browse_page     → opens a URL in a real browser (with JS) and extracts its content. Args: {{"url": "https://...", "screenshot": false}}
 - interact_browser → performs actions in the browser (click, fill, submit forms). Args: {{"steps": [{{"action": "navigate|click|fill|press|wait|screenshot|extract_text", "url": "...", "selector": "...", "value": "...", "key": "..."}}]}}
+- computer_use     → OWNER ONLY. Operates a real browser visually — the model looks at screenshots and decides mouse/keyboard actions itself, for pages too complex for scripted steps. Slower and more expensive than browse_page/interact_browser; only use it when those aren't enough. Args: {{"task": "what to accomplish", "start_url": "https://...", "max_steps": 15}}
 - web_search      → searches the internet in real time. Use specific, descriptive queries. Args: {{"query": "..."}}
 - deep_search     → deep search: searches AND reads the content of the top pages. Ideal for research. Args: {{"query": "...", "num_pages": 3}}
 - fetch_url       → reads the full content of a specific URL. Args: {{"url": "https://..."}}
@@ -213,6 +214,7 @@ REASONING RULES:
 27. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
 28. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
 29. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+30. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -849,8 +851,22 @@ class AriaMind:
     # handful of substring matches, trivially bypassed. Until real sandboxing
     # exists, this is effectively host code execution and must stay
     # owner-only, not a free-tier chat capability.
+    #
+    # computer_use launches a real headless Chromium and lets the model click
+    # and type anywhere on the open web via coordinate-based actions — always
+    # a fresh, credential-free browser context (never the owner's logged-in
+    # session), but still capable of real-world side effects (submitting
+    # forms, following links) that a free-tier account must not be able to
+    # trigger unsupervised.
     _OWNER_ONLY_TOOLS = frozenset(
-        {"github_write", "github_pr", "github_issues", "github_self", "execute_code"}
+        {
+            "github_write",
+            "github_pr",
+            "github_issues",
+            "github_self",
+            "execute_code",
+            "computer_use",
+        }
     )
 
     async def _execute_tool(
@@ -865,7 +881,7 @@ class AriaMind:
 
             if not auth.is_owner_email(email):
                 return (
-                    "This action (writing to GitHub) is reserved for ARIA's owner.",
+                    "This action is reserved for ARIA's owner.",
                     {},
                 )
         try:
@@ -1295,6 +1311,41 @@ class AriaMind:
                     for s in r.get("results", [])
                 )
                 return f"[BROWSER] {summary}\n{details}", {}
+
+            # ── COMPUTER USE (visual, click-driven browser agent) ─────────
+            elif tool == "computer_use":
+                task = args.get("task", "")
+                if not task:
+                    return "I need a task description to operate the computer for.", {}
+                start_url = args.get("start_url", "about:blank")
+                max_steps = int(args.get("max_steps", 15))
+                import base64
+
+                from apps.core.config import settings
+                from apps.core.integrations.computer_agent import (
+                    BrowserComputer,
+                    ComputerUseAgent,
+                )
+
+                if not settings.ANTHROPIC_API_KEY:
+                    return (
+                        "Computer Use needs ANTHROPIC_API_KEY configured — it isn't set.",
+                        {},
+                    )
+                computer = BrowserComputer(headless=True, start_url=start_url)
+                await computer.start()
+                try:
+                    agent = ComputerUseAgent(computer, api_key=settings.ANTHROPIC_API_KEY)
+                    run = await agent.run(task, max_steps=max_steps)
+                    final_shot_b64 = await computer.screenshot_b64()
+                finally:
+                    await computer.close()
+                media = {"image_bytes": base64.b64decode(final_shot_b64)}
+                summary = (
+                    f"[COMPUTER USE] {len(run.steps)} steps, stop_reason={run.stop_reason}\n"
+                    f"{run.final_text or '(no final text)'}"
+                )
+                return summary, media
 
             # ── BUSINESS AGENT ────────────────────────────────────────────
             elif tool == "run_business_agent":
