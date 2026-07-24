@@ -1835,7 +1835,10 @@ class AriaMind:
 
                 profile = await get_style_engine().create_profile(name, niche, base_style)
                 dims = ", ".join(f"{k.lower()}: {v}" for k, v in profile.dimensions.items())
-                return f"**Style profile '{profile.name}'** (id: `{profile.profile_id}`)\n{dims}", {}
+                return (
+                    f"**Style profile '{profile.name}'** (id: `{profile.profile_id}`)\n{dims}",
+                    {},
+                )
 
             elif tool == "evolve_style":
                 profile_id = args.get("profile_id", "")
@@ -1870,7 +1873,8 @@ class AriaMind:
                     )
                 if result["freshness_tips"]:
                     lines.append(
-                        "Freshness tips:\n" + "\n".join(f"  • {t}" for t in result["freshness_tips"])
+                        "Freshness tips:\n"
+                        + "\n".join(f"  • {t}" for t in result["freshness_tips"])
                     )
                 return "\n".join(lines), {}
 
