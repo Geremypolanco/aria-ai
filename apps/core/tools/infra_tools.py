@@ -67,7 +67,7 @@ class InfraTools:
         from apps.core.tools.web_tools import _assert_public_url
 
         results = {}
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             for url in endpoints:
                 try:
                     await _assert_public_url(url)

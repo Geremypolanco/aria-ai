@@ -62,7 +62,7 @@ class GitHubTool:
     ) -> dict[str, Any]:
         """Creates a pull request on GitHub."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.base_url}/repos/{owner}/{repo}/pulls",
                     headers=self.headers,
@@ -84,7 +84,7 @@ class GitHubTool:
     async def list_issues(self, owner: str, repo: str, state: str = "open") -> dict[str, Any]:
         """Lists issues for a repository."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     f"{self.base_url}/repos/{owner}/{repo}/issues",
                     headers=self.headers,
@@ -206,7 +206,7 @@ class WebScrapingTool:
     async def scrape_page(self, url: str, selectors: dict[str, str] = None) -> dict[str, Any]:
         """Extracts data from a web page."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, timeout=30)
 
                 if response.status_code == 200:
@@ -291,7 +291,7 @@ class APIDiscoveryTool:
         """Discovers information about an API."""
         try:
             # Query OpenAPI Hub or similar
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     "https://api.apis.guru/v1/list.json",
                     timeout=10,
