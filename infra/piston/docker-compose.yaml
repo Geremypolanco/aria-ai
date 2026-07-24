@@ -1,0 +1,27 @@
+# Self-hosted Piston (github.com/engineer-man/piston) — the code-execution
+# engine ARIA's Artifacts panel "Run" button and code_sandbox.py call over
+# HTTP. Verbatim from the upstream docker-compose.yaml:
+# https://github.com/engineer-man/piston/blob/master/docker-compose.yaml
+#
+# `privileged: true` is required by Piston itself to set up its own internal
+# per-execution sandboxing (isolate/cgroups) — that's Piston's trust boundary
+# doing its job, not a mistake, but it does mean this container should run on
+# its own host/VM, not colocated with anything sensitive.
+#
+# See README.md in this directory for the full setup (installing language
+# runtimes is a separate step — none are bundled by default).
+
+version: '3.2'
+
+services:
+    api:
+        image: ghcr.io/engineer-man/piston
+        container_name: piston_api
+        restart: always
+        privileged: true
+        ports:
+            - 2000:2000
+        volumes:
+            - ./data/piston/packages:/piston/packages
+        tmpfs:
+            - /tmp:exec

@@ -45,7 +45,7 @@ class TestSupportAgent:
         for topic in ("billing", "missions", "connectors", "general"):
             assert _OFFLINE_ANSWERS[topic].strip()
         # billing answer references the strict no-refund policy honestly
-        assert "no reembolso" in offline_answer("reembolso").lower()
+        assert "no-refund policy" in offline_answer("reembolso").lower()
 
     async def test_answer_without_key_uses_offline(self):
         from apps.core.support.support_agent import answer

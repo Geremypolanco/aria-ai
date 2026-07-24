@@ -1,0 +1,79 @@
+# Self-hosted Activepieces (Community Edition, MIT-licensed) — the integration
+# engine ARIA talks to over MCP (see apps/core/tools/activepieces_mcp.py).
+#
+# This runs as its OWN independent stack (own Postgres, own Redis) — it is not
+# part of ARIA's app deployment. Deploy it wherever suits you (a small VPS, its
+# own Fly.io app, a Docker host you already run) and point ARIA at it via the
+# ACTIVEPIECES_MCP_URL secret. Adapted from the project's own docker-compose.yml:
+# https://github.com/activepieces/activepieces/blob/main/docker-compose.yml
+#
+# Usage:
+#   cd infra/activepieces
+#   cp .env.example .env   # then fill in AP_ENCRYPTION_KEY / AP_JWT_SECRET / AP_POSTGRES_PASSWORD
+#   docker compose up -d
+#   # open http://localhost:8080, create the admin account, then go to
+#   # Platform Settings -> MCP Servers to get this instance's MCP endpoint + token.
+#   # Put that URL in ARIA's ACTIVEPIECES_MCP_URL secret (fly secrets set ...).
+
+services:
+  app:
+    image: ghcr.io/activepieces/activepieces:0.86.3
+    container_name: activepieces-app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+      - redis
+    env_file: .env
+    environment:
+      - AP_CONTAINER_TYPE=APP
+    volumes:
+      - ap_cache:/usr/src/app/cache
+    networks:
+      - activepieces
+
+  worker:
+    image: ghcr.io/activepieces/activepieces:0.86.3
+    restart: unless-stopped
+    depends_on:
+      - app
+    env_file: .env
+    environment:
+      - AP_CONTAINER_TYPE=WORKER
+    volumes:
+      - ap_cache:/usr/src/app/cache
+    networks:
+      - activepieces
+
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg14
+    container_name: activepieces-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - POSTGRES_DB=${AP_POSTGRES_DATABASE}
+      - POSTGRES_USER=${AP_POSTGRES_USERNAME}
+      - POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}
+    volumes:
+      - ap_postgres_data:/var/lib/postgresql/data
+    networks:
+      - activepieces
+
+  redis:
+    image: redis:7.0.7
+    container_name: activepieces-redis
+    restart: unless-stopped
+    volumes:
+      - ap_redis_data:/data
+    networks:
+      - activepieces
+
+volumes:
+  ap_postgres_data:
+  ap_redis_data:
+  ap_cache:
+
+networks:
+  activepieces:
+    name: activepieces

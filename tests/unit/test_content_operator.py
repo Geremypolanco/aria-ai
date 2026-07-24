@@ -2,7 +2,8 @@
 Unit tests for the autonomous content operator and its Zapier MCP bridge.
 
 These cover the two pieces most likely to harbor bugs and that don't need network:
-  - ZapierMCPClient._parse_body: JSON vs SSE (event-stream) response parsing
+  - StreamableHttpMCPClient._parse_body (the shared transport ZapierMCPClient
+    delegates to): JSON vs SSE (event-stream) response parsing
   - ZapierMCPClient graceful no-op when unconfigured
   - ContentOperator._build_args: schema-driven mapping of an asset onto a tool's
     unknown parameter names (array vs string image field, caption, required extras)
@@ -29,15 +30,15 @@ class _FakeResp:
 
 class TestParseBody:
     def test_plain_json_response(self):
-        from apps.core.tools.zapier_mcp import ZapierMCPClient
+        from apps.core.tools.mcp_streamable_client import StreamableHttpMCPClient
 
         body = {"jsonrpc": "2.0", "id": 1, "result": {"tools": [{"name": "x"}]}}
         resp = _FakeResp("application/json", "{...}", json_obj=body)
-        out = ZapierMCPClient._parse_body(resp)
+        out = StreamableHttpMCPClient._parse_body(resp)
         assert out["result"]["tools"][0]["name"] == "x"
 
     def test_sse_response_returns_result_frame(self):
-        from apps.core.tools.zapier_mcp import ZapierMCPClient
+        from apps.core.tools.mcp_streamable_client import StreamableHttpMCPClient
 
         sse = (
             "event: message\n"
@@ -45,11 +46,11 @@ class TestParseBody:
             "\n"
         )
         resp = _FakeResp("text/event-stream", sse)
-        out = ZapierMCPClient._parse_body(resp)
+        out = StreamableHttpMCPClient._parse_body(resp)
         assert out["result"]["content"][0]["text"] == "ok"
 
     def test_sse_keeps_last_meaningful_frame(self):
-        from apps.core.tools.zapier_mcp import ZapierMCPClient
+        from apps.core.tools.mcp_streamable_client import StreamableHttpMCPClient
 
         sse = (
             'data: {"jsonrpc":"2.0","method":"ping"}\n'
@@ -57,7 +58,7 @@ class TestParseBody:
             "data: [DONE]\n"
         )
         resp = _FakeResp("text/event-stream", sse)
-        out = ZapierMCPClient._parse_body(resp)
+        out = StreamableHttpMCPClient._parse_body(resp)
         assert out["result"]["value"] == 42
 
 

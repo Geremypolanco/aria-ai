@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/favicon.svg" />
-<meta name="theme-color" content="#07080d" />
+<meta name="theme-color" content="#ffffff" />
 <title>ARIA</title>
-<meta name="description" content="ARIA — tu IA autónoma: pídele investigar, escribir o crear y observa cómo trabaja en tiempo real." />
+<meta name="description" content="ARIA — your autonomous AI: give it a job to research, write or create and watch it work in real time." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
 :root{
- --bg:#ffffff;--soft:#f3f8f5;--ink:#0a0f0c;--ink2:#3f4a44;--muted:#6b756f;--line:#e5ece8;
+ --bg:#ffffff;--soft:#f5f5f4;--ink:#1c1917;--ink2:#44403c;--muted:#78716c;--line:#e7e5e4;
  --neon:#15E06A;--neon-soft:#e8fcf1;--teal:#12b7a6;--green-ink:#057a52;--green-deep:#053b2a;
  --rose:#e11d48;--rose-soft:#fef2f4;
- --sh1:0 1px 2px rgba(10,20,15,.06);--sh2:0 14px 34px -14px rgba(10,20,15,.18);--sh3:0 30px 60px -22px rgba(10,20,15,.30);
+ --sh1:0 1px 2px rgba(28,25,23,.06);--sh2:0 14px 34px -14px rgba(28,25,23,.18);--sh3:0 30px 60px -22px rgba(28,25,23,.30);
  --glow:0 8px 24px -6px rgba(21,224,106,.45);
  --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
 }
@@ -25,6 +25,7 @@ html,body{height:100%}
 body{font-family:var(--font);color:var(--ink2);background:var(--soft);-webkit-font-smoothing:antialiased;overflow:hidden}
 svg{display:block}
 button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--neon);outline-offset:2px;border-radius:6px}
 /* utility classes toggled by JS */
 .hidden{display:none!important}
 .flex{display:flex!important}
@@ -86,7 +87,7 @@ textarea{field-sizing:content}
 .chev{color:var(--muted);flex:none}
 .userbtn .nm{font-size:14px;font-weight:700;color:var(--ink);line-height:1.2;display:block;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .userbtn .pl{font-size:11px;font-weight:700;color:var(--green-ink)}
-.backdrop{position:fixed;inset:0;z-index:40;background:rgba(6,15,10,.4)}
+.backdrop{position:fixed;inset:0;z-index:40;background:rgba(28,25,23,.4)}
 @media(min-width:1024px){.side{position:static;transform:none!important}.side .head .iconbtn.mtoggle{display:none}.backdrop.sb{display:none}}
 
 .console{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--soft)}
@@ -100,9 +101,9 @@ textarea{field-sizing:content}
 .scroll{flex:1;overflow:auto;padding:30px 22px}
 .inner{max-width:920px;margin:0 auto}
 /* chat */
-.chatscroll{flex:1;overflow-y:auto;overflow-x:hidden}
-.chatwrap{max-width:760px;margin:0 auto;padding:22px 20px 8px}
-.chat-empty{text-align:center;padding:5vh 0 2vh}
+.chatscroll{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.chatwrap{max-width:760px;width:100%;margin:0 auto;padding:22px 20px 8px;flex:1;display:flex;flex-direction:column}
+.chat-empty{text-align:center;padding:5vh 0 2vh;margin:auto 0}
 .ce-mark{width:52px;height:52px;border-radius:16px;background:var(--neon-soft);color:var(--green-ink);display:grid;place-items:center;margin:0 auto 18px}
 .chat-empty h1{font-size:26px;font-weight:750;color:var(--ink);letter-spacing:-.02em}
 .chat-empty .g{color:var(--teal)}
@@ -110,14 +111,15 @@ textarea{field-sizing:content}
 .chat-empty .quicks{justify-content:center}
 .chat-empty .skills{border-top:0;justify-content:center;margin-top:8px;padding-top:0}
 .chat-empty .skills-lbl{width:100%;text-align:center}
-.thread{display:flex;flex-direction:column}
+.thread{display:flex;flex-direction:column;margin-top:auto}
+.filter-empty{margin:auto 0;padding:5vh 0;text-align:center;color:var(--muted);font-size:15px}
 .turn{display:flex;width:100%}
 .turn.user{justify-content:flex-end}
 .ubub{background:var(--neon-soft);border:1px solid #d3f2e2;color:var(--ink);border-radius:16px 16px 5px 16px;padding:11px 15px;font-size:15px;line-height:1.5;max-width:82%;white-space:pre-wrap;word-break:break-word;margin:12px 0 6px}
-.turn.aria{gap:11px;margin:4px 0 16px}
+.turn.aria{gap:11px;margin:4px 0 16px;align-items:flex-start}
 .tava{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--neon),var(--teal));display:grid;place-items:center;flex:none;margin-top:2px}
 .tava svg{width:18px;height:18px}
-.acontent{min-width:0;flex:1;padding-top:4px}
+.acontent{min-width:0;flex:1;background:#fff;border:1px solid var(--line);border-radius:4px 16px 16px 16px;padding:13px 16px;box-shadow:var(--sh1);max-width:88%}
 .acontent .md{margin-top:0;max-height:none;overflow:visible;font-size:15px;color:var(--ink)}
 .typing{display:inline-flex;gap:4px;padding:8px 2px}
 .typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:tp 1.2s infinite}
@@ -141,8 +143,12 @@ textarea{field-sizing:content}
 .sendbtn{flex:none;width:38px;height:38px;border-radius:12px;border:0;background:var(--neon);display:grid;place-items:center;cursor:pointer;box-shadow:var(--glow);transition:filter .15s}
 .sendbtn:hover{filter:brightness(1.03)}
 .sendbtn:disabled{opacity:.45;cursor:default;box-shadow:none}
-.composer-row{display:flex;align-items:center;gap:10px;padding:9px 4px 0}
-.deep-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s}
+.micbtn{flex:none;width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;cursor:pointer;color:var(--ink2);transition:.15s}
+.micbtn:hover{background:var(--soft)}
+.micbtn.listening{background:var(--rose-soft);border-color:#f6c9d4;color:#b3123a;animation:bl 1.1s ease-in-out infinite}
+.micbtn:disabled{opacity:.4;cursor:not-allowed}
+.composer-row{display:flex;align-items:center;gap:10px;padding:9px 4px 0;flex-wrap:wrap}
+.deep-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s;white-space:nowrap}
 .deep-chip.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink)}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 @media(max-width:760px){.composer{padding-bottom:calc(70px + env(safe-area-inset-bottom))}}
@@ -165,7 +171,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .wfmode{display:flex;align-items:center;gap:10px;padding:2px 6px 4px}
 .wf-t{cursor:pointer}
 .wf-t.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink);font-weight:700}
-.wfhint{font-size:11.5px;color:var(--muted)}
+.wfhint{font-size:11.5px;color:var(--muted);white-space:nowrap}
 .skills{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 6px 4px;margin-top:4px;border-top:1px dashed var(--line)}
 .skills-lbl{font-size:12px;color:var(--muted);font-weight:600;width:100%}
 .skill{display:inline-flex;align-items:center;gap:6px;border:1px solid #cbefda;background:var(--neon-soft);border-radius:10px;padding:7px 12px;font-size:12.5px;color:var(--green-ink);font-weight:600;transition:.15s;cursor:pointer}
@@ -222,7 +228,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .mcar{position:relative;margin-top:14px}
 .mcar .track{display:flex;gap:8px;overflow-x:auto}
 .mimg{aspect-ratio:16/9;width:100%;flex:none;border-radius:12px;border:1px solid var(--line);object-fit:cover}
-.carbtn{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:rgba(6,15,10,.55);color:#fff;border:0;display:grid;place-items:center}
+.carbtn{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:rgba(28,25,23,.55);color:#fff;border:0;display:grid;place-items:center}
 .carbtn.l{left:6px}.carbtn.r{right:6px}
 .mbar{margin-top:14px;height:6px;width:100%;border-radius:999px;background:var(--soft);overflow:hidden}
 .mbar-fill{height:100%;width:66%;border-radius:999px;background:linear-gradient(90deg,var(--neon),var(--teal))}
@@ -231,8 +237,8 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .md p{margin:6px 0}.md strong{color:var(--ink);font-weight:700}.md a{color:var(--green-ink);text-decoration:underline;text-underline-offset:2px}
 .md h3{margin:10px 0 4px;font-weight:700;color:var(--ink)}.md ul{margin:6px 0;padding-left:20px;list-style:disc}.md li{margin:3px 0}
 .md code{background:var(--soft);border-radius:5px;padding:1px 6px;font-family:var(--mono);font-size:12px}
-.md pre{margin-top:8px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fbfefc;padding:12px;font-family:var(--mono);font-size:12px;color:var(--ink2)}
-.mc-foot{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:#fbfefc;flex-wrap:wrap}
+.md pre{margin-top:8px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fafaf9;padding:12px;font-family:var(--mono);font-size:12px;color:var(--ink2)}
+.mc-foot{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:#fafaf9;flex-wrap:wrap}
 .act{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 11px;font-size:12.5px;font-weight:600;color:var(--ink2);transition:.15s}
 .act:hover{box-shadow:var(--sh1);color:var(--ink);border-color:#cdeadd}
 .act.danger{color:#b3123a;border-color:#f6c9d4;margin-left:auto}
@@ -252,8 +258,36 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 /* Live agent logs stay an opt-in slide-over at every width — live work already
    shows inline in the thread, so the terminal panel is never a permanent column. */
 
+/* ── artifact panel (live preview of code/HTML ARIA generates) ── */
+.artifact{position:fixed;inset:0 0 0 auto;z-index:51;width:520px;max-width:92vw;display:flex;flex-direction:column;background:#fff;border-left:1px solid var(--line);box-shadow:var(--sh3);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.artifact.translate-x-full{transform:translateX(100%)}
+.artifact .ah{height:58px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
+.artifact .at{min-width:0;flex:1;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artifact .alang{font-family:var(--mono);font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--green-ink);background:var(--neon-soft);border-radius:6px;padding:2px 7px;flex:none}
+.artifact .abtn{flex:none;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:600;color:var(--ink2)}
+.artifact .abtn:hover{background:var(--soft)}
+.artifact .abtn.run{border-color:#b6f0d3;background:var(--neon-soft);color:var(--green-ink)}
+.artifact .abtn.run:hover{background:#d9f7e5}
+.artifact .abtn:disabled{opacity:.5;cursor:not-allowed}
+.aoutput{flex:none;max-height:38vh;overflow:auto;border-top:1px solid var(--line);background:#0b0c13;padding:14px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:#d7dee8;white-space:pre-wrap;word-break:break-word}
+.aoutput .ao-err{color:#fb6b8a}
+.aoutput .ao-meta{color:#7fe0aa;margin-bottom:6px;font-weight:700}
+.artifact .aclose{color:var(--muted);background:transparent;border:0;width:28px;height:28px;border-radius:8px;flex:none}
+.artifact .aclose:hover{background:var(--soft);color:var(--ink)}
+.artifact .abody{flex:1;overflow:auto;background:var(--soft)}
+.artifact .abody iframe{width:100%;height:100%;border:0;background:#fff}
+.artifact .abody pre{margin:0;padding:18px;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--ink2);white-space:pre-wrap;word-break:break-word}
+.artifact-card{display:flex;align-items:center;gap:11px;border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px 14px;margin:8px 0;cursor:pointer;transition:.15s;box-shadow:var(--sh1)}
+.artifact-card:hover{border-color:#cdeadd;box-shadow:var(--sh2)}
+.artifact-card .aic{width:34px;height:34px;border-radius:9px;flex:none;background:var(--neon-soft);color:var(--green-ink);display:grid;place-items:center}
+.artifact-card .abody2{min-width:0;flex:1}
+.artifact-card .an{font-size:13.5px;font-weight:700;color:var(--ink);display:block}
+.artifact-card .as{font-size:11.5px;color:var(--muted)}
+.artifact-card .aopen{flex:none;font-size:12px;font-weight:700;color:var(--green-ink)}
+#artifactBackdrop.hidden{display:none}
+
 /* ── overlays / modals ── */
-.ov{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(6,15,10,.5);backdrop-filter:blur(4px)}
+.ov{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(28,25,23,.5);backdrop-filter:blur(4px)}
 .ov.flex{display:flex}
 .modal{width:100%;max-width:560px;max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--sh3)}
 .ov-ic{width:44px;height:44px;border-radius:14px;background:var(--neon-soft);color:var(--green-ink);display:grid;place-items:center;margin-bottom:16px}
@@ -373,6 +407,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .cn-btn.ready{background:var(--neon);border-color:var(--neon);color:#04150d;box-shadow:var(--glow)}
 .cn-btn.setup{background:var(--neon-soft);border-color:#b6f0d3;color:var(--green-ink)}
 .cn-btn.done{background:#eefaf3;border-color:#bfead4;color:#0f7a4f;cursor:default}
+.cn-btn.soon{background:var(--soft);border-color:var(--line);color:var(--muted);cursor:default}
 .cn-detail{margin-top:10px;border:1px solid var(--line);background:var(--soft);border-radius:11px;padding:12px}
 .cn-detail .k{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px}
 .cn-detail code{display:block;word-break:break-all;background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:11px;color:var(--ink2)}
@@ -406,12 +441,12 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .toast.ok{border-color:#b6f0d3}.toast.err{border-color:#f6c9d4}
 
 /* mobile bottom bar — brings the PC "cockpit" (nav + logs) one tap away */
-.botbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:none;align-items:center;justify-content:space-around;height:62px;padding:0 6px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);box-shadow:0 -8px 26px -18px rgba(10,20,15,.55)}
+.botbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:none;align-items:center;justify-content:space-around;height:62px;padding:0 6px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-top:1px solid var(--line);box-shadow:0 -8px 26px -18px rgba(28,25,23,.4)}
 .botbar .t{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;color:var(--muted);background:transparent;border:0;padding:4px 12px}
 .botbar .t svg{width:21px;height:21px}
 .botbar .t:active{color:var(--green-ink)}
 .botbar .fab{width:52px;height:52px;margin-top:-20px;border-radius:16px;background:var(--neon);color:#04150d;box-shadow:var(--glow);display:grid;place-items:center;border:3px solid var(--soft)}
-@media(max-width:1023px){.botbar{display:flex}.scroll{padding-bottom:84px}.supfab{display:none!important}.suppanel{bottom:74px}}
+@media(max-width:1023px){.botbar{display:flex}.scroll{padding-bottom:84px}.supfab{display:none!important}.suppanel{bottom:74px}.side{padding-bottom:calc(62px + env(safe-area-inset-bottom))}.artifact,.logs{padding-bottom:calc(62px + env(safe-area-inset-bottom))}}
 </style>
 </head>
 <body>
@@ -428,7 +463,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </defs></svg>
 
 <!-- ══ ONBOARDING ══ -->
-<div id="ov" class="ov">
+<div id="ov" class="ov" role="dialog" aria-modal="true" aria-label="Welcome to ARIA — onboarding">
   <div class="modal">
     <div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div>
     <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i></div>
@@ -440,16 +475,16 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="step hidden" data-step="1" style="margin-top:20px">
       <h2>What best describes your work?</h2>
       <p class="lead">So ARIA can tailor its missions to you.</p>
-      <div id="obWork" class="chips">
-        <div class="chip2" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
-        <div class="chip2" data-v="Marketing">Marketing</div>
-        <div class="chip2" data-v="Content creator">Content creator</div>
-        <div class="chip2" data-v="Freelancer">Freelancer</div>
-        <div class="chip2" data-v="Developer / Engineer">Developer / Engineer</div>
-        <div class="chip2" data-v="Agency">Agency</div>
-        <div class="chip2" data-v="Sales">Sales</div>
-        <div class="chip2" data-v="Student">Student</div>
-        <div class="chip2" data-v="Other">Other</div>
+      <div id="obWork" class="chips" role="group" aria-label="What best describes your work?">
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Founder / Entrepreneur">Founder / Entrepreneur</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Marketing">Marketing</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Content creator">Content creator</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Freelancer">Freelancer</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Developer / Engineer">Developer / Engineer</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Agency">Agency</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Sales">Sales</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Student">Student</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Other">Other</div>
       </div>
       <div id="obWorkOtherWrap" class="hidden" style="margin-top:12px">
         <input id="obWorkOther" maxlength="60" placeholder="Tell us what you do" class="inp" />
@@ -458,22 +493,22 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="step hidden" data-step="2" style="margin-top:20px">
       <h2>What should ARIA help with?</h2>
       <p class="lead">Pick all that apply.</p>
-      <div id="obGoals" class="chips">
-        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
-        <div class="chip2" data-v="Create content">Create content</div>
-        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
-        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
-        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
-        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+      <div id="obGoals" class="chips" role="group" aria-label="What should ARIA help with?">
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Create content">Create content</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Generate images & video">Generate images &amp; video</div>
       </div>
     </div>
     <div class="step hidden" data-step="3" style="margin-top:20px">
       <h2>Choose your plan</h2>
       <p class="lead">Start free — upgrade any time.</p>
-      <div id="obPlans" class="plans">
-        <div class="plan sel" data-v="free"><div class="pr"><span class="nm">Free</span><span class="amt">$0</span></div><p>ARIA missions to research, write and create images. 1 workspace.</p></div>
-        <div class="plan" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
-        <div class="plan" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
+      <div id="obPlans" class="plans" role="group" aria-label="Choose your plan">
+        <div class="plan sel" role="button" tabindex="0" aria-pressed="true" data-v="free"><div class="pr"><span class="nm">Free</span><span class="amt">$0</span></div><p>ARIA missions to research, write and create images. 1 workspace.</p></div>
+        <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Everything unlimited + advanced image, video &amp; voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
+        <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
       </div>
     </div>
     <div style="margin-top:24px;display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -484,23 +519,23 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </div>
 
 <!-- ══ UPGRADE ══ -->
-<div id="upOv" class="ov">
+<div id="upOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="upTitle">
   <div class="modal">
     <div class="mrow">
       <div>
         <div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div>
-        <h2>Upgrade ARIA</h2>
+        <h2 id="upTitle">Upgrade ARIA</h2>
         <p class="lead">Do more — autonomous publishing, video, and priority AI.</p>
       </div>
       <button onclick="closeUpgrade()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
-    <div id="upPlans" class="plans">
-      <div class="plan" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Unlimited missions, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
-      <div class="plan" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
+    <div id="upPlans" class="plans" role="group" aria-label="Choose a plan">
+      <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="pro"><span class="tag">MOST POPULAR</span><div class="pr"><span class="nm">Pro</span><span class="amt">$29<small>/mo</small></span></div><p>Unlimited missions, advanced image + video + voice, autonomous multi-channel publishing, expanded memory, priority AI.</p></div>
+      <div class="plan" role="button" tabindex="0" aria-pressed="false" data-v="business"><div class="pr"><span class="nm">Business</span><span class="amt">$99<small>/mo</small></span></div><p>Everything in Pro + up to 5 brand workspaces &amp; seats, scheduled autonomy, analytics reports, dedicated support.</p></div>
     </div>
     <label for="upAck" class="ack" style="cursor:pointer">
       <input id="upAck" type="checkbox" onchange="upAckChanged(this.checked)">
-      <span>Entiendo y acepto la <a href="/legal/refund-policy" target="_blank">política estricta de no reembolso</a> de ARIA debido a los costes inmediatos de renderizado y cómputo de IA.</span>
+      <span>I understand and accept ARIA's <a href="/legal/refund-policy" target="_blank">strict no-refund policy</a>, due to the immediate rendering and AI compute costs involved.</span>
     </label>
     <div style="margin-top:18px;display:flex;justify-content:flex-end">
       <button id="upGo" onclick="upgradeGo()" disabled class="btn primary">Continue</button>
@@ -513,47 +548,48 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
   <div class="sup-head">
     <div class="who">
       <span class="sup-av"><svg width="18" height="18" aria-hidden="true"><use href="#ariaMark"/></svg><span class="on"></span></span>
-      <div><div class="sup-title">ARIA Support</div><div class="sup-sub">Asistente 24/7 · en línea</div></div>
+      <div><div class="sup-title">ARIA Support</div><div class="sup-sub">Assistant 24/7 · online</div></div>
     </div>
-    <button onclick="toggleSupport(false)" aria-label="Cerrar soporte" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <button onclick="toggleSupport(false)" aria-label="Close support" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
   <div id="supLog" class="suplog"></div>
   <form id="supForm" onsubmit="return supSend(event)" class="supform">
-    <input id="supInput" autocomplete="off" placeholder="Facturación, misiones, conectores…">
-    <button type="submit" aria-label="Enviar">↑</button>
+    <input id="supInput" autocomplete="off" placeholder="Billing, missions, connectors…">
+    <button type="submit" aria-label="Send">↑</button>
   </form>
 </div>
 <button id="supFab" onclick="toggleSupport()" class="supfab">
-  <svg width="20" height="20" aria-hidden="true"><use href="#ariaMark"/></svg><span>Soporte</span>
+  <svg width="20" height="20" aria-hidden="true"><use href="#ariaMark"/></svg><span>Support</span>
 </button>
 
 <!-- ══ SETTINGS ══ -->
-<div id="settingsOv" class="ov">
+<div id="settingsOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
   <div class="modal">
     <div class="mrow">
-      <div><div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div><h2>Settings</h2></div>
+      <div><div class="ov-ic"><svg width="26" height="26" aria-hidden="true"><use href="#ariaMark"/></svg></div><h2 id="settingsTitle">Settings</h2></div>
       <button onclick="closeSettings()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="setsec" style="border-top:0;padding-top:14px">
       <div class="h">Account</div>
       <div class="setrow"><span>Email</span><span style="color:var(--muted)">__EMAIL__</span></div>
       <div class="setrow"><span>Plan</span><span><b id="setPlan" style="color:var(--green-ink)">Free</b><button onclick="closeSettings();openUpgrade()" class="upmini">Upgrade</button></span></div>
+      <div class="setrow" style="border-bottom:0"><span>Session</span><a href="/logout" class="upmini" style="display:inline-block;text-decoration:none;color:var(--ink);text-align:center">Log out</a></div>
     </div>
     <div class="setsec">
       <div class="h">Personalization</div>
       <p style="font-size:14px;color:var(--ink2)">How ARIA addresses you and tailors its missions.</p>
-      <label class="lbl">What ARIA should call you</label>
+      <label class="lbl" for="setName">What ARIA should call you</label>
       <input id="setName" maxlength="60" class="inp" />
-      <label class="lbl">What you do</label>
+      <label class="lbl" for="setWork">What you do</label>
       <input id="setWork" maxlength="60" placeholder="e.g. Founder, Marketer, Creator…" class="inp" />
-      <label class="lbl">Goals</label>
-      <div id="setGoals" class="chips">
-        <div class="chip2" data-v="Grow on social media">Grow on social media</div>
-        <div class="chip2" data-v="Create content">Create content</div>
-        <div class="chip2" data-v="Research & analysis">Research &amp; analysis</div>
-        <div class="chip2" data-v="Launch or grow a business">Launch or grow a business</div>
-        <div class="chip2" data-v="Automate publishing">Automate publishing</div>
-        <div class="chip2" data-v="Generate images & video">Generate images &amp; video</div>
+      <label class="lbl" id="setGoalsLbl">Goals</label>
+      <div id="setGoals" class="chips" role="group" aria-labelledby="setGoalsLbl">
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Grow on social media">Grow on social media</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Create content">Create content</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Research & analysis">Research &amp; analysis</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Launch or grow a business">Launch or grow a business</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Automate publishing">Automate publishing</div>
+        <div class="chip2" role="button" tabindex="0" aria-pressed="false" data-v="Generate images & video">Generate images &amp; video</div>
       </div>
       <div style="margin-top:22px;display:flex;justify-content:flex-end"><button id="setSaveBtn" onclick="saveSettings()" class="btn primary">Save changes</button></div>
     </div>
@@ -566,10 +602,10 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </div>
 
 <!-- ══ CONNECTORS ══ -->
-<div id="connOv" class="ov">
+<div id="connOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="connTitle">
   <div class="modal">
     <div class="mrow">
-      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15 3.5 20.5M15 9l5.5-5.5M8 8l8 8"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/></svg></div><h2>Connectors</h2><p class="lead">Connect ARIA to the apps you already use — so it can research, publish and act across them.</p></div>
+      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15 3.5 20.5M15 9l5.5-5.5M8 8l8 8"/><rect x="2" y="14" width="8" height="8" rx="2"/><rect x="14" y="2" width="8" height="8" rx="2"/></svg></div><h2 id="connTitle">Connectors</h2><p class="lead">Connect ARIA to the apps you already use — so it can research, publish and act across them.</p></div>
       <button onclick="closeConnectors()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div id="connList" style="margin-top:18px"></div>
@@ -578,10 +614,10 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 </div>
 
 <!-- TEAM overlay -->
-<div id="teamOv" class="ov">
+<div id="teamOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="teamTitle">
   <div class="modal">
     <div class="mrow">
-      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h2>Your AI team</h2><p class="lead">A team of specialists — give one a goal and it does the work, end to end. Each is powered by ARIA.</p></div>
+      <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h2 id="teamTitle">Your AI team</h2><p class="lead">A team of specialists — give one a goal and it does the work, end to end. Each is powered by ARIA.</p></div>
       <button onclick="closeTeam()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="tm-find">
@@ -601,6 +637,18 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       <button onclick="closeProfile()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div id="profileBody"></div>
+  </div>
+</div>
+
+<!-- ══ CONFIRM ══ -->
+<div id="confirmOv" class="ov" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="modal" style="max-width:400px">
+    <h2 id="confirmTitle">Are you sure?</h2>
+    <p class="lead" id="confirmBody"></p>
+    <div style="margin-top:22px;display:flex;justify-content:flex-end;gap:10px">
+      <button onclick="closeConfirm(false)" class="btn ghost">Cancel</button>
+      <button id="confirmBtn" onclick="closeConfirm(true)" class="btn del">Confirm</button>
+    </div>
   </div>
 </div>
 
@@ -624,9 +672,9 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
       __ADMIN_LINK__
     </nav>
     <div class="chans"><div class="h">Channels</div><div class="row">
-      <a href="#" onclick="openConnectors();return false" title="YouTube"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></a>
-      <a href="#" onclick="openConnectors();return false" title="LinkedIn"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45z"/></svg></a>
-      <a href="#" onclick="openConnectors();return false" title="Instagram"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84z"/></svg></a>
+      <a href="#" onclick="openConnectors();return false" title="YouTube" aria-label="YouTube"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.8.5 9.4.5 9.4.5s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></a>
+      <a href="#" onclick="openConnectors();return false" title="LinkedIn" aria-label="LinkedIn"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45z"/></svg></a>
+      <a href="#" onclick="openConnectors();return false" title="Instagram" aria-label="Instagram"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41a3.7 3.7 0 0 1-1.38-.9 3.7 3.7 0 0 1-.9-1.38c-.16-.42-.36-1.06-.41-2.23C2.17 15.58 2.16 15.2 2.16 12s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41C8.42 2.17 8.8 2.16 12 2.16zM12 5.84A6.16 6.16 0 1 0 18.16 12 6.16 6.16 0 0 0 12 5.84z"/></svg></a>
     </div></div>
     <div class="userwrap">
       <div id="menu" class="menu hidden">
@@ -667,7 +715,7 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
         <div id="emptyMissions" class="chat-empty">
           <div class="ce-mark"><svg width="30" height="30" aria-hidden="true"><use href="#ariaMark"/></svg></div>
           <h1>Good <span id="tod">day</span>, <span class="g" id="greetName">__FIRST__</span></h1>
-          <p class="ce-sub">Give ARIA a topic and get a week of content — researched, written, designed, and ready to publish. Watch it work in real time.</p>
+          <p class="ce-sub">Give ARIA the job — content, research, revenue reports, store listings. It picks the tools and finishes it. Watch it work in real time.</p>
           <div id="usageCard" class="usage hidden">
             <div class="usage-h">Your Deep Workflow usage</div>
             <div class="usage-grid">
@@ -679,8 +727,8 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           </div>
           <div class="quicks">
             <button onclick="quickGoal(this)" class="quick">Turn a topic into a week of posts</button>
-            <button onclick="quickGoal(this)" class="quick">Write a LinkedIn post from my blog</button>
-            <button onclick="quickGoal(this)" class="quick">Make a hero image for my post</button>
+            <button onclick="quickGoal(this)" class="quick">Summarize this month's Stripe revenue</button>
+            <button onclick="quickGoal(this)" class="quick">List a new product on Shopify</button>
           </div>
           <div class="skills" id="skillRow">
             <span class="skills-lbl">Or let ARIA run a full workflow end to end:</span>
@@ -697,6 +745,9 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           <button class="pb-x" onclick="clearPersona()" aria-label="Leave this specialist">✕</button>
         </div>
         <div class="composer-box">
+          <button id="micBtn" onclick="toggleDictation()" class="micbtn" aria-label="Dictate message" aria-pressed="false" title="Speak your message">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"/></svg>
+          </button>
           <textarea id="igniter" rows="1" placeholder="Message ARIA…" onkeydown="onIgniterKey(event)"></textarea>
           <button id="ignite" onclick="dispatchMission()" class="sendbtn" aria-label="Send">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#04150d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -707,6 +758,8 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           <button id="wfToggle" onclick="toggleDeep()" class="deep-chip" aria-pressed="false">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg> Deep Workflow</button>
           <span id="wfHint" class="wfhint">Off · quick answer</span>
+          <button id="voiceToggle" onclick="toggleVoiceReplies()" class="deep-chip" aria-pressed="false">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg> Voice replies</button>
         </div>
       </div>
     </div>
@@ -722,6 +775,19 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
   </aside>
 
   <div id="logsBackdrop" onclick="toggleLogs(false)" class="backdrop hidden"></div>
+
+  <aside id="artifact" class="artifact translate-x-full">
+    <div class="ah">
+      <span id="artifactLang" class="alang">CODE</span>
+      <div id="artifactTitle" class="at">Artifact</div>
+      <button id="artifactRun" onclick="runArtifact()" class="abtn run hidden">▶ Run</button>
+      <button id="artifactCopy" onclick="artifactCopy()" class="abtn">Copy</button>
+      <button onclick="closeArtifact()" aria-label="Close artifact" class="aclose"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div id="artifactBody" class="abody"></div>
+    <div id="artifactOutput" class="aoutput hidden"></div>
+  </aside>
+  <div id="artifactBackdrop" onclick="closeArtifact()" class="backdrop hidden"></div>
 </div>
 
 <!-- mobile bottom bar -->
@@ -752,14 +818,90 @@ function toggleDeep(){
   if(lbl) lbl.textContent = deepMode ? 'Run deep workflow' : 'Send';
 }
 
+// ── Voice: dictate a message (Web Speech STT) + optionally hear replies
+// (Web Speech TTS). Deliberately browser-native rather than a server round
+// trip - zero added backend cost/latency, works the moment the browser
+// supports it, degrades to a disabled, explained button when it doesn't
+// (Firefox has no SpeechRecognition support as of this writing).
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognizer = null, dictating = false, voiceRepliesOn = false;
+
+function initVoiceUI(){
+  const mic = document.getElementById('micBtn');
+  const voiceBtn = document.getElementById('voiceToggle');
+  if(!SpeechRecognitionCtor){
+    mic.disabled = true;
+    mic.title = "Voice dictation isn't supported in this browser (try Chrome or Edge).";
+  }
+  if(!('speechSynthesis' in window)){
+    voiceBtn.disabled = true;
+    voiceBtn.title = "Spoken replies aren't supported in this browser.";
+  }
+  try{
+    voiceRepliesOn = localStorage.getItem('aria_voice_replies') === '1';
+    voiceBtn.classList.toggle('on', voiceRepliesOn);
+    voiceBtn.setAttribute('aria-pressed', voiceRepliesOn ? 'true' : 'false');
+  }catch(e){}
+}
+
+function toggleDictation(){
+  if(!SpeechRecognitionCtor) return;
+  if(dictating){ recognizer && recognizer.stop(); return; }
+  recognizer = new SpeechRecognitionCtor();
+  recognizer.lang = (navigator.language || 'en-US');
+  recognizer.interimResults = true;
+  recognizer.continuous = false;
+  const mic = document.getElementById('micBtn');
+  const inp = document.getElementById('igniter');
+  dictating = true;
+  mic.classList.add('listening'); mic.setAttribute('aria-pressed','true');
+  recognizer.onresult = (e)=>{
+    let transcript='';
+    for(let i=0;i<e.results.length;i++) transcript += e.results[i][0].transcript;
+    inp.value = transcript;
+  };
+  recognizer.onerror = ()=>{ /* surfaced via onend's cleanup; nothing to speak yet */ };
+  recognizer.onend = ()=>{
+    dictating = false;
+    mic.classList.remove('listening'); mic.setAttribute('aria-pressed','false');
+    inp.focus();
+  };
+  try{ recognizer.start(); }
+  catch(e){ dictating=false; mic.classList.remove('listening'); }
+}
+
+function toggleVoiceReplies(){
+  voiceRepliesOn = !voiceRepliesOn;
+  const b=document.getElementById('voiceToggle');
+  b.classList.toggle('on', voiceRepliesOn);
+  b.setAttribute('aria-pressed', voiceRepliesOn ? 'true' : 'false');
+  try{ localStorage.setItem('aria_voice_replies', voiceRepliesOn ? '1' : '0'); }catch(e){}
+  if(!voiceRepliesOn) window.speechSynthesis.cancel();
+}
+
+function speakText(text){
+  if(!voiceRepliesOn || !('speechSynthesis' in window) || !text) return;
+  // Strip markdown noise a screen reader/TTS voice shouldn't read literally.
+  const clean = text
+    .replace(/```[\s\S]*?```/g,' code block omitted. ')
+    .replace(/[*_#>`]/g,'')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
+    .slice(0,600);
+  if(!clean.trim()) return;
+  window.speechSynthesis.cancel(); // don't queue/overlap replies
+  const u = new SpeechSynthesisUtterance(clean);
+  u.rate = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
 // ── Deep Workflow Skills — packaged multi-agent plays (Claude "Skills" pattern).
 // Each is a well-structured goal that decomposes into strong parallel subtasks.
 const SKILLS = [
   {name:'A week of content', prompt:'Give me a full week of content on {topic} for founders and creators. Research what is trending this week first, then produce: 5 LinkedIn posts (each with a strong hook and the full copy), 3 short-form video scripts, and a hero image concept for each — ready to publish.'},
   {name:'Blog to posts', prompt:'Turn this into a week of content: {url or pasted text}. Pull the strongest ideas and write 5 LinkedIn posts (hook + full copy) and 3 short captions, matched to the original tone. Ready to publish.'},
-  {name:'Content calendar', prompt:'Create a 7-day content calendar for {brand} on LinkedIn and Instagram: for each day give the hook, the full post copy, and a visual idea. Match the tone to {audience}.'},
-  {name:'Launch reel', prompt:'Research the top trends in {topic} this week and produce a short-form launch reel: a tight script, an on-screen caption, a hook, and a hero image concept — ready to shoot or generate.'},
-  {name:'Repurpose', prompt:'Repurpose {content} into every format: a LinkedIn post, an X thread, a short video script, an Instagram caption, and a hero image concept — each tuned to the platform while keeping one consistent message.'},
+  {name:'Revenue report', prompt:'Analyze {timeframe} Stripe revenue and churn, then produce a one-page report with the 3 biggest opportunities and a clear recommendation for what to fix first.'},
+  {name:'List a product', prompt:'Create and publish a new Shopify product listing for {product}: title, description, images, pricing, and inventory — ready to go live.'},
+  {name:'Research brief', prompt:'Research {topic} in depth: gather the best current sources, compare the top options, and produce a one-page brief with a clear recommendation.'},
   {name:'Launch plan', prompt:'Design and validate a complete go-to-market launch plan for {product}: positioning and ideal customer, three pricing tiers with rationale, and a 2-week launch sequence across the right channels.'},
 ];
 function renderSkills(){
@@ -820,10 +962,114 @@ function log(msg, level){
 }
 
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+// ── Artifacts: substantial code/HTML ARIA writes renders live in a side
+// panel instead of sitting as a wall of text in the chat thread (same idea
+// as Claude's Artifacts / ChatGPT's Canvas). Short snippets stay inline —
+// only markup-like content or anything past a length threshold gets promoted.
+let ARTIFACT_STORE=[], artifactOpenId=null;
+const ARTIFACT_ICON='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4 3 12l5 8M16 4l5 8-5 8"/></svg>';
+function isArtifactWorthy(lang, code){
+  const l=(lang||'').toLowerCase();
+  if(['html','svg','xml'].includes(l)) return true;
+  return code.split('\n').length>12;
+}
+function artifactLabel(lang){
+  const l=(lang||'').toLowerCase();
+  if(l==='html') return 'HTML page';
+  if(l==='svg') return 'SVG image';
+  return (l||'CODE').toUpperCase()+' file';
+}
+function artifactCardHTML(id,lang,code){
+  const lines=code.split('\n').length;
+  return '<div class="artifact-card" onclick="openArtifact('+id+')">'
+    +'<span class="aic">'+ARTIFACT_ICON+'</span>'
+    +'<div class="abody2"><span class="an">'+esc(artifactLabel(lang))+'</span>'
+    +'<span class="as">'+lines+' line'+(lines===1?'':'s')+' · click to preview</span></div>'
+    +'<span class="aopen">Open →</span></div>';
+}
+// Languages that already get a live preview (the iframe) don't need a
+// separate "Run" — everything else can be sent to the code sandbox.
+const NON_RUNNABLE_LANGS=['html','svg','xml'];
+function openArtifact(id){
+  const a=ARTIFACT_STORE[id]; if(!a) return;
+  artifactOpenId=id;
+  document.getElementById('artifactLang').textContent=(a.lang||'code').toUpperCase();
+  document.getElementById('artifactTitle').textContent=artifactLabel(a.lang);
+  const body=document.getElementById('artifactBody');
+  const output=document.getElementById('artifactOutput');
+  const runBtn=document.getElementById('artifactRun');
+  output.classList.add('hidden'); output.innerHTML='';
+  body.innerHTML='';
+  if(NON_RUNNABLE_LANGS.includes(a.lang)){
+    const doc = a.lang==='svg'
+      ? '<!doctype html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh">'+a.code+'</body></html>'
+      : a.code;
+    const iframe=document.createElement('iframe');
+    iframe.setAttribute('sandbox','allow-scripts'); // no allow-same-origin/allow-top-navigation: isolated, can't touch the parent page
+    iframe.srcdoc=doc; // set as a property, not an HTML attribute string, so no manual escaping is needed
+    body.appendChild(iframe);
+    runBtn.classList.add('hidden');
+  } else {
+    body.innerHTML='<pre><code>'+esc(a.code)+'</code></pre>';
+    runBtn.classList.remove('hidden');
+    runBtn.disabled=false; runBtn.textContent='▶ Run';
+  }
+  document.getElementById('artifact').classList.remove('translate-x-full');
+  document.getElementById('artifactBackdrop').classList.remove('hidden');
+}
+function closeArtifact(){
+  document.getElementById('artifact').classList.add('translate-x-full');
+  document.getElementById('artifactBackdrop').classList.add('hidden');
+}
+function artifactCopy(){
+  if(artifactOpenId==null) return;
+  const a=ARTIFACT_STORE[artifactOpenId]; if(!a) return;
+  try{ navigator.clipboard.writeText(a.code); }catch(e){}
+  const b=document.getElementById('artifactCopy'); const o=b.textContent;
+  b.textContent='Copied'; setTimeout(()=>{ b.textContent=o; },1200);
+}
+async function runArtifact(){
+  if(artifactOpenId==null) return;
+  const a=ARTIFACT_STORE[artifactOpenId]; if(!a) return;
+  const runBtn=document.getElementById('artifactRun');
+  const output=document.getElementById('artifactOutput');
+  runBtn.disabled=true; runBtn.textContent='Running…';
+  output.classList.remove('hidden');
+  output.innerHTML='<span class="ao-meta">Running…</span>';
+  try{
+    const r=await fetch('/api/v1/code/execute',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({language:a.lang, code:a.code})});
+    const d=await r.json();
+    if(d.error){
+      output.innerHTML='<span class="ao-err">'+esc(d.error)+'</span>';
+    } else {
+      const parts=[];
+      parts.push('<span class="ao-meta">Exit code: '+(d.exit_code==null?'—':d.exit_code)+'</span>');
+      if(d.stdout) parts.push(esc(d.stdout));
+      if(d.stderr) parts.push('<span class="ao-err">'+esc(d.stderr)+'</span>');
+      if(!d.stdout && !d.stderr) parts.push('(no output)');
+      output.innerHTML=parts.join('\n');
+    }
+  }catch(e){
+    output.innerHTML='<span class="ao-err">Could not reach the code sandbox.</span>';
+  }
+  finally{ runBtn.disabled=false; runBtn.textContent='▶ Run'; }
+}
+
 function md(src){
   if(!src) return '';
   const blocks=[];
-  src=src.replace(/```(\w+)?\n?([\s\S]*?)```/g,(m,l,c)=>{blocks.push('<pre><code>'+esc(c.replace(/\n$/,''))+'</code></pre>');return '@@B'+(blocks.length-1)+'@@'});
+  src=src.replace(/```(\w+)?\n?([\s\S]*?)```/g,(m,l,c)=>{
+    const code=c.replace(/\n$/,''); const lang=(l||'').toLowerCase();
+    if(isArtifactWorthy(lang,code)){
+      const id=ARTIFACT_STORE.length; ARTIFACT_STORE.push({lang,code});
+      blocks.push(artifactCardHTML(id,lang,code));
+    } else {
+      blocks.push('<pre><code>'+esc(code)+'</code></pre>');
+    }
+    return '@@B'+(blocks.length-1)+'@@';
+  });
   let h=esc(src);
   h=h.replace(/`([^`]+)`/g,(m,c)=>'<code>'+c+'</code>');
   h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
@@ -890,7 +1136,11 @@ function turnHTML(m){
     aria = (m.deep && started) ? wfStepsHTML(m)
       : '<div class="typing"><span></span><span></span><span></span></div>';
   } else if(m.status==='error'){
-    aria = '<div class="md">'+md(m.text || "ARIA couldn't complete this. Try again.")+'</div>';
+    aria = (m.deep && started)
+      ? '<details class="work" open><summary>Worked with '+((m.workflow||[]).length)+' subagents</summary>'
+        + wfStepsHTML(m)+'</details>'
+        + '<div class="md">'+md(m.text || "ARIA couldn't complete this. Try again.")+'</div>'
+      : '<div class="md">'+md(m.text || "ARIA couldn't complete this. Try again.")+'</div>';
   } else if(m.deep && started){
     aria = '<details class="work" open><summary>Worked with '+((m.workflow||[]).length)+' subagents</summary>'
          + wfStepsHTML(m)+'</details>'
@@ -906,6 +1156,9 @@ function turnHTML(m){
       + (m.deep ? '<button class="tact" onclick="exportMission(\''+m.id+'\')">Export</button>' : '')
       + '<button class="tact" onclick="relaunch(\''+m.id+'\')">Retry</button>'
       + '<button class="tact" onclick="delMission(\''+m.id+'\')">Delete</button></div>'
+    : (m.status==='error')
+    ? '<div class="turn-foot"><button class="tact" onclick="relaunch(\''+m.id+'\')">Retry</button>'
+      + '<button class="tact" onclick="delMission(\''+m.id+'\')">Delete</button></div>'
     : '';
   return '<div class="turn user"><div class="ubub">'+esc(m.goal)+'</div></div>'
     + '<div class="turn aria"><span class="tava"><svg aria-hidden="true"><use href="#ariaMark"/></svg></span>'
@@ -917,7 +1170,12 @@ function renderMissions(){
   const empty=document.getElementById('emptyMissions'); if(empty) empty.style.display = missions.length ? 'none' : '';
   const list = missions.filter(m=> filter==='all' ? true
     : (filter==='running' ? m.status==='running' : m.status==='done'));
-  grid.innerHTML = list.map(turnHTML).join('');
+  if(!list.length && missions.length){
+    const label = filter==='running' ? 'in progress' : 'completed';
+    grid.innerHTML = '<div class="filter-empty">No chats '+label+' yet.</div>';
+  } else {
+    grid.innerHTML = list.map(turnHTML).join('');
+  }
   const sc=document.getElementById('chatScroll'); if(sc) sc.scrollTop=sc.scrollHeight;
 }
 
@@ -935,16 +1193,17 @@ async function dispatchMission(){
   const m={ id:uid(), goal, sid:'mission-'+uid(), status:'running', text:'', imgs:[], ts:Date.now() };
   missions.push(m); saveMissions(); renderMissions();
   inp.value='';
-  log('Mensaje enviado — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
-  log('· ARIA está pensando', 'dim');
+  log('Message sent — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
+  log('· ARIA is thinking', 'dim');
   try{
     const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:goal, session_id:m.sid, persona:(activePersona&&activePersona.id)||null})});
     const d=await r.json();
     m.text=d.reply||'(no response)';
-    if(d.media_base64){ m.imgs=['data:image/png;base64,'+d.media_base64]; log('Imagen generada ('+Math.round(d.media_base64.length*0.75/1024)+' KB)','ok'); }
+    if(d.media_base64){ m.imgs=['data:image/png;base64,'+d.media_base64]; log('Image generated ('+Math.round(d.media_base64.length*0.75/1024)+' KB)','ok'); }
     m.status='done';
-    log('Listo', 'ok');
-  }catch(e){ m.status='error'; log('No pude conectar con ARIA', 'err'); }
+    log('Done', 'ok');
+    speakText(m.text);
+  }catch(e){ m.status='error'; log('Could not connect to ARIA', 'err'); }
   finally{ busy=false; document.getElementById('ignite').disabled=false; saveMissions(); renderMissions(); }
 }
 
@@ -1000,7 +1259,13 @@ async function dispatchWorkflow(goal, inp){
         try{ applyEvent(JSON.parse(line.slice(5).trim())); }catch(_){}
       }
     }
-    if(m.status==='running'){ m.status='done'; }  // stream ended without explicit done
+    if(m.status==='running'){
+      // Stream closed without ever sending a done/error event (dropped connection,
+      // proxy timeout) — never claim success for a workflow that never finished.
+      m.status='error';
+      if(!m.text) m.text='Connection lost before ARIA finished this workflow. What ran so far is shown above — try again to pick up from here.';
+      log('Deep workflow connection lost before finishing', 'err');
+    }
   }catch(e){
     // Any streaming failure → graceful fallback to the non-streaming endpoint.
     log('· streaming unavailable, falling back', 'dim');
@@ -1027,7 +1292,11 @@ async function workflowFallback(m, goal){
   }catch(e){ m.status='error'; log('Deep workflow failed to reach ARIA', 'err'); }
 }
 function relaunch(id){ const m=missions.find(x=>x.id===id); if(!m||busy)return; document.getElementById('igniter').value=m.goal; dispatchMission(); }
-function delMission(id){ missions=missions.filter(m=>m.id!==id); saveMissions(); renderMissions(); log('· mission removed','dim'); }
+async function delMission(id){
+  const ok = await openConfirm('Delete this chat?', 'This removes it from your history. This cannot be undone.', 'Delete chat');
+  if(!ok) return;
+  missions=missions.filter(m=>m.id!==id); saveMissions(); renderMissions(); log('· mission removed','dim');
+}
 function wfMarkdown(m){
   // A clean, shareable deliverable: goal + each subagent's work + synthesis.
   let out = '# '+(m.goal||'ARIA Deep Workflow')+'\n\n';
@@ -1067,6 +1336,8 @@ document.addEventListener('click',e=>{ const m=document.getElementById('menu'); 
 function toast(msg,kind){
   const t=document.createElement('div');
   t.className='toast '+(kind==='ok'?'ok':kind==='err'?'err':'');
+  t.setAttribute('role', kind==='err' ? 'alert' : 'status');
+  t.setAttribute('aria-atomic', 'true');
   t.textContent=msg; document.body.appendChild(t);
   requestAnimationFrame(()=>t.classList.add('show'));
   setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); },4600);
@@ -1082,17 +1353,75 @@ function billingBoot(){
   const m=M[p]; if(m) toast(m[0],m[1]); history.replaceState({},'',location.pathname);
 }
 
+// .chip2/.plan are plain <div>s (styling reasons), so role="button"+tabindex are set in
+// the markup and this keeps them keyboard-operable: Enter/Space triggers the same onclick
+// as a real click, and aria-pressed stays in sync with the visual .sel state.
+function selSync(el,on){ el.classList.toggle('sel',on); el.setAttribute('aria-pressed', on?'true':'false'); }
+document.addEventListener('keydown', e=>{
+  if((e.key==='Enter'||e.key===' ') && e.target.matches('.chip2,.plan')){ e.preventDefault(); e.target.click(); }
+});
+// Escape closes whichever overlay is currently open, topmost first. The
+// onboarding modal (#ov) is deliberately excluded — it has no close button
+// because it's a mandatory first-run flow, not a dismissible dialog.
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape') return;
+  // These overlays start with plain class="ov" (closed via the base .ov{display:none}
+  // rule, no "hidden" class present yet) — only .flex is authoritatively added/removed
+  // by their own open/close functions, so it's the only reliable open-state signal.
+  const isOpen = id => document.getElementById(id).classList.contains('flex');
+  if(isOpen('confirmOv')){ closeConfirm(false); return; }
+  if(!document.getElementById('artifact').classList.contains('translate-x-full')){ closeArtifact(); return; }
+  if(!document.getElementById('logs').classList.contains('translate-x-full')){ toggleLogs(false); return; }
+  if(isOpen('upOv')){ closeUpgrade(); return; }
+  if(isOpen('settingsOv')){ closeSettings(); return; }
+  if(isOpen('connOv')){ closeConnectors(); return; }
+  if(isOpen('teamOv')){ closeTeam(); return; }
+  if(supOpen){ toggleSupport(false); return; }
+  if(!document.getElementById('side').classList.contains('-translate-x-full')){ toggleSide(false); return; }
+});
+
+// Focus management for the .ov modals (Settings/Upgrade/Connectors/Team/Confirm):
+// move focus in on open, trap Tab inside while open, restore it to whatever
+// triggered the modal on close. Without this, keyboard/screen-reader focus
+// stays on the (now hidden-behind-the-backdrop) trigger button, or can Tab
+// straight into the dimmed background content. #ov (onboarding) manages its
+// own initial focus already, but still benefits from the Tab trap below.
+let _modalReturnFocus = null;
+function _focusableIn(el){
+  return [...el.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(e => e.offsetParent !== null);
+}
+function openModalFocus(overlayId){
+  _modalReturnFocus = document.activeElement;
+  const ov = document.getElementById(overlayId);
+  setTimeout(()=>{ const f=_focusableIn(ov); if(f.length) f[0].focus(); }, 50);
+}
+function closeModalFocus(){
+  const el = _modalReturnFocus;
+  _modalReturnFocus = null;
+  if(el && typeof el.focus==='function') el.focus();
+}
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Tab') return;
+  const open=[...document.querySelectorAll('.ov.flex')].pop();
+  if(!open) return;
+  const f=_focusableIn(open); if(!f.length) return;
+  const first=f[0], last=f[f.length-1];
+  if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+});
+
 let obStep=0, obWork="", obGoals=new Set(), obPlan="free";
 const OB_STEPS=4;
 function obShow(){
   document.getElementById('obName').value=USER.name||'';
   document.querySelectorAll('#obWork .chip2').forEach(c=>c.onclick=()=>{
-    document.querySelectorAll('#obWork .chip2').forEach(x=>x.classList.remove('sel'));
-    c.classList.add('sel'); obWork=c.dataset.v;
+    document.querySelectorAll('#obWork .chip2').forEach(x=>selSync(x,false));
+    selSync(c,true); obWork=c.dataset.v;
     document.getElementById('obWorkOtherWrap').classList.toggle('hidden', obWork!=='Other');
   });
-  document.querySelectorAll('#obGoals .chip2').forEach(c=>c.onclick=()=>{ c.classList.toggle('sel'); const v=c.dataset.v; obGoals.has(v)?obGoals.delete(v):obGoals.add(v); });
-  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{ document.querySelectorAll('#obPlans .plan').forEach(x=>x.classList.remove('sel')); c.classList.add('sel'); obPlan=c.dataset.v; });
+  document.querySelectorAll('#obGoals .chip2').forEach(c=>c.onclick=()=>{ selSync(c, !c.classList.contains('sel')); const v=c.dataset.v; obGoals.has(v)?obGoals.delete(v):obGoals.add(v); });
+  document.querySelectorAll('#obPlans .plan').forEach(c=>c.onclick=()=>{ document.querySelectorAll('#obPlans .plan').forEach(x=>selSync(x,false)); selSync(c,true); obPlan=c.dataset.v; obRender(); });
   document.getElementById('ov').classList.remove('hidden'); document.getElementById('ov').classList.add('flex');
   setTimeout(()=>document.getElementById('obName').focus(),120);
 }
@@ -1125,13 +1454,14 @@ async function obNext(){
 let upPlan="pro";
 function upAckChanged(ok){ const b=document.getElementById('upGo'); if(!b) return; b.disabled=!ok; }
 function openUpgrade(){
-  document.querySelectorAll('#upPlans .plan').forEach(c=>{ c.classList.toggle('sel',c.dataset.v===upPlan);
-    c.onclick=()=>{ document.querySelectorAll('#upPlans .plan').forEach(x=>x.classList.remove('sel')); c.classList.add('sel'); upPlan=c.dataset.v; }; });
+  document.querySelectorAll('#upPlans .plan').forEach(c=>{ selSync(c, c.dataset.v===upPlan);
+    c.onclick=()=>{ document.querySelectorAll('#upPlans .plan').forEach(x=>selSync(x,false)); selSync(c,true); upPlan=c.dataset.v; }; });
   const ack=document.getElementById('upAck'); if(ack){ ack.checked=false; upAckChanged(false); }
   document.getElementById('menu').classList.add('hidden');
   const o=document.getElementById('upOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('upOv');
 }
-function closeUpgrade(){ const o=document.getElementById('upOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeUpgrade(){ const o=document.getElementById('upOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 function upgradeGo(){ const ack=document.getElementById('upAck'); if(!ack||!ack.checked){ return; } location.href='/billing/checkout?tier='+upPlan+'&agreed=1'; }
 
 let supOpen=false, supBusy=false, supGreeted=false;
@@ -1148,7 +1478,7 @@ function supAppend(who,text){
   const log=document.getElementById('supLog');
   const row=document.createElement('div');
   if(who==='user'){ row.className='sup-b sup-user'; row.textContent=text; }
-  else if(who==='typing'){ row.className='sup-b sup-typing'; row.id='supTyping'; row.textContent='ARIA está escribiendo…'; }
+  else if(who==='typing'){ row.className='sup-b sup-typing'; row.id='supTyping'; row.textContent='ARIA is typing…'; }
   else { row.className='sup-b sup-aria'; row.textContent=text; }
   log.appendChild(row); log.scrollTop=log.scrollHeight;
   return row;
@@ -1165,7 +1495,7 @@ async function supSend(e){
     const r=await fetch('/api/v1/support/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})});
     const d=await r.json();
     typing.remove();
-    supAppend('aria', d.reply || 'Lo siento, no pude procesar tu mensaje. Escríbenos a litesaraph@gmail.com.');
+    supAppend('aria', d.reply || 'Sorry, I could not process your message. Email us at litesaraph@gmail.com.');
   }catch(err){ const t=document.getElementById('supTyping'); if(t) t.remove(); supAppend('aria','I could not reach support right now. Please try again, or email litesaraph@gmail.com.'); }
   finally{ supBusy=false; }
   return false;
@@ -1177,10 +1507,11 @@ function openSettings(){
   document.getElementById('setWork').value = (PROFILE && PROFILE.work) || '';
   document.getElementById('setPlan').textContent = (USER.plan || 'Free') + ' plan';
   const goals = new Set((PROFILE && PROFILE.goals) || []);
-  document.querySelectorAll('#setGoals .chip2').forEach(c=>{ c.classList.toggle('sel', goals.has(c.dataset.v)); c.onclick=()=>c.classList.toggle('sel'); });
+  document.querySelectorAll('#setGoals .chip2').forEach(c=>{ selSync(c, goals.has(c.dataset.v)); c.onclick=()=>selSync(c, !c.classList.contains('sel')); });
   const o=document.getElementById('settingsOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('settingsOv');
 }
-function closeSettings(){ const o=document.getElementById('settingsOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeSettings(){ const o=document.getElementById('settingsOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 async function saveSettings(){
   const btn=document.getElementById('setSaveBtn'); btn.disabled=true; btn.textContent='Saving…';
   const name=document.getElementById('setName').value.trim()||USER.name;
@@ -1195,8 +1526,23 @@ async function saveSettings(){
   }catch(e){ toast('Could not save settings. Please try again.','err'); }
   finally{ btn.disabled=false; btn.textContent='Save changes'; }
 }
+let _confirmResolve=null;
+function openConfirm(title, body, confirmLabel){
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmBody').textContent=body;
+  document.getElementById('confirmBtn').textContent=confirmLabel||'Confirm';
+  const o=document.getElementById('confirmOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('confirmOv');
+  return new Promise(resolve=>{ _confirmResolve=resolve; });
+}
+function closeConfirm(ok){
+  const o=document.getElementById('confirmOv'); o.classList.add('hidden'); o.classList.remove('flex');
+  closeModalFocus();
+  if(_confirmResolve){ _confirmResolve(!!ok); _confirmResolve=null; }
+}
 async function deleteAccount(){
-  if(!confirm('Delete your ARIA account data (profile, plan and saved missions)? This cannot be undone.')) return;
+  const ok = await openConfirm('Delete your ARIA account?', 'This permanently removes your profile, plan and saved missions. This cannot be undone.', 'Delete account');
+  if(!ok) return;
   try{ await fetch('/api/v1/account/delete',{method:'POST'}); }catch(e){}
   try{ localStorage.removeItem(MKEY); }catch(e){}
   location.href='/login';
@@ -1205,23 +1551,29 @@ async function deleteAccount(){
 let CONN_STATUS=[];
 async function openConnectors(){
   document.getElementById('menu').classList.add('hidden'); toggleSide(false);
-  document.getElementById('connList').innerHTML='<div class="cn-loading">Cargando conectores…</div>';
+  document.getElementById('connList').innerHTML='<div class="cn-loading">Loading connectors…</div>';
   const o=document.getElementById('connOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('connOv');
   try{ const r=await fetch('/api/v1/connectors/status',{credentials:'same-origin'}); const d=await r.json(); CONN_STATUS=d.connectors||[]; }
   catch(e){ CONN_STATUS=[]; }
   renderConnectors();
 }
 function renderConnectors(){
+  // The setup detail panel (env var names, redirect URIs) is instructions for
+  // whoever deploys ARIA, not something a regular signed-in customer can act
+  // on — they have no access to this app's hosting secrets or OAuth console.
+  const isOwner = !!(USER && USER.owner);
   document.getElementById('connList').innerHTML = CONN_STATUS.map(function(c){
     var label, cls, action, gear='';
     if(c.state==='connected'){ label='Connected'; cls='done'; action='disabled'; }
     else if(c.state==='ready'){ label='Connect'; cls='ready'; action='onclick="location.href=\'/connectors/'+c.id+'/connect\'"';
-      gear='<button onclick="connToggle(\''+c.id+'\')" title="Setup details" class="cn-gear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'; }
-    else { label='Set up'; cls='setup'; action='onclick="connToggle(\''+c.id+'\')"'; }
+      if(isOwner) gear='<button onclick="connToggle(\''+c.id+'\')" title="Setup details" aria-label="Setup details for '+esc(c.name)+'" class="cn-gear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>'; }
+    else if(isOwner){ label='Set up'; cls='setup'; action='onclick="connToggle(\''+c.id+'\')"'; }
+    else { label='Coming soon'; cls='soon'; action='disabled'; }
     return '<div class="cn-row"><div class="cn-main">'
       +'<div class="cn-ic" style="background:'+c.color+'">'+c.icon+'</div>'
       +'<div style="min-width:0;flex:1"><div class="cn-name">'+esc(c.name)+'</div><div class="cn-desc">'+esc(c.desc)+'</div></div>'
-      +gear+'<button '+action+' class="cn-btn '+cls+'">'+label+'</button></div>'+connDetail(c)+'</div>';
+      +gear+'<button '+action+' class="cn-btn '+cls+'">'+label+'</button></div>'+(isOwner?connDetail(c):'')+'</div>';
   }).join('');
 }
 function connDetail(c){
@@ -1241,7 +1593,7 @@ function connDetail(c){
 }
 function connToggle(id){ var d=document.getElementById('cd_'+id); if(d) d.classList.toggle('hidden'); }
 function connCopy(t,btn){ try{ navigator.clipboard.writeText(t); }catch(e){} var o=btn.textContent; btn.textContent='Copied'; setTimeout(function(){btn.textContent=o;},1200); }
-function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeConnectors(){ const o=document.getElementById('connOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 
 // ── Team of AI professionals ──
 let TEAM_CACHE = null;
@@ -1266,6 +1618,7 @@ function teamAvatar(m, avCls, iniCls){
 async function openTeam(){
   document.getElementById('menu').classList.add('hidden'); toggleSide(false);
   const o=document.getElementById('teamOv'); o.classList.remove('hidden'); o.classList.add('flex');
+  openModalFocus('teamOv');
   const grid=document.getElementById('teamGrid');
   if(!TEAM_CACHE){
     grid.innerHTML='<div class="cn-loading">Loading your team…</div>';
@@ -1380,10 +1733,10 @@ function clearPersona(){
   document.getElementById('personaBar').classList.remove('show');
   document.getElementById('igniter').placeholder='Message ARIA…';
 }
-function closeTeam(){ const o=document.getElementById('teamOv'); o.classList.add('hidden'); o.classList.remove('flex'); }
+function closeTeam(){ const o=document.getElementById('teamOv'); o.classList.add('hidden'); o.classList.remove('flex'); closeModalFocus(); }
 
 /* boot */
-loadMissions(); renderMissions(); renderSkills(); loadUsage(); billingBoot(); checkConnectorHealth();
+loadMissions(); renderMissions(); renderSkills(); loadUsage(); billingBoot(); checkConnectorHealth(); initVoiceUI();
 
 (function(){ try{
   var u=new URL(location.href), conn=u.searchParams.get('conn'), s=u.searchParams.get('s');
@@ -1409,8 +1762,8 @@ async function checkConnectorHealth(){
   }catch(e){}
 }
 setInterval(checkConnectorHealth, 5 * 60 * 1000);
-log('ARIA lista', 'ok');
-log('· escribe un mensaje para empezar', 'dim');
+log('ARIA ready', 'ok');
+log('· type a message to get started', 'dim');
 let _onbDone = USER.onboarded;
 try{ if(localStorage.getItem('aria_onb:'+(USER.email||''))==='1') _onbDone=true; }catch(e){}
 if(!_onbDone){ obRender(); obShow(); } else { document.getElementById('igniter').focus(); }

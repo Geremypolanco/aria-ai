@@ -1,0 +1,57 @@
+/* aria.css — the handful of things Tailwind's utility classes genuinely can't
+   express as a single class when running off the v4 browser build (no build
+   step, no plugins). Everything else lives as classes in the markup/components. */
+
+/* Custom elements default to `display: inline` until the browser knows
+   better — with no CSS telling it otherwise, that default silently breaks
+   padding/width on every one of them (their box never reserves space in
+   normal flow) regardless of how fast their JS module registers. Declare it
+   up front so there's no dependency on script timing at all. */
+aria-hero,
+aria-run-log,
+aria-pricing {
+  display: block;
+}
+
+/* Scroll-reveal choreography, shared by every section on the page. */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.8s cubic-bezier(0.19, 1, 0.22, 1),
+    transform 0.8s cubic-bezier(0.19, 1, 0.22, 1);
+  transition-delay: var(--d, 0ms);
+}
+[data-reveal].in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Baseline keyboard-focus ring for plain links/buttons that don't already
+   carry their own explicit focus-visible: Tailwind utilities (the hero CTAs,
+   run-log replay button and pricing cards do, and those win by specificity —
+   this is the fallback for everything else: nav links, footer links, the
+   mobile menu). Without this they fell back to whatever the browser default
+   happens to be, which is inconsistent and easy to lose against a rounded,
+   light-on-light layout. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* A faint paper-like grain over the warm off-white canvas — OpenAI-style
+   pages are never a flat, dead color; this is what keeps large light areas
+   from reading as "empty". Pure CSS, no image request. */
+.aria-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}

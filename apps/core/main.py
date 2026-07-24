@@ -11,10 +11,10 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime
+from datetime import UTC, datetime
 
 import uvicorn
-from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -112,6 +112,35 @@ def _client_ip(request: Request) -> str:
     if fwd:
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+# Self-hosted funnel counters — no third-party analytics account, no
+# client-side script, no PII: just aggregate daily/lifetime counts of the
+# handful of events that answer "is anyone reaching this step at all."
+# /admin surfaces these; see admin_overview().
+TRACK_EVENTS = (
+    "landing_view",
+    "signup_page_view",
+    "signup_submitted",
+    "login_submitted",
+    "auth_success",
+    "checkout_started",
+    "checkout_agreed",
+)
+
+
+async def _track(event: str) -> None:
+    """Increment this event's lifetime + today counters. Best-effort: a
+    tracking failure must never affect the actual response."""
+    try:
+        from apps.core.memory.redis_client import get_cache
+
+        cache = get_cache()
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        await cache.increment(f"aria:track:{event}:total")
+        await cache.increment(f"aria:track:{event}:{today}")
+    except Exception:
+        pass
 
 
 def _rate_ok(request: Request, bucket: str, limit: int, window: float) -> bool:
@@ -377,6 +406,12 @@ class SupportRequest(BaseModel):
     session_id: str = "support"
 
 
+class CodeExecRequest(BaseModel):
+    language: str
+    code: str
+    stdin: str = ""
+
+
 class ProfileRequest(BaseModel):
     name: str = ""
     work: str = ""
@@ -394,6 +429,7 @@ _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    await _track("landing_view")
     path = os.path.join(os.path.dirname(__file__), "templates", "index.html")
     try:
         with open(path, encoding="utf-8") as f:
@@ -715,7 +751,27 @@ async def admin_overview(request: Request):
         "frozen_users": led.frozen_users(),
         "connectors": get_store().get_all(),
         "panic": _PANIC["on"],
+        "traffic": await _read_traffic(),
     }
+
+
+async def _read_traffic() -> dict[str, dict[str, int]]:
+    """Lifetime + today counts for each funnel event (see TRACK_EVENTS).
+    Best-effort per key: a single failed read must not blank out the rest."""
+    from apps.core.memory.redis_client import get_cache
+
+    cache = get_cache()
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    out: dict[str, dict[str, int]] = {}
+    for event in TRACK_EVENTS:
+        total = 0
+        today_count = 0
+        with suppress(Exception):
+            total = int(await cache.get(f"aria:track:{event}:total") or 0)
+        with suppress(Exception):
+            today_count = int(await cache.get(f"aria:track:{event}:{today}") or 0)
+        out[event] = {"total": total, "today": today_count}
+    return out
 
 
 @app.post("/admin/panic")
@@ -889,42 +945,44 @@ def _auth_page(mode: str, error: str = "", email: str = "") -> str:
     )
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · {title}</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/favicon.svg"><meta name="theme-color" content="#07080d"><style>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/favicon.svg"><meta name="theme-color" content="#fafaf9"><style>
 *{{margin:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
-background:radial-gradient(120% 90% at 80% 8%,rgba(21,224,106,.10),transparent 46%),
-radial-gradient(120% 90% at 8% 92%,rgba(18,183,166,.10),transparent 46%),#ffffff;color:#0a0f0c}}
-.card{{width:420px;max-width:100%;background:#fff;border:1px solid #e5ece8;border-radius:22px;
-padding:38px 32px;box-shadow:0 1px 2px rgba(10,20,15,.05),0 26px 64px -22px rgba(10,20,15,.22)}}
+background:radial-gradient(120% 90% at 50% -10%,rgba(16,185,129,.14),transparent 55%),
+radial-gradient(90% 70% at 90% 100%,rgba(245,158,11,.08),transparent 60%),#fafaf9;color:#1c1917}}
+.card{{width:420px;max-width:100%;background:#fff;border:1px solid #e7e5e4;border-radius:22px;
+padding:38px 32px;box-shadow:0 1px 2px rgba(28,25,23,.04),0 26px 64px -22px rgba(28,25,23,.16)}}
 .brand{{display:flex;align-items:center;gap:11px;margin-bottom:22px}}
 .brand .wm{{font-size:20px;font-weight:300;letter-spacing:.3em;padding-left:.3em}}
-h1{{font-size:23px;margin-bottom:7px}} .sub{{color:#52605a;font-size:14.5px;margin-bottom:22px}}
-label{{display:block;font-size:12px;font-weight:600;color:#3f4a44;margin:0 0 6px}}
-input{{width:100%;padding:13px 15px;border-radius:12px;border:1px solid #d7e0da;background:#fff;
-color:#0a0f0c;font-size:15px;margin-bottom:14px;transition:border .15s,box-shadow .15s}}
-input:focus{{outline:0;border-color:#9fe9c6;box-shadow:0 0 0 4px rgba(21,224,106,.14)}}
+h1{{font-size:23px;margin-bottom:7px;letter-spacing:-.01em}} .sub{{color:#78716c;font-size:14.5px;margin-bottom:22px}}
+label{{display:block;font-size:12px;font-weight:600;color:#44403c;margin:0 0 6px}}
+input{{width:100%;padding:13px 15px;border-radius:12px;border:1px solid #d6d3d1;background:#fff;
+color:#1c1917;font-size:15px;margin-bottom:14px;transition:border .15s,box-shadow .15s}}
+input:focus{{outline:0;border-color:#a7f3d0;box-shadow:0 0 0 4px rgba(16,185,129,.14)}}
 button{{width:100%;padding:14px;border:0;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer;
-background:#15E06A;color:#04150d;box-shadow:0 8px 24px -6px rgba(21,224,106,.45);transition:filter .15s}}
-button:hover{{filter:brightness(1.03)}}
-.err{{background:#fef2f4;border:1px solid #f6cdd6;color:#b3123a;font-size:13.5px;padding:10px 13px;
+background:#1c1917;color:#fff;box-shadow:0 8px 24px -6px rgba(28,25,23,.35);transition:transform .15s,box-shadow .15s,opacity .15s}}
+button:hover{{transform:translateY(-1px);box-shadow:0 12px 28px -6px rgba(28,25,23,.4)}}
+button:disabled{{opacity:.6;cursor:not-allowed;transform:none}}
+button:focus-visible,.btn:focus-visible,a.lnk:focus-visible{{outline:2px solid #047857;outline-offset:2px;border-radius:6px}}
+.err{{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:13.5px;padding:10px 13px;
 border-radius:11px;margin-bottom:16px}}
-.divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#9aa8a1;font-size:12px}}
-.divider::before,.divider::after{{content:"";flex:1;height:1px;background:#e5ece8}}
+.divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#78716c;font-size:12px}}
+.divider::before,.divider::after{{content:"";flex:1;height:1px;background:#e7e5e4}}
 .btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px;border-radius:12px;
-border:1px solid #d7e0da;background:#fff;color:#0a0f0c;text-decoration:none;font-weight:600;
+border:1px solid #d6d3d1;background:#fff;color:#1c1917;text-decoration:none;font-weight:600;
 font-size:14.5px;margin-bottom:11px;transition:background .15s}}
-.btn:hover{{background:#f3f8f5}}
+.btn:hover{{background:#fafaf9}}
 .btn .pv{{flex:none}}
-.switch{{text-align:center;font-size:14px;color:#52605a;margin-top:18px}}
-.mut{{color:#8592a3;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
-a.lnk{{color:#057a52;text-decoration:none;font-weight:600}} a.lnk:hover{{text-decoration:underline}}
+.switch{{text-align:center;font-size:14px;color:#57534e;margin-top:18px}}
+.mut{{color:#78716c;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
+a.lnk{{color:#047857;text-decoration:none;font-weight:600}} a.lnk:hover{{text-decoration:underline}}
 </style></head><body><div class="card">
 <div class="brand">{_ARIA_MARK}<span class="wm">ARIA</span></div>
 <h1>{title}</h1><p class="sub">{sub}</p>
 {err}
 {oauth_top}
 {email_divider}
-<form method="post" action="{action}" autocomplete="on">
+<form method="post" action="{action}" autocomplete="on" onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='Please wait…';">
 {name_field}
 <input type="email" name="email" placeholder="you@email.com" value="{ev}" autocomplete="email" required>
 <input type="password" name="password" placeholder="Password" autocomplete="{pw_auto}"{pw_hint} required>
@@ -936,9 +994,10 @@ a.lnk{{color:#057a52;text-decoration:none;font-weight:600}} a.lnk:hover{{text-de
 </div></body></html>"""
 
 
-def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResponse:
+async def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResponse:
     from apps.core import auth
 
+    await _track("auth_success")
     resp = RedirectResponse("/app", status_code=303)
     resp.set_cookie(
         auth.USER_COOKIE,
@@ -955,6 +1014,7 @@ def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResp
 async def signup_page(request: Request):
     if _current_user(request):
         return RedirectResponse("/app", status_code=303)
+    await _track("signup_page_view")
     return HTMLResponse(_auth_page("signup"))
 
 
@@ -965,6 +1025,7 @@ async def signup_submit(
     password: str = Form(...),
     name: str = Form(""),
 ):
+    await _track("signup_submitted")
     if not _rate_ok(request, "signup", 10, 3600):
         return HTMLResponse(
             _auth_page("signup", "Too many attempts — please wait a minute.", email),
@@ -979,7 +1040,7 @@ async def signup_submit(
         await auth.remember_user(
             {"email": email.strip().lower(), "name": name, "provider": "email"}
         )
-    return _auth_success_redirect(email.strip().lower(), name.strip(), "email")
+    return await _auth_success_redirect(email.strip().lower(), name.strip(), "email")
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -995,6 +1056,7 @@ async def login_submit(
     email: str = Form(...),
     password: str = Form(...),
 ):
+    await _track("login_submitted")
     if not _rate_ok(request, "login", 20, 900):
         return HTMLResponse(
             _auth_page("login", "Too many attempts — please wait a moment.", email),
@@ -1005,7 +1067,7 @@ async def login_submit(
     profile = await auth_accounts.verify_credentials(email, password)
     if not profile:
         return HTMLResponse(_auth_page("login", "Wrong email or password.", email), status_code=401)
-    return _auth_success_redirect(profile["email"], profile.get("name", ""), "email")
+    return await _auth_success_redirect(profile["email"], profile.get("name", ""), "email")
 
 
 def _oauth_redirect(url: str | None, state: str, fallback: str) -> RedirectResponse:
@@ -1048,6 +1110,7 @@ async def _finish_login(profile: dict | None):
     if not profile or not profile.get("email"):
         return RedirectResponse("/login?e=failed", status_code=303)
     await auth.remember_user(profile)
+    await _track("auth_success")
     resp = RedirectResponse("/app", status_code=303)
     resp.set_cookie(
         auth.USER_COOKIE,
@@ -1287,16 +1350,16 @@ def _profile_context(profile: dict) -> str:
         return ""
     parts = []
     if profile.get("name"):
-        parts.append(f"su nombre es {profile['name']}")
+        parts.append(f"their name is {profile['name']}")
     if profile.get("work"):
-        parts.append(f"se dedica a: {profile['work']}")
+        parts.append(f"they work in/on: {profile['work']}")
     if profile.get("goals"):
-        parts.append("quiere ayuda con: " + ", ".join(profile["goals"][:6]))
+        parts.append("they want help with: " + ", ".join(profile["goals"][:6]))
     if not parts:
         return ""
     return (
-        "[Perfil del usuario — personaliza tu respuesta y, cuando sea natural, "
-        "dirígete a él por su nombre: " + "; ".join(parts) + ".]"
+        "[User profile — personalize your reply and, when natural, "
+        "address them by name: " + "; ".join(parts) + ".]"
     )
 
 
@@ -1304,17 +1367,17 @@ def _profile_context(profile: dict) -> str:
 # to Stripe passes through this gate — the modal sends agreed=1 inline; direct
 # links (onboarding, deep-links) are stopped here and shown the interstitial.
 NO_REFUND_ACK = (
-    "Entiendo y acepto la política estricta de no reembolso de ARIA debido a los "
-    "costes inmediatos de renderizado y cómputo de IA."
+    "I understand and accept ARIA's strict no-refund policy, due to the "
+    "immediate rendering and AI compute costs involved."
 )
 
 
 def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
     price = f"${plan['cents'] // 100}/mo"
     go = f"/billing/checkout?tier={tier}&amp;agreed=1"
-    html = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+    html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ARIA · Confirmar {plan['name']}</title><style>
+<title>ARIA · Confirm {plan['name']}</title><style>
 *{{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}}
 body{{min-height:100vh;display:flex;align-items:center;justify-content:center;
 background:#ffffff;color:#3f3f46;padding:20px}}
@@ -1333,15 +1396,15 @@ text-decoration:none;cursor:pointer;transition:filter .15s}}
 .sub{{text-align:center;margin-top:14px;font-size:12.5px}}
 .sub a{{color:#71717a;text-decoration:none;margin:0 8px}} .sub a:hover{{color:#18181b}}
 </style></head><body><div class="card">
-<h1>Confirmar {plan['name']}</h1>
-<div class="price"><b>{price}</b> · renovación mensual · cancela cuando quieras</div>
+<h1>Confirm {plan['name']}</h1>
+<div class="price"><b>{price}</b> · renews monthly · cancel anytime</div>
 <div class="ack">
   <input type="checkbox" id="ack" onchange="document.getElementById('go').setAttribute('aria-disabled', this.checked?'false':'true')">
   <label for="ack">{NO_REFUND_ACK}</label>
 </div>
-<a id="go" class="btn" aria-disabled="true" href="{go}">Continuar al pago seguro →</a>
-<div class="sub"><a href="/app">← Volver</a><a href="/legal/refund-policy">Política de reembolso</a>
-<a href="/legal/terms">Términos</a></div>
+<a id="go" class="btn" aria-disabled="true" href="{go}">Continue to secure checkout →</a>
+<div class="sub"><a href="/app">← Back</a><a href="/legal/refund-policy">Refund policy</a>
+<a href="/legal/terms">Terms</a></div>
 </div></body></html>"""
     return HTMLResponse(html)
 
@@ -1361,10 +1424,12 @@ async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""
     tier = tier if tier in BILLING_PLANS else "pro"
     plan = BILLING_PLANS[tier]
 
+    await _track("checkout_started")
     # Enforce the no-refund acknowledgement before any charge can start.
     if agreed.lower() not in ("1", "true", "yes", "on"):
         return _checkout_confirm_page(tier, plan)
 
+    await _track("checkout_agreed")
     key = getattr(settings, "STRIPE_SECRET_KEY", None)
     if not key:
         # Billing not configured yet — send the user back with a clear flag.
@@ -1636,8 +1701,19 @@ async def json_metrics():
         return {"requests_total": 0, "income": {}, "ai": {}}
 
 
+async def _remember_turn(email: str, user_msg: str, aria_reply: str) -> None:
+    """Persist a conversation turn to episodic memory after the response has
+    already been sent — storing is not on the critical path for chat latency."""
+    try:
+        from apps.core.cognition.episodic_memory import get_episodic_memory
+
+        await get_episodic_memory().store_conversation(email, user_msg, aria_reply)
+    except Exception as exc:
+        logger.warning(f"Memory store failed (non-fatal): {exc}")
+
+
 @app.post("/api/v1/chat")
-async def chat(req: ChatRequest, request: Request):
+async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundTasks):
     """Chat with ARIA — routed through the real cognitive brain (tools + identity),
     so it actually executes (e.g. generate_image) and knows who it is."""
     import base64
@@ -1729,13 +1805,33 @@ async def chat(req: ChatRequest, request: Request):
         if pctx:
             user_context = f"{pctx}\n\n{user_context}".strip()
 
+    # Recall relevant memory from PAST sessions (different chat threads, earlier
+    # days) — distinct from aria_mind's own history, which only covers this one
+    # chat_id. Signed-in users only; there is no identity to scope memory to
+    # for an anonymous request.
+    if email:
+        try:
+            from apps.core.cognition.episodic_memory import get_episodic_memory
+
+            recalled = await get_episodic_memory().recall(email, req.message, n=4)
+            if recalled:
+                mem_lines = "\n".join(f"- {e['content']}" for e in recalled)
+                user_context = (
+                    f"[From earlier sessions with this user:\n{mem_lines}]\n\n{user_context}"
+                ).strip()
+        except Exception as exc:
+            logger.warning(f"Memory recall failed (non-fatal): {exc}")
+
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
 
         # Isolate history per signed-in user — never key on the client value alone.
         convo_id = _conversation_id(_current_user(request), req.session_id)
         resp = await get_aria_mind().handle(
-            req.message, convo_id, user_context=user_context or None
+            req.message,
+            convo_id,
+            user_context=user_context or None,
+            is_owner=_is_owner_user(request),
         )
         elapsed = int((time.time() - start) * 1000)
         media_type = None
@@ -1744,6 +1840,8 @@ async def chat(req: ChatRequest, request: Request):
             media_type, media_b64 = "image", base64.b64encode(resp.image_bytes).decode()
         reply_text = resp.text or resp.caption or ""
         await _record_ai_cost(email, plan, req.message, reply_text)
+        if email and reply_text:
+            background_tasks.add_task(_remember_turn, email, req.message, reply_text)
         return {
             "reply": reply_text,
             "model_used": resp.tool_used or "aria",
@@ -1779,13 +1877,13 @@ async def support_chat(req: SupportRequest, request: Request):
 
     if not _rate_ok(request, "support", 20, 60):
         return {
-            "reply": "Estás enviando mensajes muy rápido. Espera un momento e inténtalo de nuevo.",
+            "reply": "You're sending messages too fast. Please wait a moment and try again.",
             "source": "ratelimited",
             "processing_time_ms": 0,
         }
     if not _current_user(request):
         return {
-            "reply": "Inicia sesión para hablar con ARIA Support.",
+            "reply": "Please sign in to chat with ARIA Support.",
             "source": "auth",
             "processing_time_ms": 0,
         }
@@ -1870,18 +1968,26 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
 
     if not _current_user(request):
         return JSONResponse(
-            {"ok": False, "error": "auth", "synthesis": "Inicia sesión para usar ARIA."},
+            {"ok": False, "error": "auth", "synthesis": "Please sign in to use ARIA."},
             status_code=401,
         )
     # Los flujos abren varios subagentes por llamada → límite deliberadamente bajo.
     if not _rate_ok(request, "workflow", 6, 300):
         return JSONResponse(
-            {"ok": False, "error": "rate_limited", "synthesis": "Demasiados flujos seguidos."},
+            {
+                "ok": False,
+                "error": "rate_limited",
+                "synthesis": "Too many workflows in a row — please wait a bit and try again.",
+            },
             status_code=429,
         )
     if _PANIC["on"]:
         return JSONResponse(
-            {"ok": False, "error": "paused", "synthesis": "ARIA está pausada por un operador."},
+            {
+                "ok": False,
+                "error": "paused",
+                "synthesis": "ARIA is paused by an operator right now.",
+            },
             status_code=503,
         )
 
@@ -2156,6 +2262,46 @@ async def content_selftest():
     except Exception as e:
         logger.error(f"Content selftest error: {e}")
         return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/v1/activepieces/selftest")
+async def activepieces_selftest():
+    """Check that the Activepieces MCP bridge is reachable and list available tools."""
+    try:
+        from apps.core.tools.activepieces_mcp import get_activepieces_mcp
+
+        return await get_activepieces_mcp().self_test()
+    except Exception as e:
+        logger.error(f"Activepieces selftest error: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/v1/code/execute")
+async def code_execute(req: CodeExecRequest, request: Request):
+    """Run code on the self-hosted Piston sandbox (never inside this container)
+    and return real stdout/stderr — backs the Artifacts panel's Run button."""
+    if not _current_user(request):
+        return {"success": False, "error": "Please sign in to run code."}
+    # Tighter than chat: execution is heavier and more abusable than a text reply.
+    if not _rate_ok(request, "code_exec", 10, 60):
+        return {"success": False, "error": "Too many runs — please wait a moment and try again."}
+    if len(req.code) > 20000:
+        return {"success": False, "error": "Code is too long to run (20,000 character limit)."}
+
+    try:
+        from apps.core.tools.code_sandbox import get_code_sandbox
+
+        sandbox = get_code_sandbox()
+        result = await sandbox.execute(req.language, req.code, stdin=req.stdin)
+        if not result.get("success") and not sandbox.configured:
+            # code_sandbox.py's message names an internal env var and a repo path —
+            # useful in logs, not something to show a paying user.
+            logger.info("Code execute requested but no sandbox is configured")
+            result = {**result, "error": "Code execution isn't available on this deployment yet."}
+        return result
+    except Exception as e:
+        logger.error(f"Code execute error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 # ── WEBSOCKET ─────────────────────────────────────────────
