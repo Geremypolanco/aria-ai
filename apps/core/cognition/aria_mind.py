@@ -158,6 +158,10 @@ AVAILABLE TOOLS (you execute them, not the user):
 - create_brand      → creates a persistent brand identity (color palette, typography, voice/tone) that future content can be checked against for consistency. Args: {{"name": "...", "niche": "...", "tone": "professional|friendly|bold|luxurious|playful|minimalist|authoritative"}}
 - check_brand_consistency → scores a piece of content (0-100) against a saved brand's voice guidelines, with violations and suggestions. Use before publishing content for a brand the user has already created. Args: {{"brand_id": "...", "content": "..."}}
 - list_brands       → lists all saved brand identities. Args: {{}}
+- create_style_profile → defines a creative style profile (tone, color palette, typography, imagery, language, pacing, emotion, structure) seeded from niche defaults. Different from create_brand: this is about creative execution style, not brand identity/voice. Args: {{"name": "...", "niche": "tech|fashion|food|fitness|...", "base_style": {{}}}}
+- evolve_style      → shifts an existing style profile in a direction (bolder, minimal, or trendy) — use when content built on a profile has gone stale or the user wants a different creative direction. Args: {{"profile_id": "...", "direction": "bolder|minimal|trendy"}}
+- check_content_novelty → flags overused marketing clichés in a piece of content and scores its freshness against a style profile, with tips to make it more distinctive. Args: {{"profile_id": "...", "content": "..."}}
+- audit_style_consistency → checks a batch of content pieces against each other and a style profile for tone/register/length inconsistencies. Args: {{"profile_id": "...", "contents": ["...", "..."]}}
 - add_priority_action → adds an initiative to a persistent, scored strategic backlog (ROI, effort, leverage, compounding, time-to-result). Use for an ongoing list of things the user could do, not a single one-off decision (that's analyze_decision instead). Args: {{"title": "...", "description": "...", "category": "content|paid_acquisition|seo|product|retention|partnership", "estimated_roi": 0.0, "effort_score": 5.0, "time_to_result_days": 30, "leverage_score": 0.5, "compounding": false}}
 - top_priorities    → ranks the strategic backlog by priority score. Args: {{"limit": 5}}
 - allocate_resources → splits available hours/budget across the top-ranked backlog items proportional to their score. Args: {{"total_hours": 40, "total_budget_usd": 0}}
@@ -202,27 +206,28 @@ REASONING RULES:
 8. Before answering questions about specific topics the user has taught you → use search_knowledge first.
 9. If the user wants to start or contribute to an open-ended research effort that spans multiple sessions (not a one-off question) → use create_research_project, then add_research_finding as you learn things over time. This is different from deep_search: deep_search answers one question now; an R&D project persists and accumulates findings across many future conversations.
 10. Before writing content for a business/product the user has already branded → check whether a brand exists (list_brands); if creating content for a NEW brand, offer to create_brand first so future content stays consistent. After drafting something meant to represent that brand, use check_brand_consistency before presenting it as final.
-11. When the user has an ongoing list of things they could work on (not one isolated decision) → use add_priority_action to track each one, top_priorities to see what matters most, and allocate_resources when they ask how to split their time/budget. For a single one-off decision between named options, use analyze_decision instead.
-12. When writing or reviewing sales/marketing copy, landing pages, ads, or CTAs → use recommend_persuasion_tactics before drafting, and score_copy_persuasion or optimize_cta to strengthen a draft. Never fabricate specific numbers (e.g. "10,000+ customers") in generated copy — those examples are templates, not real claims to reuse verbatim.
-13. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
-14. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
-15. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
-16. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-17. For recurring automations → use create_workflow + run_workflow.
-18. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-19. If you're unsure what the user wants → interpret the most useful intent and execute it.
-20. Never make up data, prices, statistics, or facts. Search if you don't know.
-21. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-22. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-23. If the user asks to search for repos or projects on GitHub → use github_search.
-24. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-25. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-26. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-27. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-28. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-29. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-30. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-31. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+11. create_brand is about voice/identity (tone, palette, typography as brand rules); create_style_profile is about creative execution style for a niche (mood, pacing, imagery) and can evolve over a campaign — don't conflate them. Before finalizing content built on a style profile, use check_content_novelty to catch clichés, and audit_style_consistency when publishing multiple pieces from the same profile so they don't drift apart.
+12. When the user has an ongoing list of things they could work on (not one isolated decision) → use add_priority_action to track each one, top_priorities to see what matters most, and allocate_resources when they ask how to split their time/budget. For a single one-off decision between named options, use analyze_decision instead.
+13. When writing or reviewing sales/marketing copy, landing pages, ads, or CTAs → use recommend_persuasion_tactics before drafting, and score_copy_persuasion or optimize_cta to strengthen a draft. Never fabricate specific numbers (e.g. "10,000+ customers") in generated copy — those examples are templates, not real claims to reuse verbatim.
+14. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
+15. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
+16. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
+17. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+18. For recurring automations → use create_workflow + run_workflow.
+19. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+20. If you're unsure what the user wants → interpret the most useful intent and execute it.
+21. Never make up data, prices, statistics, or facts. Search if you don't know.
+22. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+23. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+24. If the user asks to search for repos or projects on GitHub → use github_search.
+25. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+26. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+27. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+28. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+29. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+30. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+31. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+32. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -298,6 +303,12 @@ _HELP_TEXT = """\
 - `create a brand for [name] in [niche]` — persistent voice, palette, and tone
 - `check if this is on-brand: [content]` — score content against a saved brand
 - `list my brands` — see what's saved
+
+**Creative style**
+- `create a style profile for [niche]` — tone, palette, typography, pacing defaults
+- `make this style bolder/more minimal/trendier` — evolve an existing profile
+- `does this sound cliché?` — novelty score + freshness tips
+- `check these for consistency: [pieces]` — cross-content tone/length drift check
 
 **Strategic priorities**
 - `add this to my priorities: [action]` — track it in a scored backlog
@@ -1759,6 +1770,73 @@ class AriaMind:
                     lines.append(
                         f"  • {b.name} (id: `{b.brand_id}`) — {b.niche}, {b.voice.tone.value}"
                     )
+                return "\n".join(lines), {}
+
+            # ── CREATIVE STYLE ────────────────────────────────────────────────
+            elif tool == "create_style_profile":
+                name = args.get("name", "")
+                niche = args.get("niche", "default")
+                base_style = args.get("base_style") or None
+                if not name:
+                    return "I need a name for this style profile.", {}
+                from apps.creative.style.style_engine import get_style_engine
+
+                profile = await get_style_engine().create_profile(name, niche, base_style)
+                dims = ", ".join(f"{k.lower()}: {v}" for k, v in profile.dimensions.items())
+                return f"**Style profile '{profile.name}'** (id: `{profile.profile_id}`)\n{dims}", {}
+
+            elif tool == "evolve_style":
+                profile_id = args.get("profile_id", "")
+                direction = args.get("direction", "bolder")
+                if not profile_id:
+                    return "I need a profile_id (from create_style_profile) to evolve.", {}
+                from apps.creative.style.style_engine import get_style_engine
+
+                try:
+                    profile = await get_style_engine().evolve_style(profile_id, direction)
+                except ValueError as e:
+                    return str(e), {}
+                dims = ", ".join(f"{k.lower()}: {v}" for k, v in profile.dimensions.items())
+                return (
+                    f"**Evolved '{profile.name}' ({direction}, evolution #{profile.evolution_count})**\n"
+                    f"{dims}"
+                ), {}
+
+            elif tool == "check_content_novelty":
+                profile_id = args.get("profile_id", "")
+                content = args.get("content", "")
+                if not profile_id or not content:
+                    return "I need both a profile_id and the content to check for novelty.", {}
+                from apps.creative.style.style_engine import get_style_engine
+
+                result = await get_style_engine().check_novelty(profile_id, content)
+                lines = [f"**Novelty score: {result['novelty_score']:.0%}**"]
+                if result["detected_cliches"]:
+                    lines.append(
+                        "Clichés found:\n"
+                        + "\n".join(f"  • {c}" for c in result["detected_cliches"])
+                    )
+                if result["freshness_tips"]:
+                    lines.append(
+                        "Freshness tips:\n" + "\n".join(f"  • {t}" for t in result["freshness_tips"])
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "audit_style_consistency":
+                profile_id = args.get("profile_id", "")
+                contents = args.get("contents", []) or []
+                if not profile_id or not contents:
+                    return "I need a profile_id and at least one piece of content to audit.", {}
+                from apps.creative.style.style_engine import get_style_engine
+
+                result = await get_style_engine().style_consistency_audit(profile_id, contents)
+                lines = [f"**Consistency score: {result['consistency_score']:.0%}**"]
+                if result["inconsistencies"]:
+                    lines.append(
+                        "Inconsistencies:\n"
+                        + "\n".join(f"  • {i}" for i in result["inconsistencies"])
+                    )
+                lines.append(f"Recommendation: {result['recommendation']}")
                 return "\n".join(lines), {}
 
             # ── STRATEGIC PRIORITIZATION (persistent action backlog) ────────
