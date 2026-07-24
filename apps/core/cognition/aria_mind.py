@@ -154,6 +154,9 @@ AVAILABLE TOOLS (you execute them, not the user):
 - create_research_project → starts a long-running, persistent R&D project ARIA tracks across sessions (distinct from a single-turn deep_search). Use for open-ended, multi-session research goals the user wants revisited over time. Args: {{"name": "...", "goal": "...", "category": "..."}}
 - add_research_finding → logs a new finding under an existing R&D project. Args: {{"project": "project name", "title": "...", "content": "...", "source": "..."}}
 - list_research_projects → lists all active R&D projects and their finding counts. Args: {{}}
+- create_brand      → creates a persistent brand identity (color palette, typography, voice/tone) that future content can be checked against for consistency. Args: {{"name": "...", "niche": "...", "tone": "professional|friendly|bold|luxurious|playful|minimalist|authoritative"}}
+- check_brand_consistency → scores a piece of content (0-100) against a saved brand's voice guidelines, with violations and suggestions. Use before publishing content for a brand the user has already created. Args: {{"brand_id": "...", "content": "..."}}
+- list_brands       → lists all saved brand identities. Args: {{}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -176,21 +179,22 @@ REASONING RULES:
 7. If the user asks you to learn a document/URL → use learn to ingest it into the knowledge base.
 8. Before answering questions about specific topics the user has taught you → use search_knowledge first.
 9. If the user wants to start or contribute to an open-ended research effort that spans multiple sessions (not a one-off question) → use create_research_project, then add_research_finding as you learn things over time. This is different from deep_search: deep_search answers one question now; an R&D project persists and accumulates findings across many future conversations.
-10. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-11. For recurring automations → use create_workflow + run_workflow.
-12. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-13. If you're unsure what the user wants → interpret the most useful intent and execute it.
-14. Never make up data, prices, statistics, or facts. Search if you don't know.
-15. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-16. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-17. If the user asks to search for repos or projects on GitHub → use github_search.
-18. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-19. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-20. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-21. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-22. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-23. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-24. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+10. Before writing content for a business/product the user has already branded → check whether a brand exists (list_brands); if creating content for a NEW brand, offer to create_brand first so future content stays consistent. After drafting something meant to represent that brand, use check_brand_consistency before presenting it as final.
+11. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+12. For recurring automations → use create_workflow + run_workflow.
+13. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+14. If you're unsure what the user wants → interpret the most useful intent and execute it.
+15. Never make up data, prices, statistics, or facts. Search if you don't know.
+16. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+17. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+18. If the user asks to search for repos or projects on GitHub → use github_search.
+19. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+20. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+21. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+22. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+23. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+24. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+25. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -261,6 +265,11 @@ _HELP_TEXT = """\
 - `start a research project on [goal]` — create a long-running R&D project
 - `log a finding on [project]: [what you found]` — add to it later
 - `list my research projects` — see what's active
+
+**Brand identity**
+- `create a brand for [name] in [niche]` — persistent voice, palette, and tone
+- `check if this is on-brand: [content]` — score content against a saved brand
+- `list my brands` — see what's saved
 
 **Management**
 - `/goals` — list active goals
@@ -1587,6 +1596,55 @@ class AriaMind:
                 lines = ["**R&D projects:**"]
                 for p in projects:
                     lines.append(f"  • {p['name']} ({p['category']}, {p['status']}) — {len(p['findings'])} findings")
+                return "\n".join(lines), {}
+
+            # ── BRAND IDENTITY ───────────────────────────────────────────────
+            elif tool == "create_brand":
+                name = args.get("name", "")
+                niche = args.get("niche", "")
+                tone_raw = args.get("tone", "professional")
+                if not name or not niche:
+                    return "I need both a brand name and a niche to create a brand identity.", {}
+                from apps.branding.identity.brand_engine import BrandTone, get_brand_engine
+
+                try:
+                    tone = BrandTone(tone_raw)
+                except ValueError:
+                    tone = BrandTone.PROFESSIONAL
+                profile = await get_brand_engine().create_brand(name, niche, tone)
+                return (
+                    f"Brand created: **{profile.name}** (id: `{profile.brand_id}`)\n"
+                    f"Niche: {profile.niche} · Tone: {profile.voice.tone.value}\n"
+                    f"Palette: {profile.palette.primary} / {profile.palette.secondary} / {profile.palette.accent}\n"
+                    f"Use this brand_id with check_brand_consistency to keep future content on-brand."
+                ), {}
+
+            elif tool == "check_brand_consistency":
+                brand_id = args.get("brand_id", "")
+                content = args.get("content", "")
+                if not brand_id or not content:
+                    return "I need a brand_id and the content to check.", {}
+                from apps.branding.identity.brand_engine import get_brand_engine
+
+                engine = get_brand_engine()
+                await engine._load()
+                result = engine.consistency_check(brand_id, content)
+                lines = [f"**Brand consistency: {result['score']}/100**"]
+                if result["violations"]:
+                    lines.append("Violations:\n" + "\n".join(f"  • {v}" for v in result["violations"]))
+                if result["suggestions"]:
+                    lines.append("Suggestions:\n" + "\n".join(f"  • {s}" for s in result["suggestions"]))
+                return "\n".join(lines), {}
+
+            elif tool == "list_brands":
+                from apps.branding.identity.brand_engine import get_brand_engine
+
+                brands = await get_brand_engine().list_brands()
+                if not brands:
+                    return "No brands defined yet. Use create_brand to start one.", {}
+                lines = ["**Brands:**"]
+                for b in brands:
+                    lines.append(f"  • {b.name} (id: `{b.brand_id}`) — {b.niche}, {b.voice.tone.value}")
                 return "\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
