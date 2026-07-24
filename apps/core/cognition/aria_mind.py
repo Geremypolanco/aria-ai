@@ -678,10 +678,11 @@ class AriaMind:
                 final_text = await self._synthesize(text, tool, obs)
                 # bool(media or obs) was always True (obs is a non-empty string even on
                 # failure), so self-reflection never saw a real failure signal — every
-                # execution looked like a success regardless of outcome.
-                await self._record_exec(
-                    tool, tool_args, obs, bool(media) or not self._looks_like_failure(obs)
-                )
+                # execution looked like a success regardless of outcome. Don't let mere
+                # media presence override that either: computer_use always returns a
+                # final screenshot even when the run failed, so `media` alone isn't a
+                # reliable success signal — judge success from the observation text.
+                await self._record_exec(tool, tool_args, obs, not self._looks_like_failure(obs))
                 await self._store_interaction(chat_id, text, final_text, tool)
                 await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
@@ -809,7 +810,15 @@ class AriaMind:
     # such failure was recorded as a "success" for self-reflection purposes.
     # Checked as substrings (not just prefixes) since the failure word rarely
     # leads; kept to phrases that only appear in ARIA's own failure messages,
-    # not in tool content like search results or generated text.
+    # not in tool content like search results or generated text. This is still
+    # a text-matching heuristic, not a structured status — a fetched page or
+    # search result that happens to contain one of these phrases as real
+    # content could false-positive into a retry, and any future failure
+    # message that doesn't match one of these phrases will false-negative
+    # into a "success". The correct long-term fix is for every tool branch to
+    # return an explicit success flag instead of a free-text observation;
+    # that's a larger refactor across ~100 branches and out of scope here —
+    # this list only needs to keep growing as new failure phrasings show up.
     _FAILURE_SIGNALS = (
         "error",
         "couldn't",
@@ -824,6 +833,7 @@ class AriaMind:
         "not found",
         "generation failed",
         "build failed",
+        "didn't find relevant information",  # search_knowledge's empty-result message
         "reserved for",  # owner-only permission denial
     )
 
@@ -846,7 +856,10 @@ class AriaMind:
 
             obs, media = await self._execute_tool(tool, args, attempt, email=email)
 
-            if media or not self._looks_like_failure(obs):
+            # Judge success from the observation text alone — media presence isn't
+            # reliable on its own (computer_use always returns a final screenshot
+            # even when the run failed).
+            if not self._looks_like_failure(obs):
                 return obs, media
 
             # Permission denials are deterministic — another attempt can't
