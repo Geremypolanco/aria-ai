@@ -157,6 +157,12 @@ AVAILABLE TOOLS (you execute them, not the user):
 - create_brand      → creates a persistent brand identity (color palette, typography, voice/tone) that future content can be checked against for consistency. Args: {{"name": "...", "niche": "...", "tone": "professional|friendly|bold|luxurious|playful|minimalist|authoritative"}}
 - check_brand_consistency → scores a piece of content (0-100) against a saved brand's voice guidelines, with violations and suggestions. Use before publishing content for a brand the user has already created. Args: {{"brand_id": "...", "content": "..."}}
 - list_brands       → lists all saved brand identities. Args: {{}}
+- add_priority_action → adds an initiative to a persistent, scored strategic backlog (ROI, effort, leverage, compounding, time-to-result). Use for an ongoing list of things the user could do, not a single one-off decision (that's analyze_decision instead). Args: {{"title": "...", "description": "...", "category": "content|paid_acquisition|seo|product|retention|partnership", "estimated_roi": 0.0, "effort_score": 5.0, "time_to_result_days": 30, "leverage_score": 0.5, "compounding": false}}
+- top_priorities    → ranks the strategic backlog by priority score. Args: {{"limit": 5}}
+- allocate_resources → splits available hours/budget across the top-ranked backlog items proportional to their score. Args: {{"total_hours": 40, "total_budget_usd": 0}}
+- recommend_persuasion_tactics → suggests conversion-copy tactics (scarcity, social proof, authority, etc.) matched to a context and target emotion. Args: {{"context": "...", "target_emotion": "desire|trust|urgency|belonging|fear"}}
+- score_copy_persuasion → scores existing marketing copy for persuasion strength and names which principles it already uses. Args: {{"copy": "..."}}
+- optimize_cta      → generates 3 alternative CTA button/text variations built around a persuasion principle. Args: {{"cta": "...", "principle": "reciprocity|commitment|social_proof|authority|liking|scarcity|unity|loss_aversion"}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -180,21 +186,23 @@ REASONING RULES:
 8. Before answering questions about specific topics the user has taught you → use search_knowledge first.
 9. If the user wants to start or contribute to an open-ended research effort that spans multiple sessions (not a one-off question) → use create_research_project, then add_research_finding as you learn things over time. This is different from deep_search: deep_search answers one question now; an R&D project persists and accumulates findings across many future conversations.
 10. Before writing content for a business/product the user has already branded → check whether a brand exists (list_brands); if creating content for a NEW brand, offer to create_brand first so future content stays consistent. After drafting something meant to represent that brand, use check_brand_consistency before presenting it as final.
-11. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-12. For recurring automations → use create_workflow + run_workflow.
-13. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-14. If you're unsure what the user wants → interpret the most useful intent and execute it.
-15. Never make up data, prices, statistics, or facts. Search if you don't know.
-16. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-17. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-18. If the user asks to search for repos or projects on GitHub → use github_search.
-19. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-20. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-21. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-22. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-23. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-24. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-25. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+11. When the user has an ongoing list of things they could work on (not one isolated decision) → use add_priority_action to track each one, top_priorities to see what matters most, and allocate_resources when they ask how to split their time/budget. For a single one-off decision between named options, use analyze_decision instead.
+12. When writing or reviewing sales/marketing copy, landing pages, ads, or CTAs → use recommend_persuasion_tactics before drafting, and score_copy_persuasion or optimize_cta to strengthen a draft. Never fabricate specific numbers (e.g. "10,000+ customers") in generated copy — those examples are templates, not real claims to reuse verbatim.
+13. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+14. For recurring automations → use create_workflow + run_workflow.
+15. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+16. If you're unsure what the user wants → interpret the most useful intent and execute it.
+17. Never make up data, prices, statistics, or facts. Search if you don't know.
+18. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+19. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+20. If the user asks to search for repos or projects on GitHub → use github_search.
+21. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+22. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+23. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+24. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+25. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+26. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+27. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -270,6 +278,16 @@ _HELP_TEXT = """\
 - `create a brand for [name] in [niche]` — persistent voice, palette, and tone
 - `check if this is on-brand: [content]` — score content against a saved brand
 - `list my brands` — see what's saved
+
+**Strategic priorities**
+- `add this to my priorities: [action]` — track it in a scored backlog
+- `what should I focus on?` — top-ranked priorities
+- `how should I split my time/budget?` — proportional allocation
+
+**Persuasion & copy**
+- `what persuasion angle should I use for [context]?` — tactic recommendations
+- `score this copy: [text]` — persuasion strength + principles used
+- `improve this CTA: [text]` — 3 alternative variations
 
 **Management**
 - `/goals` — list active goals
@@ -1645,6 +1663,107 @@ class AriaMind:
                 lines = ["**Brands:**"]
                 for b in brands:
                     lines.append(f"  • {b.name} (id: `{b.brand_id}`) — {b.niche}, {b.voice.tone.value}")
+                return "\n".join(lines), {}
+
+            # ── STRATEGIC PRIORITIZATION (persistent action backlog) ────────
+            elif tool == "add_priority_action":
+                title = args.get("title", "")
+                if not title:
+                    return "I need at least a title for this action.", {}
+                from apps.strategy.prioritization.priority_engine import (
+                    StrategyAction,
+                    get_priority_engine,
+                )
+
+                action = StrategyAction(
+                    title=title,
+                    description=args.get("description", ""),
+                    category=args.get("category", "content"),
+                    estimated_roi=float(args.get("estimated_roi", 0.0)),
+                    effort_score=float(args.get("effort_score", 5.0)),
+                    time_to_result_days=int(args.get("time_to_result_days", 30)),
+                    leverage_score=float(args.get("leverage_score", 0.5)),
+                    compounding=bool(args.get("compounding", False)),
+                )
+                saved = await get_priority_engine().add_action(action)
+                return (
+                    f"Added to the priority backlog: **{saved.title}** "
+                    f"(priority score: {saved.priority_score:.1f}/100)"
+                ), {}
+
+            elif tool == "top_priorities":
+                limit = int(args.get("limit", 5))
+                from apps.strategy.prioritization.priority_engine import get_priority_engine
+
+                top = await get_priority_engine().top_priorities(limit=limit)
+                if not top:
+                    return "No actions in the priority backlog yet. Use add_priority_action first.", {}
+                lines = ["**Top priorities:**"]
+                for i, a in enumerate(top, 1):
+                    lines.append(f"  {i}. {a.title} — score {a.priority_score:.1f}/100 ({a.category})")
+                return "\n".join(lines), {}
+
+            elif tool == "allocate_resources":
+                total_hours = int(args.get("total_hours", 40))
+                total_budget_usd = float(args.get("total_budget_usd", 0))
+                from apps.strategy.prioritization.priority_engine import get_priority_engine
+
+                result = await get_priority_engine().allocate_resources(total_hours, total_budget_usd)
+                if not result["allocations"]:
+                    return "No actions to allocate against yet. Use add_priority_action first.", {}
+                lines = [f"**Resource allocation** ({total_hours}h, ${total_budget_usd:.0f}):"]
+                for a in result["allocations"]:
+                    lines.append(
+                        f"  • {a['title']}: {a['allocated_hours']}h, "
+                        f"${a['allocated_budget_usd']:.0f} (score {a['priority_score']:.1f})"
+                    )
+                return "\n".join(lines), {}
+
+            # ── PERSUASION / CONVERSION COPY ─────────────────────────────────
+            elif tool == "recommend_persuasion_tactics":
+                context = args.get("context", "")
+                target_emotion = args.get("target_emotion", "desire")
+                if not context:
+                    return "Tell me what you're trying to persuade someone to do.", {}
+                from apps.psychology.conversion.persuasion_engine import get_persuasion_engine
+
+                tactics = await get_persuasion_engine().recommend_tactics(context, target_emotion)
+                lines = ["**Recommended persuasion tactics:**"]
+                for t in tactics:
+                    lines.append(f"  • **{t.title}** ({t.principle.value}): {t.copy_template}")
+                return "\n".join(lines), {}
+
+            elif tool == "score_copy_persuasion":
+                copy_text = args.get("copy", "")
+                if not copy_text:
+                    return "I need the copy text to score.", {}
+                from apps.psychology.conversion.persuasion_engine import get_persuasion_engine
+
+                result = await get_persuasion_engine().score_copy(copy_text)
+                lines = [f"**Persuasion score: {result['persuasion_score']:.2f}/1.0**"]
+                if result["principles_detected"]:
+                    lines.append(f"Principles detected: {', '.join(result['principles_detected'])}")
+                lines.append(result["improvement"])
+                return "\n".join(lines), {}
+
+            elif tool == "optimize_cta":
+                current_cta = args.get("cta", "")
+                principle_raw = args.get("principle", "scarcity")
+                if not current_cta:
+                    return "I need the current CTA text to optimize.", {}
+                from apps.psychology.conversion.persuasion_engine import (
+                    PersuasionPrinciple,
+                    get_persuasion_engine,
+                )
+
+                try:
+                    principle = PersuasionPrinciple(principle_raw)
+                except ValueError:
+                    principle = PersuasionPrinciple.SCARCITY
+                variations = await get_persuasion_engine().optimize_cta(current_cta, principle)
+                lines = [f"**CTA variations ({principle.value}):**"]
+                for v in variations:
+                    lines.append(f"  • {v}")
                 return "\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
