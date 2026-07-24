@@ -68,13 +68,15 @@ class CodeExecutor:
             return {"success": False, "error": "Forbidden command"}
 
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=self.sandbox_dir,
+            result = (
+                subprocess.run(  # nosec B602 - gated by ALLOW_SYSTEM_COMMANDS above, off by default
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=self.sandbox_dir,
+                )
             )
 
             return {

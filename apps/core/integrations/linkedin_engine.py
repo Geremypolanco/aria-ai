@@ -34,7 +34,7 @@ class LinkedInEngine:
         }
 
         # Simplified logic: images require a prior upload process
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 201:
             logger.info("Viral post published on LinkedIn.")
             return True
@@ -49,7 +49,7 @@ class LinkedInEngine:
             "subject": "Business Opportunity - Aria AI",
             "body": message,
         }
-        response = requests.post(url, json=payload, headers=self.headers)
+        response = requests.post(url, json=payload, headers=self.headers, timeout=30)
         if response.status_code == 201:
             logger.info(f"Message sent to {recipient_urn}")
             return True

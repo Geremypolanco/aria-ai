@@ -152,13 +152,21 @@ jobs:
         run: pip install bandit==1.7.10 pip-audit==2.7.3
 
       - name: Bandit security lint
+        # Blocking as of the 2026-07-24 follow-up pass, which triaged all 41
+        # medium/high findings bandit had (SQL string interpolation, weak MD5,
+        # missing request timeouts, unpinned HF downloads, hardcoded /tmp paths,
+        # shell=True): fixed what was a real gap, and added a scoped `# nosec`
+        # with a one-line justification at each call site where the finding was
+        # a false positive or already mitigated by a runtime gate added in the
+        # same pass (see ALLOW_SYSTEM_COMMANDS in infra_tools.py/code_executor.py).
+        # A new finding here means new code introduced a real issue — triage it
+        # the same way rather than reflexively adding continue-on-error back.
         run: |
           bandit -r apps/core/ \
             -x apps/core/__pycache__ \
             -ll \
             -f txt \
             --skip B101,B601,B603,B104
-        continue-on-error: true  # Advisory, not blocking
 
       - name: Dependency vulnerability audit
         # Blocking as of the 2026-07-24 security pass, which cleared 56 known

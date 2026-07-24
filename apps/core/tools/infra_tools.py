@@ -47,7 +47,11 @@ class InfraTools:
             if any(f in command for f in forbidden):
                 return {"success": False, "error": "Command forbidden for security reasons"}
 
-            result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
+            result = (
+                subprocess.run(  # nosec B602 - gated by ALLOW_SYSTEM_COMMANDS above, off by default
+                    command, shell=True, capture_output=True, text=True, timeout=60
+                )
+            )
             return {
                 "success": result.returncode == 0,
                 "stdout": result.stdout,
@@ -63,7 +67,7 @@ class InfraTools:
         from apps.core.tools.web_tools import _assert_public_url
 
         results = {}
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             for url in endpoints:
                 try:
                     await _assert_public_url(url)

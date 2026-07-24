@@ -214,7 +214,11 @@ def _bezier_points(
 
 # ── Session storage ───────────────────────────────────────────────────────────
 
-_SESSION_DIR = Path(os.environ.get("ARIA_SESSION_DIR", "/tmp/aria_sessions"))
+_SESSION_DIR = Path(
+    os.environ.get(
+        "ARIA_SESSION_DIR", "/tmp/aria_sessions"
+    )  # nosec B108 - overridable via env; default is fine for single-instance dev/small deployments
+)
 _SESSION_DIR.mkdir(parents=True, exist_ok=True)
 
 

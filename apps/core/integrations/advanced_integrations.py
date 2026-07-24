@@ -39,7 +39,7 @@ class GitHubIntegration:
     async def get_user_repos(self) -> dict[str, Any]:
         """Gets the user's repositories."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
                     f"{self.base_url}/user/repos",
                     headers=self.headers,
@@ -68,7 +68,7 @@ class GitHubIntegration:
     ) -> dict[str, Any]:
         """Creates a new repository."""
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.base_url}/user/repos",
                     headers=self.headers,
@@ -104,7 +104,7 @@ class GitHubIntegration:
         """Performs a commit and push to a repository."""
         try:
             # Get the current branch
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 # Get the latest commit
                 ref_response = await client.get(
                     f"{self.base_url}/repos/{owner}/{repo}/git/refs/heads/{branch}",
@@ -317,7 +317,7 @@ class OAuth2Integration:
             return {"success": False, "error": "Provider not supported"}
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     token_url,
                     data={
@@ -425,7 +425,7 @@ class WebhookIntegration:
                 hashlib.sha256,
             ).hexdigest()
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     url,
                     json=payload,

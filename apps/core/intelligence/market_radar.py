@@ -28,7 +28,7 @@ class AriaMarketRadar:
     """
 
     def __init__(self) -> None:
-        self.client = httpx.AsyncClient()
+        self.client = httpx.AsyncClient(timeout=30.0)
 
     async def scan_global_events(self, query: str) -> list[dict[str, Any]]:
         """Scans global events using the GDELT API."""

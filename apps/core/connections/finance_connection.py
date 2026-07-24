@@ -110,7 +110,8 @@ class QuickBooksConnection(BaseConnector):
     async def list_invoices(self, tokens: dict, limit: int = 20) -> list[dict]:
         """List QuickBooks invoices."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            query = f"SELECT * FROM Invoice MAXRESULTS {limit}"
+            # Force int so a non-numeric limit raises here instead of reaching the query.
+            query = f"SELECT * FROM Invoice MAXRESULTS {int(limit)}"  # nosec B608 - only interpolated value is int(limit)
             r = await http.get(
                 f"{self._base(tokens)}/query",
                 headers=self._headers(tokens),
@@ -168,7 +169,8 @@ class QuickBooksConnection(BaseConnector):
     async def list_customers(self, tokens: dict, limit: int = 20) -> list[dict]:
         """List QuickBooks customers."""
         async with httpx.AsyncClient(timeout=15.0) as http:
-            query = f"SELECT * FROM Customer MAXRESULTS {limit}"
+            # Force int so a non-numeric limit raises here instead of reaching the query.
+            query = f"SELECT * FROM Customer MAXRESULTS {int(limit)}"  # nosec B608 - only interpolated value is int(limit)
             r = await http.get(
                 f"{self._base(tokens)}/query",
                 headers=self._headers(tokens),

@@ -28,7 +28,7 @@ class AriaBusinessOSConnector:
     def __init__(self, erp_url: str = "", api_key: str = "") -> None:
         self.erp_url = erp_url
         self.api_key = api_key
-        self.client = httpx.AsyncClient(headers={"Authorization": f"token {api_key}"})
+        self.client = httpx.AsyncClient(headers={"Authorization": f"token {api_key}"}, timeout=30.0)
 
     async def create_invoice(self, customer_id: str, items: list[dict[str, Any]]):
         """Creates an invoice in the ERP (ERPNext/Odoo). Not implemented — the real
