@@ -352,6 +352,14 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
 .tm-av-wrap{position:relative;width:54px;height:54px;flex:none}
 .tm-av-ini{position:absolute;inset:0;border-radius:13px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;letter-spacing:.02em}
 .tm-av{position:absolute;inset:0;width:54px;height:54px;border-radius:13px;object-fit:cover;background:var(--soft);border:1px solid var(--line)}
+.tm-find{display:flex;align-items:center;gap:9px;margin:16px 0 4px;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff;color:var(--muted)}
+.tm-find:focus-within{border-color:var(--neon);box-shadow:0 0 0 3px rgba(21,224,106,.12)}
+.tm-find input{flex:1;border:0;outline:0;font-size:14px;color:var(--ink);background:transparent}
+.tm-find-btn{border:0;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700;background:var(--neon);color:#04150d;cursor:pointer}
+.tm-find-btn:hover{filter:brightness(1.03)}
+.tm-reco{margin:14px 0 6px;display:flex;align-items:center;gap:9px;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--green-ink)}
+.tm-reco-clear{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:600;font-size:12px;color:var(--muted);background:0;border:0;cursor:pointer;text-decoration:underline}
+.tm-empty{padding:22px 4px;color:var(--muted);font-size:13.5px}
 .tm-dept{display:flex;align-items:center;gap:9px;margin:24px 0 12px;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .tm-dept-ct{background:var(--soft);border:1px solid var(--line);border-radius:20px;padding:1px 8px;font-size:10.5px;font-weight:700;color:var(--muted)}
 .tm-dept-ln{flex:1;height:1px;background:var(--line)}
@@ -611,6 +619,12 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
     <div class="mrow">
       <div><div class="ov-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h2 id="teamTitle">Your AI team</h2><p class="lead">A team of specialists — give one a goal and it does the work, end to end. Each is powered by ARIA.</p></div>
       <button onclick="closeTeam()" aria-label="Close" class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="tm-find">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="teamFind" type="text" placeholder="Describe a task and find the right specialist…"
+        onkeydown="if(event.key==='Enter')findSpecialist()" oninput="if(!this.value.trim())renderTeam()">
+      <button class="tm-find-btn" onclick="findSpecialist()">Find</button>
     </div>
     <div id="teamGrid" style="margin-top:6px"></div>
   </div>
@@ -1585,9 +1599,9 @@ function closeConnectors(){ const o=document.getElementById('connOv'); o.classLi
 let TEAM_CACHE = null;
 let TEAM_GROUPS = null;
 const DEPT_COLORS = {
-  'Content & Creative':'#0ea5e9','Marketing & Growth':'#d97706','Research & Data':'#8b5cf6',
-  'Engineering & Product':'#10b981','Legal & Compliance':'#475569','Finance & Operations':'#0d9488',
-  'Sales & Customer Success':'#e11d48'
+  'Strategy & Leadership':'#4f46e5','Content & Creative':'#0ea5e9','Marketing & Growth':'#d97706',
+  'Research & Data':'#8b5cf6','Engineering & Product':'#10b981','Legal & Compliance':'#475569',
+  'Finance & Operations':'#0d9488','Sales & Customer Success':'#e11d48'
 };
 function deptColor(d){ return DEPT_COLORS[d] || '#15b866'; }
 function teamInitials(name){
@@ -1639,6 +1653,35 @@ function renderTeam(){
     return head+'<div class="team-grid">'+(g.members||[]).map(teamCard).join('')+'</div>';
   }).join('');
 }
+async function findSpecialist(){
+  var q=(document.getElementById('teamFind').value||'').trim();
+  if(!q){ renderTeam(); return; }
+  var grid=document.getElementById('teamGrid');
+  grid.innerHTML='<div class="cn-loading">Finding the right specialist…</div>';
+  var matches=[];
+  try{
+    var r=await fetch('/api/v1/team/recommend?limit=4&task='+encodeURIComponent(q),{credentials:'same-origin'});
+    matches=(await r.json()).matches||[];
+  }catch(e){}
+  if(!matches.length){
+    grid.innerHTML='<div class="tm-reco"><span>Best match for "'+esc(q)+'"</span>'
+      +'<button class="tm-reco-clear" onclick="clearFind()">Show everyone</button></div>'
+      +'<div class="tm-empty">No clear match — browse the full team below.</div>';
+    setTimeout(renderTeamAppend, 0);
+    return;
+  }
+  grid.innerHTML='<div class="tm-reco"><span>Best match for "'+esc(q)+'"</span>'
+    +'<button class="tm-reco-clear" onclick="clearFind()">Show everyone</button></div>'
+    +'<div class="team-grid">'+matches.map(teamCard).join('')+'</div>';
+}
+function renderTeamAppend(){
+  var groups=(TEAM_GROUPS&&TEAM_GROUPS.length)?TEAM_GROUPS:[{department:'',members:(TEAM_CACHE||[])}];
+  document.getElementById('teamGrid').insertAdjacentHTML('beforeend', groups.map(function(g){
+    var head=g.department?'<div class="tm-dept"><span>'+esc(g.department)+'</span><span class="tm-dept-ct">'+g.members.length+'</span><span class="tm-dept-ln"></span></div>':'';
+    return head+'<div class="team-grid">'+(g.members||[]).map(teamCard).join('')+'</div>';
+  }).join(''));
+}
+function clearFind(){ document.getElementById('teamFind').value=''; renderTeam(); }
 async function openProfile(id){
   const o=document.getElementById('profileOv'); o.classList.remove('hidden'); o.classList.add('flex');
   const body=document.getElementById('profileBody');

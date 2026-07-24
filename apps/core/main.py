@@ -82,6 +82,21 @@ def _current_user(request: Request) -> dict | None:
         return None
 
 
+def _conversation_id(user: dict | None, session_id: str | None = None) -> str:
+    """A per-user conversation key so one user's chat/history is never shared with
+    another. Always derived from the signed-in identity (email) — never from a
+    client-supplied value alone — so history is isolated server-side regardless of
+    what the browser sends. A non-default ``session_id`` becomes a per-user thread
+    suffix (namespaced under the user), enabling multiple private threads later.
+    """
+    email = ((user or {}).get("email") or "").strip().lower()
+    base = f"u:{email}" if email else "anon"
+    sid = "".join(c for c in (session_id or "") if c.isalnum() or c in "-_")[:40]
+    if sid and sid.lower() != "default":
+        return f"{base}:{sid}"
+    return base
+
+
 # ── lightweight in-process rate limiter (no external dependency) ───────────
 # Sliding-window per (client-ip, bucket). Protects expensive/public endpoints
 # from abuse and cost blow-ups. For multi-instance deployments a shared store
@@ -475,6 +490,15 @@ async def api_team():
         "team": team.public_team(),
         "departments": team.public_team_grouped(),
     }
+
+
+@app.get("/api/v1/team/recommend")
+async def api_team_recommend(task: str = "", limit: int = 3):
+    """Suggest the specialists best suited to a free-text task."""
+    from apps.core import team
+
+    limit = max(1, min(int(limit or 3), 8))
+    return {"task": task, "matches": team.recommend(task, limit=limit)}
 
 
 @app.get("/api/v1/team/{member_id}")
@@ -895,10 +919,25 @@ def _auth_page(mode: str, error: str = "", email: str = "") -> str:
     ev = _esc_html(email)
     oauth = ""
     if auth.google_enabled():
-        oauth += '<a class="btn" href="/auth/google">Continue with Google</a>'
+        oauth += (
+            '<a class="btn" href="/auth/google">'
+            '<svg class="pv" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">'
+            '<path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.7v3h3.9c2.3-2.1 3.5-5.2 3.5-8.9z"/>'
+            '<path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1 .7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1A12 12 0 0 0 12 24z"/>'
+            '<path fill="#FBBC05" d="M5.4 14.4a7.2 7.2 0 0 1 0-4.6V6.7H1.4a12 12 0 0 0 0 10.7l4-2.9z"/>'
+            '<path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 12 0 12 12 0 0 0 1.4 6.7l4 3.1C6.3 6.9 8.9 4.8 12 4.8z"/>'
+            "</svg>Continue with Google</a>"
+        )
     if auth.github_enabled():
-        oauth += '<a class="btn gh" href="/auth/github">Continue with GitHub</a>'
-    oauth_block = f'<div class="divider"><span>or</span></div>{oauth}' if oauth else ""
+        oauth += (
+            '<a class="btn gh" href="/auth/github">'
+            '<svg class="pv" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor">'
+            '<path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.9 10.9c.6.1.8-.2.8-.5v-1.7c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.4-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.6 18 4.9 18 4.9c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z"/>'
+            "</svg>Continue with GitHub</a>"
+        )
+    # Claude-style: identity providers first, email/password below a divider.
+    oauth_top = oauth
+    email_divider = '<div class="divider"><span>or</span></div>' if oauth else ""
     switch = (
         'Already have an account? <a class="lnk" href="/login">Sign in</a>'
         if is_signup
@@ -929,10 +968,11 @@ button:focus-visible,.btn:focus-visible,a.lnk:focus-visible{{outline:2px solid #
 border-radius:11px;margin-bottom:16px}}
 .divider{{display:flex;align-items:center;gap:12px;margin:18px 0;color:#78716c;font-size:12px}}
 .divider::before,.divider::after{{content:"";flex:1;height:1px;background:#e7e5e4}}
-.btn{{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;border-radius:12px;
+.btn{{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px;border-radius:12px;
 border:1px solid #d6d3d1;background:#fff;color:#1c1917;text-decoration:none;font-weight:600;
 font-size:14.5px;margin-bottom:11px;transition:background .15s}}
 .btn:hover{{background:#fafaf9}}
+.btn .pv{{flex:none}}
 .switch{{text-align:center;font-size:14px;color:#57534e;margin-top:18px}}
 .mut{{color:#78716c;font-size:11.5px;margin-top:16px;text-align:center;line-height:1.7}}
 a.lnk{{color:#047857;text-decoration:none;font-weight:600}} a.lnk:hover{{text-decoration:underline}}
@@ -940,13 +980,14 @@ a.lnk{{color:#047857;text-decoration:none;font-weight:600}} a.lnk:hover{{text-de
 <div class="brand">{_ARIA_MARK}<span class="wm">ARIA</span></div>
 <h1>{title}</h1><p class="sub">{sub}</p>
 {err}
+{oauth_top}
+{email_divider}
 <form method="post" action="{action}" autocomplete="on" onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='Please wait…';">
 {name_field}
-<input type="email" name="email" placeholder="you@email.com" value="{ev}" autocomplete="email" required autofocus>
+<input type="email" name="email" placeholder="you@email.com" value="{ev}" autocomplete="email" required>
 <input type="password" name="password" placeholder="Password" autocomplete="{pw_auto}"{pw_hint} required>
 <button type="submit">{submit}</button>
 </form>
-{oauth_block}
 <div class="switch">{switch}</div>
 <div class="mut">By continuing you agree to our <a class="lnk" href="/legal/terms">Terms</a> &amp;
 <a class="lnk" href="/legal/privacy">Privacy</a>. <a class="lnk" href="/">← Home</a></div>
@@ -1784,9 +1825,11 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
 
+        # Isolate history per signed-in user — never key on the client value alone.
+        convo_id = _conversation_id(_current_user(request), req.session_id)
         resp = await get_aria_mind().handle(
             req.message,
-            req.session_id or "default",
+            convo_id,
             user_context=user_context or None,
             is_owner=_is_owner_user(request),
         )
@@ -2265,6 +2308,17 @@ async def code_execute(req: CodeExecRequest, request: Request):
 @app.websocket("/ws/chat")
 async def websocket_chat(ws: WebSocket):
     await ws.accept()
+    # Require a valid signed-in session — the socket must not be an anonymous,
+    # shared chat. Derive the conversation key from the user's identity so one
+    # user's history is never visible to another.
+    from apps.core import auth
+
+    user = auth.verify_user(ws.cookies.get(auth.USER_COOKIE))
+    if not user:
+        with suppress(Exception):
+            await ws.send_json({"error": "auth", "reply": "Please sign in to use ARIA."})
+        await ws.close(code=1008)
+        return
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
 
@@ -2272,7 +2326,8 @@ async def websocket_chat(ws: WebSocket):
         while True:
             data = await ws.receive_text()
             msg = json.loads(data)
-            resp = await mind.handle(msg.get("message", ""), msg.get("session_id", "ws"))
+            convo_id = _conversation_id(user, msg.get("session_id"))
+            resp = await mind.handle(msg.get("message", ""), convo_id)
             await ws.send_json({"reply": resp.text or resp.caption or "", "tool": resp.tool_used})
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
