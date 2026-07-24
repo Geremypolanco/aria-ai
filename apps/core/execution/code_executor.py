@@ -57,7 +57,10 @@ class CodeExecutor:
         from apps.core.config import settings
 
         if not getattr(settings, "ALLOW_SYSTEM_COMMANDS", False):
-            return {"success": False, "error": "Shell command execution is disabled on this deployment."}
+            return {
+                "success": False,
+                "error": "Shell command execution is disabled on this deployment.",
+            }
 
         # List of forbidden commands
         forbidden = ["rm -rf /", "mkfs", "shutdown", "reboot"]
