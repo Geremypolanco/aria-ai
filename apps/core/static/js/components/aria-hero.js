@@ -31,7 +31,7 @@ class AriaHero extends HTMLElement {
         </h1>
 
         <p data-reveal style="--d:160ms" class="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-stone-600">
-          ARIA researches, writes, builds and ships — connected to Gmail, Slack, Notion, Shopify, Stripe and 9,000+ apps through Zapier. Marketer or engineer, founder or ops team: you approve, it executes.
+          ARIA researches, writes, builds and ships — connected to Gmail, Slack, Notion, Shopify, Stripe and 9,000+ apps through Zapier. Fund it, hand it a mission, and its workers go do the real-world parts too — domains, vendors, hires. Every dollar still waits on your yes.
         </p>
 
         <div data-reveal style="--d:240ms" class="mt-9 flex flex-wrap justify-center gap-3">
