@@ -1940,7 +1940,11 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
         )
     if _PANIC["on"]:
         return JSONResponse(
-            {"ok": False, "error": "paused", "synthesis": "ARIA is paused by an operator right now."},
+            {
+                "ok": False,
+                "error": "paused",
+                "synthesis": "ARIA is paused by an operator right now.",
+            },
             status_code=503,
         )
 
