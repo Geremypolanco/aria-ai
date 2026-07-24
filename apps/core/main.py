@@ -1182,8 +1182,11 @@ async def auth_github_cb(request: Request):
 async def user_logout():
     from apps.core import auth
 
-    resp = RedirectResponse("/", status_code=303)
+    # Land on the sign-in page so it's obvious you're signed out and can sign back
+    # in or switch accounts. Clear the session and any OAuth-state cookies.
+    resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(auth.USER_COOKIE)
+    resp.delete_cookie(auth.OAUTH_STATE_COOKIE)
     return resp
 
 
