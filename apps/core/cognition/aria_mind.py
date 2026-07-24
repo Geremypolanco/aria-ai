@@ -703,7 +703,13 @@ class AriaMind:
             if has_tool:
                 obs, media = await self._execute_with_retry(tool, tool_args, email=email)
                 final_text = await self._synthesize(text, tool, obs)
-                await self._record_exec(tool, tool_args, obs, bool(media or obs))
+                # bool(media or obs) was always True (obs is a non-empty string even on
+                # failure), so self-reflection never saw a real failure signal — every
+                # execution looked like a success regardless of outcome. Don't let mere
+                # media presence override that either: computer_use always returns a
+                # final screenshot even when the run failed, so `media` alone isn't a
+                # reliable success signal — judge success from the observation text.
+                await self._record_exec(tool, tool_args, obs, not self._looks_like_failure(obs))
                 await self._store_interaction(chat_id, text, final_text, tool)
                 await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
@@ -821,6 +827,47 @@ class AriaMind:
 
     # ── EXECUTION WITH RETRY + FALLBACK ─────────────────────────────────────
 
+    # Substrings that show up across this file's ~100 tool branches whenever a
+    # tool failed to produce a real result. Deliberately broader than the old
+    # startswith-only check (which only caught "error"/"i couldn't"/"failed"/
+    # "fail" at the very start of the string) — most failure messages here
+    # read like "TTS not available", "No search results...", "Website
+    # generation failed", none of which start with those four words, so the
+    # retry/adapt-args loop below silently never engaged for them and every
+    # such failure was recorded as a "success" for self-reflection purposes.
+    # Checked as substrings (not just prefixes) since the failure word rarely
+    # leads; kept to phrases that only appear in ARIA's own failure messages,
+    # not in tool content like search results or generated text. This is still
+    # a text-matching heuristic, not a structured status — a fetched page or
+    # search result that happens to contain one of these phrases as real
+    # content could false-positive into a retry, and any future failure
+    # message that doesn't match one of these phrases will false-negative
+    # into a "success". The correct long-term fix is for every tool branch to
+    # return an explicit success flag instead of a free-text observation;
+    # that's a larger refactor across ~100 branches and out of scope here —
+    # this list only needs to keep growing as new failure phrasings show up.
+    _FAILURE_SIGNALS = (
+        "error",
+        "couldn't",
+        "i need a",
+        "i need an",
+        "not available",
+        "unavailable",
+        "no results",
+        "no search results",
+        "no response",
+        "no trends available",
+        "not found",
+        "generation failed",
+        "build failed",
+        "didn't find relevant information",  # search_knowledge's empty-result message
+        "reserved for",  # owner-only permission denial
+    )
+
+    def _looks_like_failure(self, obs: str) -> bool:
+        low = (obs or "").lower()
+        return any(sig in low for sig in self._FAILURE_SIGNALS)
+
     async def _execute_with_retry(
         self, tool: str, args: dict, max_retries: int = 3, email: str = ""
     ) -> tuple[str, dict]:
@@ -836,10 +883,15 @@ class AriaMind:
 
             obs, media = await self._execute_tool(tool, args, attempt, email=email)
 
-            # If there's media or obs doesn't indicate an error → success
-            if media or (
-                obs and not obs.lower().startswith(("error", "i couldn't", "failed", "fail"))
-            ):
+            # Judge success from the observation text alone — media presence isn't
+            # reliable on its own (computer_use always returns a final screenshot
+            # even when the run failed).
+            if not self._looks_like_failure(obs):
+                return obs, media
+
+            # Permission denials are deterministic — another attempt can't
+            # change the outcome, so don't burn 2s/4s of backoff on one.
+            if "reserved for" in obs.lower():
                 return obs, media
 
             last_error = obs
@@ -2143,9 +2195,7 @@ class AriaMind:
                 )
 
                 segment = AudienceSegment(estimated_cpm=estimated_cpm, platforms=[platform])
-                result = get_audience_segmenter().cac_estimate(
-                    segment, product_price, expected_cvr
-                )
+                result = get_audience_segmenter().cac_estimate(segment, product_price, expected_cvr)
                 verdict = "profitable" if result["profitable"] else "NOT profitable"
                 return (
                     f"**CAC estimate ({platform}): {verdict}**\n"
@@ -2243,7 +2293,10 @@ class AriaMind:
                 analytics = engine.campaign_analytics()
                 top = engine.top_performing_campaigns(limit)
                 if analytics["total_campaigns"] == 0:
-                    return "No retargeting campaigns yet. Use create_retargeting_campaign first.", {}
+                    return (
+                        "No retargeting campaigns yet. Use create_retargeting_campaign first.",
+                        {},
+                    )
                 lines = [
                     f"**Retargeting performance** ({analytics['active_campaigns']}/{analytics['total_campaigns']} active)\n"
                     f"Spend ${analytics['total_spend']:,.0f} → Revenue ${analytics['total_revenue']:,.0f} "

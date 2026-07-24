@@ -15,7 +15,15 @@ logger = logging.getLogger("aria.agent")
 
 
 # ── FULL SYSTEM PROMPT ───────────────────────────────────
-def build_system_prompt(include_tools: bool = True) -> str:
+def build_system_prompt(include_tools: bool = False) -> str:
+    """SYSTEM_INSTRUCTION already tells the model this path has no live tool
+    access — every caller in this file (think/think_json/generate_code) has no
+    tool-dispatch loop behind it (think() may call client.complete() twice,
+    once as a fallback, but neither call can act on a tool request), so
+    appending the tool registry would directly contradict that instruction
+    and prime the model to claim it can invoke tools it actually can't.
+    include_tools defaults to False for that reason; only pass True from a
+    caller that genuinely executes the tools it's told about."""
     base = SYSTEM_INSTRUCTION
     if include_tools:
         base += "\n\n" + get_tool_descriptions()
