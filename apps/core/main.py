@@ -484,6 +484,12 @@ class ConnectorRequest(BaseModel):
     app: str = ""
 
 
+class HitlDecisionRequest(BaseModel):
+    decision: str  # "approve" | "deny" | "modify"
+    modified_args: dict | None = None
+    note: str = ""
+
+
 # ── FRONTEND ROUTES ───────────────────────────────────────
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
@@ -1034,6 +1040,77 @@ async def admin_api_user_history(request: Request, email: str):
     cid = _conversation_id({"email": email})
     history = await get_aria_mind()._load_history(cid)
     return {"email": email.strip().lower(), "conversation_id": cid, "history": history}
+
+
+@app.get("/admin/api/mission-control/hitl/queue")
+async def admin_api_hitl_queue(request: Request):
+    """Pending guardrail escalations awaiting the owner's decision — see
+    apps/core/safety/hitl_queue.py. Highest risk_score first."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    from apps.core.safety.hitl_queue import get_hitl_queue
+
+    pending = await get_hitl_queue().list_pending()
+    return {"requests": [r.to_dict() for r in pending]}
+
+
+@app.post("/admin/api/mission-control/hitl/{request_id}/decision")
+async def admin_api_hitl_decision(request_id: str, body: HitlDecisionRequest, request: Request):
+    """Resolve a queued HITL request. approve/modify actually run the tool
+    for real (via the same _execute_tool the planner would have used) and
+    push the outcome back into the user's own chat history; deny leaves it
+    blocked and notifies the user why."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    if body.decision not in ("approve", "deny", "modify"):
+        return JSONResponse({"error": "decision must be approve, deny, or modify"}, status_code=400)
+
+    from apps.core import auth
+    from apps.core.safety.hitl_queue import get_hitl_queue
+
+    owner = auth.verify_user(request.cookies.get(auth.USER_COOKIE))
+    resolved_by = ((owner or {}).get("email") or "").strip().lower()
+
+    queue = get_hitl_queue()
+    resolved = await queue.resolve(
+        request_id,
+        decision=body.decision,
+        resolved_by=resolved_by,
+        modified_args=body.modified_args,
+        note=body.note,
+    )
+    if resolved is None:
+        return JSONResponse({"error": "request not found or already resolved"}, status_code=409)
+
+    from apps.core.cognition.aria_mind import get_aria_mind
+
+    mind = get_aria_mind()
+    if resolved.status in ("approved", "modified"):
+        obs, _media = await mind._execute_tool(
+            resolved.tool, resolved.tool_args, email=resolved.email
+        )
+        final_text = await mind._synthesize(resolved.user_text, resolved.tool, obs)
+        turn_success = not mind._looks_like_failure(obs)
+        await mind._record_exec(resolved.tool, resolved.tool_args, obs, turn_success)
+        await queue.record_result(request_id, final_text)
+        await mind._store_interaction(
+            resolved.chat_id, "(Owner approved the pending request)", final_text, resolved.tool
+        )
+    else:
+        denial_note = (
+            f"My owner reviewed request `{request_id}` and decided not to authorize it"
+            f"{f': {body.note}' if body.note else '.'}"
+        )
+        await queue.record_result(request_id, denial_note)
+        await mind._store_interaction(
+            resolved.chat_id, "(Owner reviewed the pending request)", denial_note, resolved.tool
+        )
+
+    return {
+        "request_id": request_id,
+        "status": resolved.status,
+        "resolved_at": resolved.resolved_at,
+    }
 
 
 @app.get("/api/v1/connectors/health")

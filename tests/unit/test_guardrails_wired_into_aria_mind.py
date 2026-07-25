@@ -160,6 +160,77 @@ async def test_handle_blocks_unsafe_high_risk_plan():
     assert "credential harvester" in resp.text or "not going to do that" in resp.text.lower()
 
 
+async def test_handle_queues_unsafe_plan_for_hitl_review_instead_of_declining_outright():
+    """Regression: an unsafe Layer 2 verdict used to decline the action
+    permanently with no path back to a human. It now queues the exact
+    tool+args for the owner to approve/deny/modify via Mission Control's
+    HITL hub — never running the tool inline, but never just refusing it
+    forever either."""
+
+    async def fake_reason(*a, **k):
+        return {
+            "tool": "execute_code",
+            "tool_args": {"code": "print('hi')"},
+            "reply": "",
+        }
+
+    mind = AriaMind()
+    unsafe = PlanVerdict(safe=False, risk_score=0.9, reason="exceeds normal authorization")
+    clean_moderation = ModerationResult(blocked=False, layer="llm")
+
+    async def fail_if_called(*a, **k):
+        raise AssertionError("_execute_with_retry must not run an unsafe plan")
+
+    enqueued = {}
+
+    async def fake_enqueue(**kwargs):
+        enqueued.update(kwargs)
+        from apps.core.safety.hitl_queue import HitlRequest
+
+        return HitlRequest(
+            request_id="req_test123",
+            chat_id=kwargs["chat_id"],
+            email=kwargs["email"],
+            user_text=kwargs["user_text"],
+            tool=kwargs["tool"],
+            tool_args=kwargs["tool_args"],
+            risk_score=kwargs["risk_score"],
+            risk_reason=kwargs["risk_reason"],
+        )
+
+    fake_queue = AsyncMock()
+    fake_queue.enqueue = fake_enqueue
+
+    with ExitStack() as stack:
+        mock_ks = stack.enter_context(patch("apps.core.safety.guardrails.get_kill_switch"))
+        stack.enter_context(
+            patch(
+                "apps.core.safety.guardrails.moderate_input",
+                AsyncMock(return_value=clean_moderation),
+            )
+        )
+        stack.enter_context(
+            patch("apps.core.safety.guardrails.evaluate_plan", AsyncMock(return_value=unsafe))
+        )
+        stack.enter_context(
+            patch.object(mind, "_execute_with_retry", AsyncMock(side_effect=fail_if_called))
+        )
+        stack.enter_context(
+            patch("apps.core.safety.hitl_queue.get_hitl_queue", return_value=fake_queue)
+        )
+        _enter_handle_stubs(stack, mind, fake_reason=fake_reason)
+        mock_ks.return_value.is_active = AsyncMock(return_value=False)
+        resp = await mind.handle(
+            "spend $1200 with a new vendor", "chat-42", email="owner@example.com"
+        )
+
+    assert enqueued["tool"] == "execute_code"
+    assert enqueued["tool_args"] == {"code": "print('hi')"}
+    assert enqueued["risk_score"] == 0.9
+    assert "req_test123" in resp.text
+    assert "owner" in resp.text.lower() or "approval" in resp.text.lower()
+
+
 async def test_handle_executes_safe_high_risk_plan():
     async def fake_reason(*a, **k):
         return {"tool": "execute_code", "tool_args": {"code": "print('hi')"}, "reply": ""}
