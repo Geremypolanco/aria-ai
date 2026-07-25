@@ -925,7 +925,9 @@ class AriaMind:
                 # tools, not all ~150. Fails closed.
                 from apps.core.safety import guardrails
 
-                decline = await guardrails.review_tool_call(tool, tool_args, text, email=email)
+                decline = await guardrails.review_tool_call(
+                    tool, tool_args, text, email=email, chat_id=chat_id
+                )
                 if decline:
                     await self._store_interaction(chat_id, text, decline, tool)
                     return MindResponse(text=decline)
