@@ -975,6 +975,8 @@ class AriaMind:
                     turn_success,
                     chat_id=chat_id,
                     email=email,
+                    tool_args=tool_args,
+                    raw_observation=obs,
                 )
                 # For documents, send text + doc; for A/V media, send caption only
                 is_doc = "document_bytes" in media
@@ -4718,12 +4720,20 @@ class AriaMind:
         *,
         chat_id: str = "",
         email: str = "",
+        tool_args: dict | None = None,
+        raw_observation: str = "",
     ) -> None:
         """Records this turn with CognitionTracer (for ai_performance_report
         and the admin activity feed's history) and broadcasts it live to any
         admin console currently watching. Both are best-effort — a tracing or
         broadcast failure must never affect the actual reply the user already
-        received, so every error is swallowed independently of the other."""
+        received, so every error is swallowed independently of the other.
+
+        tool_args/raw_observation are optional — without them, a trace only
+        showed the user's message and the final, already-synthesized reply,
+        with no way to see what the tool was actually called with or what it
+        actually returned before _synthesize() rewrote it. Empty for the
+        "conversation" task_type, which has neither."""
         latency_ms = (time.monotonic() - started_at) * 1000
         with suppress(Exception):
             from apps.evaluation.phoenix.tracer import get_cognition_tracer
@@ -4736,6 +4746,8 @@ class AriaMind:
                 latency_ms=latency_ms,
                 success=success,
                 metadata={"chat_id": chat_id, "email": email},
+                tool_args=tool_args,
+                raw_observation=raw_observation,
             )
         with suppress(Exception):
             import json
@@ -4754,6 +4766,8 @@ class AriaMind:
                         "response": response[:300],
                         "success": success,
                         "latency_ms": round(latency_ms, 1),
+                        "tool_args": str(tool_args)[:300] if tool_args else None,
+                        "raw_observation": raw_observation[:300],
                     },
                     ensure_ascii=False,
                 ),
