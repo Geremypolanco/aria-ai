@@ -976,6 +976,21 @@ async def admin_api_missions(request: Request, limit: int = 50):
     return {"missions": await get_queue().list_recent(limit=max(1, min(limit, 200)))}
 
 
+@app.get("/admin/api/income-loop")
+async def admin_api_income_loop(request: Request):
+    """The 24/7 autonomous income loop's live status — running state, cycle
+    counts, success rate, the last 20 cycles, and pending opportunities.
+    IncomeLoop.get_status_dict() (apps/core/tools/income_loop.py) was built
+    "for API/dashboard consumption" but had no endpoint until now — the only
+    way to see this was asking ARIA in chat for income_loop_status's text
+    summary."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    from apps.core.tools.income_loop import get_income_loop
+
+    return await get_income_loop().get_status_dict()
+
+
 @app.get("/admin/api/users/{email}/history")
 async def admin_api_user_history(request: Request, email: str):
     """A specific user's full chat history, reconstructed via the same

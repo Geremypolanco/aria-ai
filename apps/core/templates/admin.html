@@ -114,6 +114,17 @@
     </div>
   </section>
 
+  <!-- 24/7 income loop -->
+  <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50 p-5">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-600">24/7 income loop <span id="incomeLoopDot" class="ml-1 inline-block h-2 w-2 rounded-full bg-zinc-300"></span></h2>
+      <span class="mono text-[11px] text-zinc-400">autonomous revenue strategies</span>
+    </div>
+    <div id="incomeLoopStats" class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-4"></div>
+    <div id="incomeLoopCycles" class="space-y-1.5 text-[12px]"></div>
+    <div id="incomeLoopEmpty" class="hidden py-4 text-center text-xs text-zinc-500">No cycles run yet.</div>
+  </section>
+
   <!-- traffic funnel -->
   <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50 p-5">
     <div class="mb-3 flex items-center justify-between">
@@ -333,6 +344,34 @@ async function loadMissions(){
   }catch(e){ /* keep last state */ }
 }
 
+// ── 24/7 income loop ─────────────────────────────────────────────────
+async function loadIncomeLoop(){
+  try{
+    const r = await fetch('/admin/api/income-loop', {credentials:'same-origin'});
+    if(!r.ok) return;
+    const d = await r.json();
+    document.getElementById('incomeLoopDot').className = 'ml-1 inline-block h-2 w-2 rounded-full ' + (d.running ? 'bg-emerald-400' : 'bg-zinc-400');
+
+    const stat = (label, value) => '<div class="rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2">'
+      + '<div class="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">'+label+'</div>'
+      + '<div class="mono mt-0.5 text-lg font-bold text-zinc-900">'+value+'</div></div>';
+    document.getElementById('incomeLoopStats').innerHTML =
+      stat('Status', d.running ? 'Running' : 'Stopped')
+      + stat('Cycles', d.total_cycles ?? 0)
+      + stat('Success rate', (d.success_rate ?? 0) + '%')
+      + stat('Opportunities', d.opportunity_count ?? (d.opportunities||[]).length ?? 0);
+
+    const cycles = d.recent_cycles || [];
+    document.getElementById('incomeLoopCycles').innerHTML = cycles.slice(0, 10).map(c =>
+      '<div class="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2">'
+      + '<span class="mono truncate">#'+esc(String(c.cycle_id ?? ''))+' — '+esc(c.strategy||'')+'</span>'
+      + '<span class="shrink-0 text-[11px] '+(c.success?'text-emerald-600':'text-red-500')+'">'+(c.success?'✓':'✕')+'</span>'
+      + '</div>'
+    ).join('');
+    document.getElementById('incomeLoopEmpty').classList.toggle('hidden', cycles.length>0);
+  }catch(e){ /* keep last state */ }
+}
+
 // ── per-user chat-history drawer ─────────────────────────────────────
 async function openHistory(email){
   if(!email) return;
@@ -377,9 +416,11 @@ loadRecentActivity();
 connectActivityStream();
 loadProjects();
 loadMissions();
+loadIncomeLoop();
 setInterval(refresh, 20000);  // live-ish
 setInterval(loadProjects, 20000);
 setInterval(loadMissions, 20000);
+setInterval(loadIncomeLoop, 20000);
 </script>
 </body>
 </html>

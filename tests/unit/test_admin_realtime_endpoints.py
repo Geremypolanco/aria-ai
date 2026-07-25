@@ -7,9 +7,10 @@ visibility into user intent, projects, and everything else":
   GET  /admin/api/activity/stream   — SSE feed of live turns (log_bus)
   GET  /admin/api/projects          — RDWing R&D projects
   GET  /admin/api/missions          — recent task_queue missions
+  GET  /admin/api/income-loop       — 24/7 autonomous income loop status
   GET  /admin/api/users/{email}/history — one user's chat history
 
-All five are strictly owner-only (`_is_owner_user`, not the legacy
+All six are strictly owner-only (`_is_owner_user`, not the legacy
 admin-password `_is_admin`) since they expose live conversational content,
 not just ops metrics — verified with a 403 for a signed-in non-owner and a
 200 for the owner, per endpoint.
@@ -51,6 +52,7 @@ def _as(client, email):
         "/admin/api/activity",
         "/admin/api/projects",
         "/admin/api/missions",
+        "/admin/api/income-loop",
         f"/admin/api/users/{OTHER_EMAIL}/history",
     ],
 )
@@ -66,6 +68,7 @@ def test_owner_only_endpoints_reject_non_owner(client, path):
         "/admin/api/activity",
         "/admin/api/projects",
         "/admin/api/missions",
+        "/admin/api/income-loop",
         f"/admin/api/users/{OTHER_EMAIL}/history",
     ],
 )
@@ -120,6 +123,30 @@ def test_admin_api_missions_returns_recent_missions(client):
     assert resp.status_code == 200
     assert resp.json()["missions"][0]["id"] == "task_abc"
     fake_queue.list_recent.assert_awaited_once_with(limit=5)
+
+
+def test_admin_api_income_loop_returns_status_dict(client):
+    _as(client, OWNER_EMAIL)
+    fake_loop = AsyncMock()
+    fake_loop.get_status_dict = AsyncMock(
+        return_value={
+            "running": True,
+            "total_cycles": 42,
+            "successful_cycles": 40,
+            "success_rate": 95.2,
+            "recent_cycles": [{"cycle_id": 42, "strategy": "content_pipeline", "success": True}],
+            "opportunities": [],
+        }
+    )
+    with patch("apps.core.tools.income_loop.get_income_loop", return_value=fake_loop):
+        resp = client.get("/admin/api/income-loop")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["running"] is True
+    assert body["total_cycles"] == 42
+    assert body["recent_cycles"][0]["strategy"] == "content_pipeline"
+    fake_loop.get_status_dict.assert_awaited_once()
 
 
 def test_admin_api_user_history_uses_deterministic_conversation_id(client):
