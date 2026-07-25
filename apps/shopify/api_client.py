@@ -368,13 +368,17 @@ class ShopifyAPIClient:
         self, product_id: str, seo_title: str, seo_description: str
     ) -> bool:
         try:
+            # Shopify's REST product resource has no "seo" object — the actual
+            # fields (see the read path above, get_products/update_product) are
+            # metafields_global_title_tag/metafields_global_description_tag.
+            # Sending "seo" silently no-ops: Shopify ignores the unknown key and
+            # returns the product unchanged, so this always returned True even
+            # though nothing was ever updated.
             result = await self.update_product(
                 product_id,
                 {
-                    "seo": {
-                        "title": seo_title,
-                        "description": seo_description,
-                    }
+                    "metafields_global_title_tag": seo_title,
+                    "metafields_global_description_tag": seo_description,
                 },
             )
             return result is not None

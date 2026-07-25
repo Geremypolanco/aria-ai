@@ -86,6 +86,28 @@ async def test_optimize_product_seo_returns_false_unconfigured(client):
     assert result is False
 
 
+@pytest.mark.asyncio
+async def test_optimize_product_seo_sends_real_shopify_metafields(client):
+    """Regression: this used to send {"seo": {"title": ..., "description": ...}}
+    — Shopify's REST product resource has no "seo" object, so the real API
+    silently ignores the unknown key and returns the product unchanged. The
+    actual fields (used by this same client's own read path) are
+    metafields_global_title_tag/metafields_global_description_tag."""
+    with patch.object(
+        client, "update_product", new=AsyncMock(return_value=MagicMock())
+    ) as mock_update:
+        result = await client.optimize_product_seo("123", "SEO Title", "SEO Description")
+
+    assert result is True
+    mock_update.assert_awaited_once_with(
+        "123",
+        {
+            "metafields_global_title_tag": "SEO Title",
+            "metafields_global_description_tag": "SEO Description",
+        },
+    )
+
+
 # ── Dataclass tests ───────────────────────────────────────────────────────────
 
 def test_shopify_product_to_dict():
