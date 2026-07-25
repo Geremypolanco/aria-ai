@@ -2455,6 +2455,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": 0,
             "media_type": None,
             "media_base64": None,
+            "awaiting_input": False,
         }
     if not _current_user(request):
         return {
@@ -2463,6 +2464,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": 0,
             "media_type": None,
             "media_base64": None,
+            "awaiting_input": False,
         }
 
     # Personalize + enforce plan limits from the signed-in user.
@@ -2496,6 +2498,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
 
     # Global panic freeze + AI burn-rate cap (paid plans frozen over budget).
@@ -2506,6 +2509,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": 0,
             "media_type": None,
             "media_base64": None,
+            "awaiting_input": False,
         }
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
@@ -2521,6 +2525,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
 
     # If a team professional is selected, prepend their persona so ARIA works as them.
@@ -2567,6 +2572,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": elapsed,
             "media_type": media_type,
             "media_base64": media_b64,
+            "awaiting_input": resp.awaiting_input,
         }
     except Exception as e:
         logger.error(f"Chat (aria_mind) error: {e}")
@@ -2581,6 +2587,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
         except Exception as e2:
             logger.error(f"Chat fallback error: {e2}")
@@ -2590,6 +2597,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
 
 
@@ -3124,7 +3132,13 @@ async def websocket_chat(ws: WebSocket):
             await _record_ai_cost(email, plan, user_text, reply_text)
             if email and reply_text:
                 asyncio.create_task(_remember_turn(email, user_text, reply_text))
-            await ws.send_json({"reply": reply_text, "tool": resp.tool_used})
+            await ws.send_json(
+                {
+                    "reply": reply_text,
+                    "tool": resp.tool_used,
+                    "awaiting_input": resp.awaiting_input,
+                }
+            )
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
