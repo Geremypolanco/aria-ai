@@ -390,9 +390,12 @@ class SocialMediaManager:
         return resp.content if resp.success else content
 
     async def _post_google(self, token: str, content: str, image_url: str | None) -> dict:
-        """Simulation of posting to Google Business Profile (placeholder for the real API)."""
-        # This is where the Google My Business API logic would go
-        return {"success": True, "platform": "google", "status": "simulated_success"}
+        """Google Business Profile posting is not implemented yet — no request is ever
+        made, so reporting success here would fabricate a post that doesn't exist."""
+        return {
+            "success": False,
+            "error": "Posting to Google Business Profile isn't implemented yet.",
+        }
 
     async def _post_facebook(self, token: str, content: str, image_url: str | None) -> dict:
         """Posts to Facebook Pages."""

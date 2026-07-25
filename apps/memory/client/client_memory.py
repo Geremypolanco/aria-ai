@@ -173,19 +173,26 @@ class ClientMemory:
         profile = next((p for p in self._profiles if p.get("profile_id") == profile_id), {})
         try:
             ai = get_ai_client()
-            resp = await ai.complete(
-                system="Product recommendation engine.",
+            data = await ai.complete_json(
+                system=(
+                    "Product recommendation engine. Return JSON: "
+                    '{"recommended_product": str, "offer": str, "reasoning": str}. '
+                    "recommended_product MUST be exactly one of the given product names."
+                ),
                 user=f"Client: {profile.get('name')}, spent ${profile.get('total_spent_usd',0)}, segment: {profile.get('segment')}. Products: {available_products[:5]}. Pick best offer.",
                 model=AIModel.FAST,
-                max_tokens=100,
+                max_tokens=150,
             )
-            if resp.success and resp.content:
+            picked = data.get("recommended_product") if isinstance(data, dict) else None
+            # Only trust the AI's pick if it's actually one of the products we gave
+            # it — a hallucinated product name would recommend something that
+            # doesn't exist. This was previously ignored entirely: the code always
+            # hardcoded available_products[0] regardless of what the AI said.
+            if picked in available_products:
                 return {
-                    "recommended_product": (
-                        available_products[0] if available_products else "premium_plan"
-                    ),
-                    "offer": "15% loyalty discount",
-                    "reasoning": resp.content[:150],
+                    "recommended_product": picked,
+                    "offer": data.get("offer") or "15% loyalty discount",
+                    "reasoning": data.get("reasoning") or "AI-personalized recommendation",
                 }
         except Exception:
             pass
