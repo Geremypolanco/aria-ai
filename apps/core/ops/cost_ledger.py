@@ -25,9 +25,16 @@ Design notes:
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("aria.cost_ledger")
+
+# Bounded, process-local ring buffer of individual charges — real telemetry
+# for Mission Control's burn-rate chart, not a fabricated time series. Same
+# "in-memory, per-process" tradeoff as month_cost (see module docstring).
+_MAX_SAMPLES = 500
 
 # USD per 1M tokens (input, output). Approximate list prices; adjust as needed.
 MODEL_PRICING: dict[str, tuple[float, float]] = {
@@ -71,6 +78,7 @@ class CostLedger:
     def __init__(self) -> None:
         self._cost: dict[tuple[str, str], float] = {}  # (month, email) -> usd
         self._frozen: set[str] = set()  # emails frozen this month
+        self._samples: deque[dict[str, Any]] = deque(maxlen=_MAX_SAMPLES)
 
     # ── recording ────────────────────────────────────────────────
     def record(
@@ -85,12 +93,35 @@ class CostLedger:
         """Record a call's cost for the user and return the USD amount."""
         cost = estimate_cost(model, input_tokens, output_tokens)
         if email:
-            key = (_month_key(now), email.strip().lower())
+            email = email.strip().lower()
+            key = (_month_key(now), email)
             self._cost[key] = round(self._cost.get(key, 0.0) + cost, 6)
+            self._samples.append(
+                {
+                    "ts": (now or datetime.now(UTC)).isoformat(),
+                    "email": email,
+                    "model": model or "",
+                    "cost_usd": cost,
+                }
+            )
         return cost
 
     def month_cost(self, email: str, *, now: datetime | None = None) -> float:
         return self._cost.get((_month_key(now), (email or "").strip().lower()), 0.0)
+
+    def all_month_costs(self, *, now: datetime | None = None) -> dict[str, float]:
+        """email -> USD spent this month, for every user this process has
+        recorded a charge for — the admin/Mission Control view. Same
+        per-process caveat as month_cost (see module docstring): a fresh
+        instance or a request landing on a different worker won't show up
+        here until it records its own charges."""
+        month = _month_key(now)
+        return {email: cost for (m, email), cost in self._cost.items() if m == month}
+
+    def recent_samples(self, limit: int = 200) -> list[dict[str, Any]]:
+        """Most recent individual charges across all users, oldest first —
+        real burn-rate telemetry, bounded to _MAX_SAMPLES in memory."""
+        return list(self._samples)[-max(1, limit) :]
 
     # ── throttle decision ────────────────────────────────────────
     def budget(self, plan: str) -> float:
