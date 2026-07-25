@@ -205,6 +205,13 @@ AVAILABLE TOOLS (you execute them, not the user):
 - suggest_dynamic_price → adjusts a product's price based on inventory level and demand signal (already analyzed via analyze_pricing). Args: {{"product": "...", "inventory_level": "low|normal|high", "demand_signal": "low|stable|high"}}
 - build_pricing_strategy → a complete pricing strategy (penetration/skimming/competitive/value-based/dynamic) with initial/target price and rationale for a new niche or product line. Args: {{"niche": "...", "product_type": "...", "target_margin_pct": 60}}
 - pricing_dashboard  → positioning breakdown, average price, and products priced above their recommendation. Args: {{}}
+- create_fiverr_gig  → complete Fiverr gig (SEO title, description, 3-tier packages, tags, FAQ). Package prices are baseline templates, not researched numbers. Args: {{"service_type": "...", "niche": "..."}}
+- optimize_fiverr_title → rewrites a gig title for Fiverr search visibility around a target keyword. Args: {{"current_title": "...", "keyword": "..."}}
+- fiverr_gig_analytics → total/active gigs, average SEO score, categories covered. Args: {{}}
+- evaluate_upwork_job → scores a job posting's fit (skill overlap + AI judgment) and suggests a bid price. Args: {{"title": "...", "description": "...", "budget_min": 0, "budget_max": 0, "skills_required": ["..."], "our_skills": ["..."]}}
+- write_upwork_proposal → a full proposal (hook, body, relevant experience, CTA, bid, delivery time) for a job already evaluated via evaluate_upwork_job. Args: {{"job_id": "...", "our_expertise": "..."}}
+- optimize_upwork_profile → headline, overview, skills to highlight, and portfolio ideas for an Upwork profile. Args: {{"skills": ["..."], "specialization": "..."}}
+- upwork_bidding_analytics → win rate, average bid, total won value across tracked jobs. Args: {{}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -238,22 +245,23 @@ REASONING RULES:
 18. For an existing Shopify store's revenue optimization (not creating new products — that's run_business_agent with agent="ecommerce") → recover_abandoned_cart for cart abandoners, create_flash_sale or create_product_bundle to move underperforming or complementary inventory, recommend_products for on-site placements, and shopify_revenue_dashboard for a quick health check across all of them.
 19. For B2B lead generation → discover_leads first, then generate_sales_proposal for a specific one worth pursuing. Always be explicit about which leads came from a real web search vs. the illustrative examples used to pad a short result — never present a synthetic example as a real, contactable business. For LinkedIn specifically → add_linkedin_prospect, score_linkedin_prospect to prioritize, then generate_linkedin_connection_request (single note) or generate_linkedin_outreach_sequence (full 4-message sequence) once you know the fit is good. Check linkedin_outreach_pipeline before suggesting who to follow up with next.
 20. create_landing_page generates copy with placeholder social-proof numbers ("2,000+ customers", "47 spots remaining") — flag these as templates to replace with real figures before publishing, the same rule as persuasion copy. Use generate_landing_headlines to A/B test the headline specifically. Before recommending a price → analyze_pricing (real competitor data beats an AI estimate — ask for it if the user has it) or build_pricing_strategy for a brand-new product line; use suggest_dynamic_price only for an already-analyzed product reacting to inventory/demand.
-21. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-22. For recurring automations → use create_workflow + run_workflow.
-23. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-24. If you're unsure what the user wants → interpret the most useful intent and execute it.
-25. Never make up data, prices, statistics, or facts. Search if you don't know.
-26. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-27. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-28. If the user asks to search for repos or projects on GitHub → use github_search.
-29. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-30. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-31. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-32. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-33. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-34. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-35. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-36. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+21. For freelance platform work → create_fiverr_gig or evaluate_upwork_job first (Upwork jobs need a fit score before writing a proposal — don't skip straight to write_upwork_proposal). Fiverr package prices and Upwork bid suggestions are starting points based on general market patterns, not researched-for-this-gig numbers — say so if the user might treat them as precise. optimize_fiverr_title and optimize_upwork_profile are standalone touch-ups, not full gig/job flows.
+22. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+23. For recurring automations → use create_workflow + run_workflow.
+24. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+25. If you're unsure what the user wants → interpret the most useful intent and execute it.
+26. Never make up data, prices, statistics, or facts. Search if you don't know.
+27. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+28. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+29. If the user asks to search for repos or projects on GitHub → use github_search.
+30. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+31. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+32. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+33. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+34. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+35. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+36. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+37. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -388,6 +396,14 @@ _HELP_TEXT = """\
 - `build a pricing strategy for [niche]` — launch/target pricing with rationale
 - `should I adjust the price on [product]?` — inventory/demand-based suggestion
 - `how's my pricing looking overall?` — positioning + overpriced products
+
+**Freelance gigs (Fiverr & Upwork)**
+- `create a Fiverr gig for [service]` — title, description, 3-tier packages, FAQ
+- `optimize my gig title for [keyword]` — SEO-focused rewrite
+- `is this Upwork job worth bidding on?` — fit score + suggested bid
+- `write a proposal for this job` — hook, body, experience, CTA
+- `optimize my Upwork profile for [specialization]` — headline, overview, portfolio ideas
+- `how are my gigs/bids doing?` — SEO scores, win rate, avg bid
 
 **Management**
 - `/goals` — list active goals
@@ -2799,6 +2815,120 @@ class AriaMind:
                         )
                     )
                 return "\n\n".join(lines), {}
+
+            # ── FREELANCE GIGS: FIVERR ──────────────────────────────────────────
+            elif tool == "create_fiverr_gig":
+                service_type = args.get("service_type", "")
+                niche = args.get("niche", "")
+                if not service_type or not niche:
+                    return "I need both a service type and a niche to build a Fiverr gig.", {}
+                from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+
+                gig = await get_fiverr_optimizer().create_gig(service_type, niche)
+                pkgs = ", ".join(
+                    f"{name}: ${p['price']} ({p['delivery_days']}d)"
+                    for name, p in gig.packages.items()
+                )
+                return (
+                    f"**{gig.title}** (id: `{gig.gig_id}`, SEO score {gig.seo_score:.0%})\n"
+                    f"Packages: {pkgs}\n"
+                    f"Tags: {', '.join(gig.tags)}\n\n"
+                    f"⚠ Package prices are baseline templates — adjust for your actual market."
+                ), {}
+
+            elif tool == "optimize_fiverr_title":
+                current_title = args.get("current_title", "")
+                keyword = args.get("keyword", "")
+                if not current_title or not keyword:
+                    return "I need the current title and target keyword to optimize it.", {}
+                from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+
+                optimized = await get_fiverr_optimizer().optimize_gig_title(current_title, keyword)
+                return f"**Optimized title:** {optimized}", {}
+
+            elif tool == "fiverr_gig_analytics":
+                from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+
+                engine = get_fiverr_optimizer()
+                await engine._load()
+                stats = engine.gig_analytics()
+                if stats["total_gigs"] == 0:
+                    return "No Fiverr gigs yet. Use create_fiverr_gig first.", {}
+                return (
+                    f"**Fiverr gigs: {stats['total_gigs']}** ({stats['active']} active)\n"
+                    f"Avg SEO score: {stats['avg_seo_score']:.0%} · "
+                    f"Categories: {', '.join(stats['categories'])}"
+                ), {}
+
+            # ── FREELANCE GIGS: UPWORK ───────────────────────────────────────
+            elif tool == "evaluate_upwork_job":
+                title = args.get("title", "")
+                description = args.get("description", "")
+                budget_min = float(args.get("budget_min", 0))
+                budget_max = float(args.get("budget_max", 0))
+                skills_required = args.get("skills_required", []) or []
+                our_skills = args.get("our_skills", []) or []
+                if not title:
+                    return "I need the job title to evaluate it.", {}
+                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+                job = await get_upwork_bidder().evaluate_job(
+                    title, description, budget_min, budget_max, skills_required, our_skills
+                )
+                return (
+                    f"**{job.title}** (id: `{job.job_id}`)\n"
+                    f"Fit score: {job.fit_score:.0%} · Suggested bid: ${job.bid_price:.2f}"
+                ), {}
+
+            elif tool == "write_upwork_proposal":
+                job_id = args.get("job_id", "")
+                our_expertise = args.get("our_expertise", "")
+                if not job_id or not our_expertise:
+                    return (
+                        "I need a job_id (from evaluate_upwork_job) and our relevant expertise.",
+                        {},
+                    )
+                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+                proposal = await get_upwork_bidder().write_proposal(job_id, our_expertise)
+                return (
+                    f"**Proposal** (bid: ${proposal.bid_amount:.2f}, {proposal.delivery_days}d delivery)\n"
+                    f"{proposal.body}"
+                ), {}
+
+            elif tool == "optimize_upwork_profile":
+                skills = args.get("skills", []) or []
+                specialization = args.get("specialization", "")
+                if not skills or not specialization:
+                    return (
+                        "I need your skills and specialization to optimize an Upwork profile.",
+                        {},
+                    )
+                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+                result = await get_upwork_bidder().generate_profile_optimization(
+                    skills, specialization
+                )
+                return (
+                    f"**Headline:** {result['headline']}\n\n"
+                    f"**Overview:**\n{result['overview']}\n\n"
+                    f"**Portfolio ideas:**\n"
+                    + "\n".join(f"  • {p}" for p in result["portfolio_suggestions"])
+                ), {}
+
+            elif tool == "upwork_bidding_analytics":
+                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+                engine = get_upwork_bidder()
+                await engine._load()
+                stats = engine.bidding_analytics()
+                if stats["total_jobs"] == 0:
+                    return "No Upwork jobs tracked yet. Use evaluate_upwork_job first.", {}
+                return (
+                    f"**Upwork bidding: {stats['bids_sent']}/{stats['total_jobs']} bid on** "
+                    f"({stats['win_rate_pct']:.0f}% win rate)\n"
+                    f"Avg bid: ${stats['avg_bid']:.2f} · Total won value: ${stats['total_won_value']:,.2f}"
+                ), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":
