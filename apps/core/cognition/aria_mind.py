@@ -224,6 +224,22 @@ AVAILABLE TOOLS (you execute them, not the user):
 - segment_client      → recomputes a client's segment (vip/high_value/standard/at_risk/churned) from spend and recency. Args: {{"profile_id": "..."}}
 - personalize_client_offer → recommends a specific product + offer for a known client based on their history and segment. Args: {{"profile_id": "...", "available_products": ["..."]}}
 - client_memory_dashboard → total clients/interactions, segment breakdown, total LTV, and who's VIP or at risk. Args: {{}}
+- audit_internal_links → analyzes a set of pages for orphan content, identifies pillar pages, and generates internal-link suggestions with anchor text. Args: {{"site_niche": "...", "pages": [{{"url": "...", "title": "...", "word_count": 0, "keywords": []}}]}}
+- suggest_internal_links → best internal-link targets for one page from a content library, with anchor text. Args: {{"source_page": {{"url": "...", "title": "...", "keywords": []}}, "content_library": [{{"url": "...", "title": "...", "keywords": []}}]}}
+- generate_pillar_strategy → pillar-cluster content architecture for a niche and topic list. Args: {{"niche": "...", "topics": ["..."]}}
+- internal_linking_stats → totals across all internal-linking work done so far. Args: {{}}
+- predict_engagement → heuristic pre-publish engagement estimate (views/shares/comments/viral probability) for content on a platform — a base-rate model, not measured results; low confidence until real historical data exists. Args: {{"content": "...", "platform": "twitter|instagram|tiktok|youtube|linkedin|blog|facebook|pinterest", "audience_size": 1000}}
+- analyze_virality    → detects viral hook patterns in content, scores virality/hook-strength/shareability, and suggests title alternatives. Args: {{"content": "...", "platform": "..."}}
+- optimize_viral_title → 3 more-viral rewrites of an existing title. Args: {{"title": "...", "platform": "..."}}
+- select_growth_action → recommends which growth action to try next using a UCB1 bandit that learns from past recorded outcomes. Args: {{}}
+- record_action_outcome → logs the real reward (e.g. revenue) from a growth action so future select_growth_action picks improve. Args: {{"action_type": "...", "reward": 0}}
+- reinforcement_report → which growth actions are performing best/worst so far, from real recorded outcomes. Args: {{}}
+- track_roi           → starts tracking ROI on a named investment (campaign, department, experiment). Args: {{"name": "...", "category": "action|campaign|department|experiment", "investment_usd": 0}}
+- update_roi_returns  → records actual returns against a tracked investment and recalculates its ROI%. Args: {{"record_id": "...", "returns_usd": 0}}
+- roi_summary         → totals, average ROI, and best/worst performing tracked investments — all from real recorded numbers, never estimated. Args: {{}}
+- record_cashflow_entry → logs a real income or expense entry (optionally recurring). Args: {{"type": "income|expense", "amount": 0, "category": "...", "description": "...", "recurring": false, "frequency_days": 0}}
+- cashflow_summary    → current balance, monthly burn, runway in months, and optimization tips — computed entirely from entries you've logged. Args: {{}}
+- forecast_cashflow   → projects net cashflow for the next N months from recurring (or recent) entries. Args: {{"months_ahead": 3}}
 - list_social_sessions → OWNER ONLY. Lists which social platforms have an active session imported (via the separate Telegram /sesion flow, not this tool). Args: {{}}
 - check_social_session → OWNER ONLY. Verifies a platform's session is still valid before posting. Args: {{"platform": "twitter|linkedin|instagram|..."}}
 - post_to_social     → OWNER ONLY. Posts to a live social platform using the owner's real imported session — this is public and effectively irreversible, so the first call ALWAYS returns a preview with a confirm_token instead of posting; only call again with that exact platform+text plus confirm_token to actually publish. Args: {{"platform": "twitter|linkedin", "text": "...", "confirm_token": "..."}}
@@ -280,6 +296,9 @@ REASONING RULES:
 37. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
 38. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 39. post_to_social is owner-only and always previews before publishing — never claim you've posted something after the first call (it only returns a confirm_token, nothing has gone out yet). Show the exact preview text to the owner and wait for them to actually confirm they want it posted before calling post_to_social again with that token; don't invent a confirmation the owner didn't give. This is different from generating draft social copy for the user to post themselves (no gating needed) — the gate is specifically for ARIA publishing through the owner's own logged-in session.
+40. predict_engagement's numbers are a base-rate heuristic model, not measured results — always say so, the same way create_landing_page's placeholder numbers get flagged. analyze_virality's scores are real (deterministic pattern-matching + hooks), but they measure *pattern presence*, not actual audience response — don't present either as if you pulled real analytics.
+41. select_growth_action / record_action_outcome / reinforcement_report form a closed loop: the bandit only gets smarter if real outcomes (actual revenue/conversions, not guesses) are logged back with record_action_outcome after trying the recommended action. Encourage that loop rather than only ever calling select_growth_action.
+42. track_roi / update_roi_returns / roi_summary and record_cashflow_entry / cashflow_summary / forecast_cashflow are pure bookkeeping on numbers the user gives you — never estimate an investment, return, or cashflow entry yourself and record it as if the user provided it. If they ask "how's my ROI" or "what's my runway" without having logged anything, say there's nothing tracked yet rather than guessing.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -442,6 +461,27 @@ _HELP_TEXT = """\
 - `what segment is [client] in?` — VIP/high-value/standard/at-risk/churned
 - `what offer should I give [client]?` — personalized recommendation
 - `how's my client base doing?` — totals, segments, LTV, who needs attention
+
+**Content strategy & prediction**
+- `audit my internal links: [pages]` — orphan pages, pillar pages, link suggestions
+- `suggest links for this page` — best internal-link targets from your content library
+- `build a pillar strategy for [niche]: [topics]` — pillar-cluster architecture
+- `will this content do well on [platform]?` — heuristic engagement/viral-probability estimate
+- `analyze this for virality` — hook patterns, shareability score, title alternatives
+- `make this title more viral` — 3 rewrites
+
+**Adaptive growth learning**
+- `what growth action should I try next?` — bandit-recommended action from past outcomes
+- `that got [result]` — log a real outcome so future recommendations improve
+- `how are my growth actions performing?` — best/worst by real recorded reward
+
+**ROI & cashflow tracking**
+- `track ROI on [investment]: $X` — start tracking a campaign/experiment/department
+- `[investment] returned $X` — record actual returns, get ROI%
+- `how's my ROI overall?` — totals, best/worst performers
+- `log $X income/expense: [category]` — real bookkeeping entry
+- `what's my cashflow/runway looking like?` — balance, burn rate, runway, tips
+- `forecast my cashflow` — projected net for the next few months
 
 **Social publishing** (owner-only)
 - `what social accounts are connected?` — connected platforms + session age
@@ -3255,6 +3295,271 @@ class AriaMind:
                 if at_risk:
                     lines.append("At risk / churned: " + ", ".join(p["name"] for p in at_risk[:10]))
                 return "\n\n".join(lines), {}
+
+            # ── INTERNAL LINKING & CONTENT STRATEGY ───────────────────────────
+            elif tool == "audit_internal_links":
+                site_niche = args.get("site_niche", "")
+                pages = args.get("pages", []) or []
+                if not pages:
+                    return "I need a list of pages (url, title, word_count, keywords) to audit.", {}
+                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+                audit = await get_linking_optimizer().audit_site(site_niche, pages)
+                lines = [
+                    f"**Internal linking audit** ({audit.pages_analyzed} pages, "
+                    f"{len(audit.orphan_pages)} orphans)",
+                    f"Pillar pages: {', '.join(p['title'] for p in audit.pillar_pages) or 'none identified'}",
+                    f"{len(audit.link_suggestions)} link suggestions generated "
+                    f"(est. SEO score {audit.seo_score_before:.0%} → {audit.seo_score_after_estimate:.0%})",
+                ]
+                return "\n".join(lines), {}
+
+            elif tool == "suggest_internal_links":
+                source_page = args.get("source_page", {}) or {}
+                content_library = args.get("content_library", []) or []
+                if not source_page or not content_library:
+                    return "I need the source page and a content library to link from.", {}
+                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+                suggestions = await get_linking_optimizer().suggest_links(
+                    source_page, content_library
+                )
+                if not suggestions:
+                    return "No good internal link matches found in this content library.", {}
+                lines = [f"**Internal link suggestions for '{source_page.get('title', '')}'**"]
+                for s in suggestions[:5]:
+                    lines.append(
+                        f'  • → {s.target_title} ("{s.anchor_text}", {s.seo_value} value, '
+                        f"{s.relevance_score:.0%} relevance)"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "generate_pillar_strategy":
+                niche = args.get("niche", "")
+                topics = args.get("topics", []) or []
+                if not niche or not topics:
+                    return "I need a niche and a list of topics to build a pillar strategy.", {}
+                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+                result = await get_linking_optimizer().generate_pillar_strategy(niche, topics)
+                lines = [f"**Pillar-cluster strategy for {niche}**"]
+                for p in result["pillar_pages"]:
+                    clusters = result["cluster_pages"].get(p["topic"], [])
+                    lines.append(
+                        f"  • Pillar: {p['topic']} — clusters: {', '.join(clusters) or 'n/a'}"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "internal_linking_stats":
+                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+                stats = get_linking_optimizer().linking_stats()
+                if stats["total_suggestions"] == 0:
+                    return "No internal linking activity yet.", {}
+                return (
+                    f"**Internal linking**: {stats['total_suggestions']} suggestions "
+                    f"({stats['high_value_links']} high-value), {stats['audits_completed']} audits, "
+                    f"avg relevance {stats['avg_relevance_score']:.0%}"
+                ), {}
+
+            # ── ENGAGEMENT & VIRALITY PREDICTION ──────────────────────────────
+            elif tool == "predict_engagement":
+                content = args.get("content", "")
+                platform = args.get("platform", "twitter")
+                if not content:
+                    return "What content should I predict engagement for?", {}
+                from apps.content.scoring.engagement_predictor import get_engagement_predictor
+
+                pred = await get_engagement_predictor().predict(
+                    content, platform, int(args.get("audience_size", 1000))
+                )
+                return (
+                    f"**Engagement prediction ({platform})** — heuristic estimate, no historical "
+                    f"data for this account yet (confidence {pred.confidence:.0%})\n"
+                    f"~{pred.predicted_views:,} views, {pred.predicted_engagement_rate:.1%} engagement, "
+                    f"{pred.predicted_shares} shares, {pred.predicted_comments} comments\n"
+                    f"Viral probability: {pred.viral_probability:.0%} · Best time: {pred.best_publish_time}"
+                ), {}
+
+            elif tool == "analyze_virality":
+                content = args.get("content", "")
+                if not content:
+                    return "What content should I analyze for virality?", {}
+                from apps.content.virality.virality_engine import get_virality_engine
+
+                analysis = await get_virality_engine().analyze(
+                    content, args.get("platform", "general")
+                )
+                lines = [
+                    f"**Virality analysis** (score {analysis.virality_score:.0%}, "
+                    f"hook {analysis.hook_score:.0%}, shareability {analysis.shareability_score:.0%})",
+                    analysis.analysis_notes,
+                ]
+                if analysis.title_alternatives:
+                    lines.append(
+                        "Title alternatives:\n"
+                        + "\n".join(f"  • {t}" for t in analysis.title_alternatives)
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "optimize_viral_title":
+                title = args.get("title", "")
+                if not title:
+                    return "What title should I make more viral?", {}
+                from apps.content.virality.virality_engine import get_virality_engine
+
+                alts = await get_virality_engine().optimize_title(
+                    title, args.get("platform", "youtube")
+                )
+                return "**Viral title alternatives:**\n" + "\n".join(f"  • {t}" for t in alts), {}
+
+            # ── ADAPTIVE GROWTH-ACTION LEARNING (bandit) ──────────────────────
+            elif tool == "select_growth_action":
+                from apps.learning.optimization.reinforcement_optimizer import (
+                    get_reinforcement_optimizer,
+                )
+
+                action = await get_reinforcement_optimizer().select_action()
+                return (
+                    f"Recommended next growth action: **{action}** "
+                    f"(chosen via UCB1 bandit over past outcomes — log the result with "
+                    f"record_action_outcome so future picks improve)."
+                ), {}
+
+            elif tool == "record_action_outcome":
+                action_type = args.get("action_type", "")
+                if not action_type:
+                    return "Which action type had this outcome?", {}
+                from apps.learning.optimization.reinforcement_optimizer import (
+                    get_reinforcement_optimizer,
+                )
+
+                arm = await get_reinforcement_optimizer().record_outcome(
+                    action_type, float(args.get("reward", 0))
+                )
+                return (
+                    f"Recorded. **{action_type}**: {arm.total_pulls} pulls, "
+                    f"avg reward {arm.avg_reward:.2f}"
+                ), {}
+
+            elif tool == "reinforcement_report":
+                from apps.learning.optimization.reinforcement_optimizer import (
+                    get_reinforcement_optimizer,
+                )
+
+                report = get_reinforcement_optimizer().optimization_report()
+                if report["total_pulls"] == 0:
+                    return "No growth actions logged yet. Use select_growth_action to start.", {}
+                lines = [
+                    f"**Growth-action learning**: {report['total_pulls']} actions tried, "
+                    f"best: {report['best_action']}, worst: {report['worst_action']}",
+                ]
+                for a in report["arm_rankings"]:
+                    lines.append(
+                        f"  • {a['action_type']}: avg reward {a['avg_reward']} ({a['total_pulls']} pulls)"
+                    )
+                return "\n".join(lines), {}
+
+            # ── ROI TRACKING ───────────────────────────────────────────────────
+            elif tool == "track_roi":
+                name = args.get("name", "")
+                category = args.get("category", "campaign")
+                investment_usd = args.get("investment_usd")
+                if not name or investment_usd is None:
+                    return "I need a name and the investment amount to start tracking ROI.", {}
+                from apps.economics.roi_tracker import get_roi_tracker
+
+                record = await get_roi_tracker().track(name, category, float(investment_usd))
+                return (
+                    f"Tracking ROI for **{name}** ({category}): ${record.investment_usd:,.2f} "
+                    f"invested. Update it later with update_roi_returns and record_id `{record.record_id}`."
+                ), {}
+
+            elif tool == "update_roi_returns":
+                record_id = args.get("record_id", "")
+                returns_usd = args.get("returns_usd")
+                if not record_id or returns_usd is None:
+                    return "I need the record_id and the returns amount.", {}
+                from apps.economics.roi_tracker import get_roi_tracker
+
+                record = await get_roi_tracker().update_returns(record_id, float(returns_usd))
+                if record is None:
+                    return f"No ROI record found with id `{record_id}`.", {}
+                return (
+                    f"**{record.name}**: ${record.investment_usd:,.2f} → ${record.returns_usd:,.2f} "
+                    f"({record.roi_pct:+.1f}% ROI, {record.roi_multiple():.2f}x)"
+                ), {}
+
+            elif tool == "roi_summary":
+                from apps.economics.roi_tracker import get_roi_tracker
+
+                tracker = get_roi_tracker()
+                await tracker._load()
+                summary = tracker.roi_summary()
+                if summary["total_tracked"] == 0:
+                    return "No ROI records yet. Use track_roi to start tracking an investment.", {}
+                lines = [
+                    f"**ROI summary**: {summary['total_tracked']} tracked, avg {summary['avg_roi_pct']:+.1f}%\n"
+                    f"Invested ${summary['total_invested']:,.2f} → returned ${summary['total_returns']:,.2f}"
+                ]
+                if summary["best_roi"]:
+                    lines.append(
+                        f"Best: {summary['best_roi'].get('name')} ({summary['best_roi'].get('roi_pct', 0):+.1f}%)"
+                    )
+                if summary["worst_roi"]:
+                    lines.append(
+                        f"Worst: {summary['worst_roi'].get('name')} ({summary['worst_roi'].get('roi_pct', 0):+.1f}%)"
+                    )
+                return "\n".join(lines), {}
+
+            # ── CASHFLOW ──────────────────────────────────────────────────────
+            elif tool == "record_cashflow_entry":
+                entry_type = args.get("type", "")
+                amount = args.get("amount")
+                category = args.get("category", "general")
+                if entry_type not in ("income", "expense") or amount is None:
+                    return 'I need type ("income" or "expense"), an amount, and a category.', {}
+                from apps.business.finance.cashflow_engine import get_cashflow_engine
+
+                entry = await get_cashflow_engine().record(
+                    entry_type,
+                    float(amount),
+                    category,
+                    args.get("description", ""),
+                    bool(args.get("recurring", False)),
+                    int(args.get("frequency_days", 0)),
+                )
+                return f"Recorded {entry.type}: ${entry.amount_usd:,.2f} ({entry.category})", {}
+
+            elif tool == "cashflow_summary":
+                from apps.business.finance.cashflow_engine import get_cashflow_engine
+
+                engine = get_cashflow_engine()
+                await engine._load()
+                summary = engine.summary()
+                runway = await engine.runway_months()
+                tips = await engine.optimization_tips()
+                lines = [
+                    f"**Cashflow**: balance ${summary['current_balance_usd']:,.2f}, "
+                    f"monthly burn ${summary['monthly_burn_usd']:,.2f}, runway {runway:.1f} months",
+                ]
+                if tips:
+                    lines.append("Tips:\n" + "\n".join(f"  • {t}" for t in tips[:3]))
+                return "\n".join(lines), {}
+
+            elif tool == "forecast_cashflow":
+                from apps.business.finance.cashflow_engine import get_cashflow_engine
+
+                forecast = await get_cashflow_engine().forecast_cashflow(
+                    int(args.get("months_ahead", 3))
+                )
+                lines = ["**Cashflow forecast**"]
+                for f in forecast:
+                    lines.append(
+                        f"  Month {f['month']}: net ${f['projected_net']:,.2f} "
+                        f"(cumulative ${f['cumulative_net']:,.2f})"
+                    )
+                return "\n".join(lines), {}
 
             # ── SOCIAL SESSIONS (owner-only — see _OWNER_ONLY_TOOLS) ─────────
             elif tool == "list_social_sessions":
