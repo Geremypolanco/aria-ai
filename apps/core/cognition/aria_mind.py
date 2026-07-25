@@ -198,6 +198,13 @@ AVAILABLE TOOLS (you execute them, not the user):
 - generate_linkedin_connection_request → a single personalized connection note under 300 characters. Args: {{"prospect_id": "...", "service": "..."}}
 - generate_linkedin_outreach_sequence → a 4-message sequence (connection → intro → 2 follow-ups) for a scored prospect. Args: {{"prospect_id": "...", "service": "..."}}
 - linkedin_outreach_pipeline → pipeline analytics (connection/reply rates) plus the highest-scoring prospects not yet contacted. Args: {{"min_score": 0.7}}
+- create_landing_page → generates a complete high-converting landing page (headline, subheadline, hero copy, bullets, social proof, urgency, CTAs, FAQ, estimated CVR). Contains placeholder numbers that must be swapped for real data before publishing. Args: {{"product": "...", "offer": "...", "target_audience": "...", "price": 0}}
+- generate_landing_headlines → 5+ headline variants for A/B testing a landing page. Args: {{"product": "...", "audience": "...", "count": 5}}
+- landing_page_stats → total pages created, A/B variant split, average estimated CVR. Args: {{}}
+- analyze_pricing    → benchmarks your price against competitors (real data if given, AI-estimated market range otherwise), returns positioning and a recommended price. Args: {{"product_name": "...", "category": "...", "our_price": 0, "competitors": [{{"competitor": "...", "price": 0}}]}}
+- suggest_dynamic_price → adjusts a product's price based on inventory level and demand signal (already analyzed via analyze_pricing). Args: {{"product": "...", "inventory_level": "low|normal|high", "demand_signal": "low|stable|high"}}
+- build_pricing_strategy → a complete pricing strategy (penetration/skimming/competitive/value-based/dynamic) with initial/target price and rationale for a new niche or product line. Args: {{"niche": "...", "product_type": "...", "target_margin_pct": 60}}
+- pricing_dashboard  → positioning breakdown, average price, and products priced above their recommendation. Args: {{}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -230,22 +237,23 @@ REASONING RULES:
 17. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
 18. For an existing Shopify store's revenue optimization (not creating new products — that's run_business_agent with agent="ecommerce") → recover_abandoned_cart for cart abandoners, create_flash_sale or create_product_bundle to move underperforming or complementary inventory, recommend_products for on-site placements, and shopify_revenue_dashboard for a quick health check across all of them.
 19. For B2B lead generation → discover_leads first, then generate_sales_proposal for a specific one worth pursuing. Always be explicit about which leads came from a real web search vs. the illustrative examples used to pad a short result — never present a synthetic example as a real, contactable business. For LinkedIn specifically → add_linkedin_prospect, score_linkedin_prospect to prioritize, then generate_linkedin_connection_request (single note) or generate_linkedin_outreach_sequence (full 4-message sequence) once you know the fit is good. Check linkedin_outreach_pipeline before suggesting who to follow up with next.
-20. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-21. For recurring automations → use create_workflow + run_workflow.
-22. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-23. If you're unsure what the user wants → interpret the most useful intent and execute it.
-24. Never make up data, prices, statistics, or facts. Search if you don't know.
-25. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-26. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-27. If the user asks to search for repos or projects on GitHub → use github_search.
-28. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-29. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-30. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-31. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-32. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-33. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-34. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-35. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+20. create_landing_page generates copy with placeholder social-proof numbers ("2,000+ customers", "47 spots remaining") — flag these as templates to replace with real figures before publishing, the same rule as persuasion copy. Use generate_landing_headlines to A/B test the headline specifically. Before recommending a price → analyze_pricing (real competitor data beats an AI estimate — ask for it if the user has it) or build_pricing_strategy for a brand-new product line; use suggest_dynamic_price only for an already-analyzed product reacting to inventory/demand.
+21. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+22. For recurring automations → use create_workflow + run_workflow.
+23. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+24. If you're unsure what the user wants → interpret the most useful intent and execute it.
+25. Never make up data, prices, statistics, or facts. Search if you don't know.
+26. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+27. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+28. If the user asks to search for repos or projects on GitHub → use github_search.
+29. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+30. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+31. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+32. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+33. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+34. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+35. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+36. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -372,6 +380,14 @@ _HELP_TEXT = """\
 - `score this prospect for [service]` — relevance + likely pain point
 - `write a connection request / outreach sequence for [prospect]` — ready-to-send copy
 - `how's my LinkedIn pipeline doing?` — rates + top prospects to follow up with
+
+**Landing pages & pricing**
+- `build a landing page for [product]` — headline, copy, bullets, FAQ, CTAs
+- `give me headline variants for [product]` — A/B test options
+- `is my price competitive for [product]?` — market benchmark + recommendation
+- `build a pricing strategy for [niche]` — launch/target pricing with rationale
+- `should I adjust the price on [product]?` — inventory/demand-based suggestion
+- `how's my pricing looking overall?` — positioning + overpriced products
 
 **Management**
 - `/goals` — list active goals
@@ -2640,6 +2656,148 @@ class AriaMind:
                         else f"No prospects above {min_score:.0%} relevance yet."
                     ),
                 ]
+                return "\n\n".join(lines), {}
+
+            # ── LANDING PAGES ────────────────────────────────────────────────
+            elif tool == "create_landing_page":
+                product = args.get("product", "")
+                offer = args.get("offer", "")
+                target_audience = args.get("target_audience", "")
+                price = float(args.get("price", 0))
+                if not product or not offer:
+                    return "I need at least a product and an offer to build a landing page.", {}
+                from apps.conversion.landing_pages.landing_page_engine import (
+                    get_landing_page_engine,
+                )
+
+                page = await get_landing_page_engine().create_page(
+                    product, offer, target_audience, price
+                )
+                bullets = "\n".join(f"  • {b}" for b in page.bullet_points)
+                return (
+                    f"**{page.headline}** (id: `{page.page_id}`, est. CVR {page.estimated_cvr_pct:.1f}%)\n"
+                    f"{page.subheadline}\n\n{page.hero_copy}\n\n{bullets}\n\n"
+                    f"{page.social_proof} · {page.urgency_trigger}\n"
+                    f"CTA: {page.cta_primary} / {page.cta_secondary}\n\n"
+                    f"⚠ Placeholder numbers (customer counts, spots remaining) are templates — "
+                    f"replace with real figures or remove before publishing."
+                ), {}
+
+            elif tool == "generate_landing_headlines":
+                product = args.get("product", "")
+                audience = args.get("audience", "")
+                count = int(args.get("count", 5))
+                if not product:
+                    return "I need a product to generate headline variants for.", {}
+                from apps.conversion.landing_pages.landing_page_engine import (
+                    get_landing_page_engine,
+                )
+
+                variants = await get_landing_page_engine().generate_headline_variants(
+                    product, audience, count
+                )
+                lines = ["**Headline variants:**"] + [
+                    f"  {i}. {v}" for i, v in enumerate(variants, 1)
+                ]
+                return "\n".join(lines), {}
+
+            elif tool == "landing_page_stats":
+                from apps.conversion.landing_pages.landing_page_engine import (
+                    get_landing_page_engine,
+                )
+
+                engine = get_landing_page_engine()
+                await engine._load()
+                stats = engine.page_stats()
+                if stats["total_pages"] == 0:
+                    return "No landing pages yet. Use create_landing_page first.", {}
+                by_variant = ", ".join(f"{k}: {v}" for k, v in stats["by_variant"].items())
+                return (
+                    f"**Landing pages: {stats['total_pages']}** "
+                    f"(avg est. CVR {stats['avg_estimated_cvr_pct']:.1f}%)\n"
+                    f"By variant: {by_variant}"
+                ), {}
+
+            # ── PRICING INTELLIGENCE ─────────────────────────────────────────
+            elif tool == "analyze_pricing":
+                product_name = args.get("product_name", "") or args.get("product", "")
+                category = args.get("category", "")
+                our_price = float(args.get("our_price", 0))
+                competitor_data = (
+                    args.get("competitors", []) or args.get("competitor_data", []) or []
+                )
+                if not product_name or our_price <= 0:
+                    return "I need the product name and our current price to analyze pricing.", {}
+                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+                pp = await get_pricing_intelligence().analyze_pricing(
+                    product_name, category, our_price, competitor_data
+                )
+                return (
+                    f"**{pp.product_name}: {pp.positioning}** (${pp.our_price:.2f})\n"
+                    f"Market: ${pp.market_min:.2f} - ${pp.market_max:.2f} (avg ${pp.market_avg:.2f})\n"
+                    f"Recommended price: ${pp.recommended_price:.2f}"
+                ), {}
+
+            elif tool == "suggest_dynamic_price":
+                product = args.get("product", "")
+                inventory_level = args.get("inventory_level", "normal")
+                demand_signal = args.get("demand_signal", "stable")
+                if not product:
+                    return (
+                        "I need a product (already analyzed via analyze_pricing) to suggest a price for.",
+                        {},
+                    )
+                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+                result = await get_pricing_intelligence().dynamic_price_suggestion(
+                    product, inventory_level, demand_signal
+                )
+                return (
+                    f"**Suggested price: ${result['suggested_price']:.2f}** "
+                    f"({result['adjustment_pct']:+.1f}%)\n{result['reasoning']}"
+                ), {}
+
+            elif tool == "build_pricing_strategy":
+                niche = args.get("niche", "")
+                product_type = args.get("product_type", "")
+                target_margin_pct = float(args.get("target_margin_pct", 60.0))
+                if not niche or not product_type:
+                    return "I need a niche and product type to build a pricing strategy.", {}
+                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+                strategy = await get_pricing_intelligence().build_strategy(
+                    niche, product_type, target_margin_pct
+                )
+                return (
+                    f"**{strategy.strategy_type.replace('_', ' ').title()} pricing strategy for {niche}**\n"
+                    f"${strategy.initial_price:.2f} → ${strategy.target_price:.2f}\n"
+                    f"{strategy.rationale[:300]}"
+                ), {}
+
+            elif tool == "pricing_dashboard":
+                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+                engine = get_pricing_intelligence()
+                await engine._load()
+                stats = engine.pricing_dashboard()
+                gaps = engine.competitive_gaps()
+                if stats["total_price_points"] == 0:
+                    return "No pricing analyses yet. Use analyze_pricing first.", {}
+                by_pos = ", ".join(f"{k}: {v}" for k, v in stats["by_positioning"].items())
+                lines = [
+                    f"**Pricing dashboard** ({stats['total_price_points']} products, "
+                    f"avg ${stats['avg_price']:.2f})\nBy positioning: {by_pos}"
+                ]
+                if gaps:
+                    lines.append(
+                        "Overpriced vs. recommendation:\n"
+                        + "\n".join(
+                            f"  • {g['product_name']} — ${g['our_price']:.2f} vs "
+                            f"recommended ${g['recommended_price']:.2f}"
+                            for g in gaps
+                        )
+                    )
                 return "\n\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
