@@ -10,7 +10,7 @@ fabricated users, costs, or samples.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,7 +21,9 @@ from apps.core.ops.cost_ledger import CostLedger
 
 OWNER_EMAIL = "owner@aria.test"
 OTHER_EMAIL = "someone-else@example.com"
-NOW = datetime(2026, 7, 25, tzinfo=UTC)
+# The endpoint queries the ledger with the real current time (no override), so
+# seeded records must land in the real current month too, not a fixed date.
+NOW = datetime.now(UTC)
 
 
 @pytest.fixture
@@ -86,6 +88,27 @@ def test_telemetry_marks_frozen_users(client, ledger):
     asyncio.run(ledger.freeze("frozen@example.com", now=NOW))
 
     with patch("apps.core.main._get_user_plan", return_value="pro"):
+        _as(client, OWNER_EMAIL)
+        resp = client.get("/admin/api/mission-control/telemetry")
+
+    body = resp.json()
+    assert body["users"][0]["frozen"] is True
+
+
+def test_telemetry_marks_users_frozen_only_in_the_shared_store(client, ledger):
+    """Regression: the endpoint used to check membership in
+    CostLedger.frozen_users() (explicitly local-only — see its docstring),
+    so a user frozen by a *different* process (only visible via the shared
+    Redis store that is_frozen() checks) was wrongly reported as unfrozen."""
+    ledger.record("remotely-frozen@example.com", "claude-sonnet-5", 3_000_000, 0, now=NOW)
+    assert "remotely-frozen@example.com" not in ledger.frozen_users()
+
+    fake_cache = AsyncMock()
+    fake_cache.get = AsyncMock(return_value="1")
+    with (
+        patch("apps.core.main._get_user_plan", return_value="pro"),
+        patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache),
+    ):
         _as(client, OWNER_EMAIL)
         resp = client.get("/admin/api/mission-control/telemetry")
 

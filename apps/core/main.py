@@ -1127,7 +1127,6 @@ async def admin_api_mission_control_telemetry(request: Request):
     from apps.core.ops.cost_ledger import get_ledger
 
     led = get_ledger()
-    frozen = set(led.frozen_users())
     month_costs = led.all_month_costs()
     users = []
     for email, cost in sorted(month_costs.items(), key=lambda kv: kv[1], reverse=True):
@@ -1139,7 +1138,7 @@ async def admin_api_mission_control_telemetry(request: Request):
                 "month_cost_usd": cost,
                 "budget_usd": led.budget(plan),
                 "fraction": led.usage_fraction(email, plan),
-                "frozen": email in frozen,
+                "frozen": await led.is_frozen(email),
             }
         )
     return {

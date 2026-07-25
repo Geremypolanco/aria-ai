@@ -62,3 +62,10 @@ def test_record_without_email_does_not_create_a_sample():
     led.record("", "claude-sonnet-5", 1_000_000, 0, now=NOW)
     assert led.recent_samples() == []
     assert led.all_month_costs(now=NOW) == {}
+
+
+def test_record_with_whitespace_only_email_does_not_create_a_blank_user():
+    led = CostLedger()
+    led.record("   ", "claude-sonnet-5", 1_000_000, 0, now=NOW)
+    assert led.recent_samples() == []
+    assert led.all_month_costs(now=NOW) == {}

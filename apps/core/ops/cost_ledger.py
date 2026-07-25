@@ -92,8 +92,8 @@ class CostLedger:
     ) -> float:
         """Record a call's cost for the user and return the USD amount."""
         cost = estimate_cost(model, input_tokens, output_tokens)
+        email = (email or "").strip().lower()
         if email:
-            email = email.strip().lower()
             key = (_month_key(now), email)
             self._cost[key] = round(self._cost.get(key, 0.0) + cost, 6)
             self._samples.append(
