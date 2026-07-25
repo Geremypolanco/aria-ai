@@ -231,6 +231,22 @@ AVAILABLE TOOLS (you execute them, not the user):
 - predict_engagement → heuristic pre-publish engagement estimate (views/shares/comments/viral probability) for content on a platform — a base-rate model, not measured results; low confidence until real historical data exists. Args: {{"content": "...", "platform": "twitter|instagram|tiktok|youtube|linkedin|blog|facebook|pinterest", "audience_size": 1000}}
 - analyze_virality    → detects viral hook patterns in content, scores virality/hook-strength/shareability, and suggests title alternatives. Args: {{"content": "...", "platform": "..."}}
 - optimize_viral_title → 3 more-viral rewrites of an existing title. Args: {{"title": "...", "platform": "..."}}
+- analyze_content_originality → flags AI-cliché phrases ("leverage synergies", "game-changer", ...), scores genericity/differentiation, suggests specific alternative openers. Args: {{"content": "..."}}
+- purge_generic_phrases → rewrites content to remove AI-cliché phrasing while keeping the meaning. Args: {{"content": "..."}}
+- generate_unique_angles → 5 specific, non-generic content angles for a topic/niche, avoiding AI clichés. Args: {{"topic": "...", "niche": "..."}}
+- check_audience_fatigue → detects overused phrases/opening patterns across a run of your own past content and recommends how to diversify. Args: {{"content_history": ["...", "..."]}}
+- write_blog_post → full SEO long-form post (title, meta, body) for a topic/keyword, with disclosed-as-estimate SEO score and traffic. Args: {{"topic": "...", "target_keyword": "...", "target_audience": "...", "word_target": 1200}}
+- generate_blog_outline → section-by-section outline (heading, word target, key points) before writing the full post. Args: {{"topic": "...", "keyword": "...", "num_sections": 5}}
+- generate_blog_topic_cluster → a pillar topic broken into N supporting post ideas with keyword/intent/difficulty. Args: {{"pillar_topic": "...", "num_posts": 5}}
+- blog_publishing_stats → totals across everything written with write_blog_post. Args: {{}}
+- create_linkedin_post → a complete LinkedIn post (hook, body, hashtags, CTA) for a topic/objective. Args: {{"topic": "...", "objective": "thought_leadership|..."}}
+- generate_linkedin_carousel_outline → slide-by-slide LinkedIn carousel outline (headline + content per slide). Args: {{"topic": "...", "num_slides": 7}}
+- generate_linkedin_hooks → 5 distinct scroll-stopping opening lines for a LinkedIn post on a topic. Args: {{"topic": "..."}}
+- linkedin_post_analytics → totals across everything created with create_linkedin_post. Args: {{}}
+- create_twitter_thread → a full numbered Twitter/X thread (hook → body → CTA) on a topic/angle. Args: {{"topic": "...", "angle": "educational|...", "num_tweets": 7}}
+- generate_tweet → a single standalone tweet of a given type (insight|question|stat|tip|cta). Args: {{"topic": "...", "tweet_type": "insight"}}
+- repurpose_to_twitter_thread → turns existing long-form content (an article, a blog post) into a tweet thread. Args: {{"long_content": "...", "topic": "..."}}
+- twitter_thread_analytics → totals across everything created with create_twitter_thread/repurpose_to_twitter_thread. Args: {{}}
 - select_growth_action → recommends which growth action to try next using a UCB1 bandit that learns from past recorded outcomes. Args: {{}}
 - record_action_outcome → logs the real reward (e.g. revenue) from a growth action so future select_growth_action picks improve. Args: {{"action_type": "...", "reward": 0}}
 - reinforcement_report → which growth actions are performing best/worst so far, from real recorded outcomes. Args: {{}}
@@ -299,6 +315,7 @@ REASONING RULES:
 40. predict_engagement's numbers are a base-rate heuristic model, not measured results — always say so, the same way create_landing_page's placeholder numbers get flagged. analyze_virality's scores are real (deterministic pattern-matching + hooks), but they measure *pattern presence*, not actual audience response — don't present either as if you pulled real analytics.
 41. select_growth_action / record_action_outcome / reinforcement_report form a closed loop: the bandit only gets smarter if real outcomes (actual revenue/conversions, not guesses) are logged back with record_action_outcome after trying the recommended action. Encourage that loop rather than only ever calling select_growth_action.
 42. track_roi / update_roi_returns / roi_summary and record_cashflow_entry / cashflow_summary / forecast_cashflow are pure bookkeeping on numbers the user gives you — never estimate an investment, return, or cashflow entry yourself and record it as if the user provided it. If they ask "how's my ROI" or "what's my runway" without having logged anything, say there's nothing tracked yet rather than guessing.
+43. Before publishing anything meant to sound distinctive (not a quick internal note) → analyze_content_originality first; if it flags real clichés, purge_generic_phrases or generate_unique_angles rather than shipping generic phrasing. engagement_score/estimated_impressions/estimated_reach/estimated_monthly_traffic fields on write_blog_post, create_linkedin_post, and create_twitter_thread/generate_tweet are the same kind of disclosed heuristic estimate as create_landing_page's placeholder numbers — flag them as estimates, never as measured performance.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -480,6 +497,23 @@ _HELP_TEXT = """\
 - `will this content do well on [platform]?` — heuristic engagement/viral-probability estimate
 - `analyze this for virality` — hook patterns, shareability score, title alternatives
 - `make this title more viral` — 3 rewrites
+- `does this sound like generic AI content?` — cliché-phrase check + alternative openers
+- `rewrite this without the AI clichés` — purges generic phrasing
+- `give me unique angles for [topic]` — 5 non-generic content angles
+- `am I repeating myself in my content?` — audience-fatigue check across past pieces
+
+**Long-form content & social distribution**
+- `write a blog post about [topic] targeting [keyword]` — full SEO post, title to conclusion
+- `outline a blog post about [topic]` — section-by-section plan before writing
+- `build a content cluster around [pillar topic]` — pillar + supporting post ideas
+- `how are my blog posts doing?` — totals across everything written
+- `write a LinkedIn post about [topic]` — hook, body, hashtags, CTA
+- `turn this into a LinkedIn carousel` — slide-by-slide outline
+- `give me hook lines for a LinkedIn post about [topic]` — 5 opening-line variants
+- `write a Twitter/X thread about [topic]` — full numbered thread
+- `write one tweet about [topic]` — a single standalone tweet
+- `turn this article into a thread` — repurposes long-form content into tweets
+- `how are my LinkedIn/Twitter posts doing?` — totals across everything created
 
 **Adaptive growth learning**
 - `what growth action should I try next?` — bandit-recommended action from past outcomes
@@ -3507,6 +3541,250 @@ class AriaMind:
                     title, args.get("platform", "youtube")
                 )
                 return "**Viral title alternatives:**\n" + "\n".join(f"  • {t}" for t in alts), {}
+
+            # ── ORIGINALITY / ANTI-CLICHÉ ──────────────────────────────────────
+            elif tool == "analyze_content_originality":
+                content = args.get("content", "")
+                if not content:
+                    return "What content should I check for AI-cliché phrasing?", {}
+                from apps.creative.differentiation.differentiation_engine import (
+                    get_differentiation_engine,
+                )
+
+                report = await get_differentiation_engine().analyze(content)
+                lines = [
+                    f"**Originality check** — {report.risk_level.value} genericity risk "
+                    f"({report.genericity_score:.0%} generic, {report.differentiation_score:.0%} differentiated)",
+                ]
+                if report.generic_phrases:
+                    lines.append(
+                        "Clichés found: " + ", ".join(f'"{p}"' for p in report.generic_phrases)
+                    )
+                if report.unique_elements:
+                    lines.append("Already unique: " + "; ".join(report.unique_elements))
+                if report.alternatives:
+                    lines.append(
+                        "Alternative openers:\n"
+                        + "\n".join(f"  • {a}" for a in report.alternatives)
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "purge_generic_phrases":
+                content = args.get("content", "")
+                if not content:
+                    return "What content should I rewrite to remove AI clichés?", {}
+                from apps.creative.differentiation.differentiation_engine import (
+                    get_differentiation_engine,
+                )
+
+                purged = await get_differentiation_engine().purge_generic(content)
+                return f"**Rewritten:**\n{purged}", {}
+
+            elif tool == "generate_unique_angles":
+                topic = args.get("topic", "")
+                niche = args.get("niche", "general")
+                if not topic:
+                    return "What topic do you want unique content angles for?", {}
+                from apps.creative.differentiation.differentiation_engine import (
+                    get_differentiation_engine,
+                )
+
+                angles = await get_differentiation_engine().generate_unique_angle(topic, niche)
+                return "**Unique angles:**\n" + "\n".join(f"  • {a}" for a in angles), {}
+
+            elif tool == "check_audience_fatigue":
+                content_history = args.get("content_history", []) or []
+                if not content_history:
+                    return (
+                        "I need your recent content pieces (a list of strings) to check for fatigue.",
+                        {},
+                    )
+                from apps.creative.differentiation.differentiation_engine import (
+                    get_differentiation_engine,
+                )
+
+                result = await get_differentiation_engine().audience_fatigue_risk(content_history)
+                lines = [f"**Audience fatigue risk: {result['fatigue_risk']:.0%}**"]
+                if result["overused_patterns"]:
+                    lines.append("Overused: " + "; ".join(result["overused_patterns"]))
+                if result["refresh_recommendations"]:
+                    lines.append(
+                        "Recommendations:\n"
+                        + "\n".join(f"  • {r}" for r in result["refresh_recommendations"])
+                    )
+                return "\n".join(lines), {}
+
+            # ── LONG-FORM BLOG (SEO) ────────────────────────────────────────────
+            elif tool == "write_blog_post":
+                topic = args.get("topic", "")
+                target_keyword = args.get("target_keyword", "")
+                if not topic or not target_keyword:
+                    return "I need a topic and a target keyword to write a blog post.", {}
+                from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+                post = await get_blog_publisher().write_post(
+                    topic,
+                    target_keyword,
+                    args.get("target_audience", "general"),
+                    int(args.get("word_target", 1200)),
+                )
+                return (
+                    f"**{post.title}** ({post.word_count} words, est. SEO score {post.seo_score:.0%}, "
+                    f"est. {post.estimated_monthly_traffic}/mo organic traffic — both estimates, not measured)\n"
+                    f"Meta: {post.meta_description}\n\n{post.body[:1500]}"
+                ), {}
+
+            elif tool == "generate_blog_outline":
+                topic = args.get("topic", "")
+                keyword = args.get("keyword", "")
+                if not topic or not keyword:
+                    return "I need a topic and target keyword to outline a blog post.", {}
+                from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+                outline = await get_blog_publisher().generate_outline(
+                    topic, keyword, int(args.get("num_sections", 5))
+                )
+                lines = [f"**Blog outline: {topic}**"]
+                for s in outline:
+                    lines.append(f"  • {s['heading']} (~{s['word_target']} words)")
+                return "\n".join(lines), {}
+
+            elif tool == "generate_blog_topic_cluster":
+                pillar_topic = args.get("pillar_topic", "")
+                if not pillar_topic:
+                    return "What's the pillar topic for the content cluster?", {}
+                from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+                cluster = await get_blog_publisher().generate_topic_cluster(
+                    pillar_topic, int(args.get("num_posts", 5))
+                )
+                lines = [f"**Topic cluster: {pillar_topic}**"]
+                for c in cluster:
+                    lines.append(
+                        f"  • {c['title']} — \"{c['keyword']}\" ({c['search_intent']}, {c['difficulty']} difficulty)"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "blog_publishing_stats":
+                from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+                stats = get_blog_publisher().blog_stats()
+                if stats["total_posts"] == 0:
+                    return "No blog posts written yet. Use write_blog_post first.", {}
+                return (
+                    f"**Blog stats**: {stats['total_posts']} posts, avg SEO score "
+                    f"{stats['avg_seo_score']:.0%}, avg {stats['avg_word_count']} words, "
+                    f"est. {stats['avg_monthly_traffic']}/mo traffic each"
+                ), {}
+
+            # ── LINKEDIN CONTENT ─────────────────────────────────────────────────
+            elif tool == "create_linkedin_post":
+                topic = args.get("topic", "")
+                if not topic:
+                    return "What topic should the LinkedIn post be about?", {}
+                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+                post = await get_linkedin_publisher().create_post(
+                    topic, args.get("objective", "thought_leadership")
+                )
+                return (
+                    f"**LinkedIn post** (est. engagement {post.engagement_score:.0%}, "
+                    f"est. {post.estimated_impressions:,} impressions)\n\n{post.content}"
+                ), {}
+
+            elif tool == "generate_linkedin_carousel_outline":
+                topic = args.get("topic", "")
+                if not topic:
+                    return "What topic should the LinkedIn carousel be about?", {}
+                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+                outline = await get_linkedin_publisher().generate_carousel_outline(
+                    topic, int(args.get("num_slides", 7))
+                )
+                lines = [
+                    f"**Carousel: {outline.get('cover_text', topic)}**",
+                    f"Hook: {outline.get('hook', '')}",
+                ]
+                for s in outline.get("slides", []):
+                    lines.append(f"  {s.get('slide')}. {s.get('headline')} — {s.get('content')}")
+                return "\n".join(lines), {}
+
+            elif tool == "generate_linkedin_hooks":
+                topic = args.get("topic", "")
+                if not topic:
+                    return "What topic do you need LinkedIn hook lines for?", {}
+                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+                hooks = await get_linkedin_publisher().generate_hook_variants(topic)
+                return "**Hook variants:**\n" + "\n".join(f"  • {h}" for h in hooks), {}
+
+            elif tool == "linkedin_post_analytics":
+                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+                stats = get_linkedin_publisher().post_analytics()
+                if stats["total_posts"] == 0:
+                    return "No LinkedIn posts created yet. Use create_linkedin_post first.", {}
+                return (
+                    f"**LinkedIn stats**: {stats['total_posts']} posts, avg engagement "
+                    f"{stats['avg_engagement_score']:.0%}, avg {stats['avg_impressions']:,} impressions"
+                ), {}
+
+            # ── TWITTER/X CONTENT ────────────────────────────────────────────────
+            elif tool == "create_twitter_thread":
+                topic = args.get("topic", "")
+                if not topic:
+                    return "What topic should the Twitter/X thread be about?", {}
+                from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+                thread = await get_twitter_engine().create_thread(
+                    topic, args.get("angle", "educational"), int(args.get("num_tweets", 7))
+                )
+                lines = [
+                    f"**Thread: {thread.topic}** ({thread.total_tweets} tweets, "
+                    f"est. viral score {thread.viral_score:.0%}, est. reach {thread.estimated_reach:,})"
+                ]
+                for t in thread.tweets:
+                    lines.append(f"  {t['thread_position'] + 1}. {t['content']}")
+                return "\n".join(lines), {}
+
+            elif tool == "generate_tweet":
+                topic = args.get("topic", "")
+                if not topic:
+                    return "What topic should the tweet be about?", {}
+                from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+                tweet = await get_twitter_engine().generate_tweet(
+                    topic, args.get("tweet_type", "insight")
+                )
+                return f"**Tweet:** {tweet.content}", {}
+
+            elif tool == "repurpose_to_twitter_thread":
+                long_content = args.get("long_content", "")
+                topic = args.get("topic", "")
+                if not long_content or not topic:
+                    return (
+                        "I need the long-form content and its topic to repurpose it into a thread.",
+                        {},
+                    )
+                from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+                thread = await get_twitter_engine().repurpose_to_thread(long_content, topic)
+                lines = [f"**Repurposed thread: {thread.topic}** ({thread.total_tweets} tweets)"]
+                for t in thread.tweets:
+                    lines.append(f"  {t['thread_position'] + 1}. {t['content']}")
+                return "\n".join(lines), {}
+
+            elif tool == "twitter_thread_analytics":
+                from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+                stats = get_twitter_engine().twitter_analytics()
+                if stats["total_threads"] == 0:
+                    return "No Twitter/X threads created yet. Use create_twitter_thread first.", {}
+                return (
+                    f"**Twitter/X stats**: {stats['total_threads']} threads, "
+                    f"{stats['total_tweets']} tweets, avg viral score {stats['avg_viral_score']:.0%}, "
+                    f"avg est. reach {stats['avg_estimated_reach']:,}"
+                ), {}
 
             # ── ADAPTIVE GROWTH-ACTION LEARNING (bandit) ──────────────────────
             elif tool == "select_growth_action":

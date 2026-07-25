@@ -1,6 +1,6 @@
 """
 Phase 6 tests — Autonomous Media + Creative Infrastructure.
-Covers: BrandEngine, SocialPublisher, GPUOrchestrator, MediaPipeline.
+Covers: BrandEngine, SocialPublisher, GPUOrchestrator.
 
 (ImageGenerator, ThumbnailOptimizer, VideoGenerator, VideoEditor, ContentFactory,
 AdFactory, VisualAnalyzer, and ScreenAnalyzer coverage was removed along with
@@ -9,8 +9,14 @@ covered by apps/core/tools/multimodal.py, video_engine.py, multimedia_engine.py,
 creative_engine.py, and apps/core/tools/income_loop.py, and had zero callers
 outside this test file. RevenueTracker/RevenueOptimizer coverage was removed
 along with apps/revenue/, which duplicated the live
-apps/core/engines/revenue_attribution.py.)
+apps/core/engines/revenue_attribution.py. MediaPipeline coverage was removed
+along with apps/infra/media_workers/media_pipeline.py — process_image/
+process_video always returned the unmodified source_url with a hardcoded
+status=COMPLETED and duration_seconds=5.0 regardless of input, the same
+fabricated-success anti-pattern already fixed elsewhere; its real,
+functioning replacement is apps/core/tools/video_engine.py.)
 """
+
 from __future__ import annotations
 
 import time
@@ -19,6 +25,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ── Shared mock helpers ────────────────────────────────────────────────────────
+
 
 def _mock_cache():
     cache = MagicMock()
@@ -44,16 +51,19 @@ def _mock_ai_client(content: str = "AI generated content"):
 # 1. BRAND ENGINE
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestBrandEngine:
     @pytest.fixture
     def engine(self):
         with patch("apps.branding.identity.brand_engine.get_cache", return_value=_mock_cache()):
             from apps.branding.identity.brand_engine import BrandEngine
+
             return BrandEngine()
 
     @pytest.mark.asyncio
     async def test_create_brand(self, engine):
         from apps.branding.identity.brand_engine import BrandTone
+
         brand = await engine.create_brand(
             name="TestBrand",
             niche="tech",
@@ -65,6 +75,7 @@ class TestBrandEngine:
     @pytest.mark.asyncio
     async def test_get_brand(self, engine):
         from apps.branding.identity.brand_engine import BrandTone
+
         brand = await engine.create_brand("GetBrand", "fashion", BrandTone.LUXURIOUS)
         fetched = await engine.get_brand(brand.brand_id)
         assert fetched is not None
@@ -73,6 +84,7 @@ class TestBrandEngine:
     @pytest.mark.asyncio
     async def test_list_brands(self, engine):
         from apps.branding.identity.brand_engine import BrandTone
+
         await engine.create_brand("B1", "tech", BrandTone.BOLD)
         await engine.create_brand("B2", "health", BrandTone.FRIENDLY)
         brands = await engine.list_brands()
@@ -81,6 +93,7 @@ class TestBrandEngine:
     @pytest.mark.asyncio
     async def test_update_palette(self, engine):
         from apps.branding.identity.brand_engine import BrandTone, ColorPalette
+
         brand = await engine.create_brand("PaletteBrand", "tech", BrandTone.MINIMALIST)
         new_palette = ColorPalette(
             primary="#FF0000",
@@ -111,11 +124,15 @@ class TestBrandEngine:
 # 2. SOCIAL PUBLISHER
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestSocialPublisher:
     @pytest.fixture
     def publisher(self):
-        with patch("apps.distribution.social.social_publisher.get_cache", return_value=_mock_cache()):
+        with patch(
+            "apps.distribution.social.social_publisher.get_cache", return_value=_mock_cache()
+        ):
             from apps.distribution.social.social_publisher import SocialPublisher
+
             return SocialPublisher()
 
     @pytest.mark.asyncio
@@ -176,16 +193,19 @@ class TestSocialPublisher:
 # 3. GPU ORCHESTRATOR
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestGPUOrchestrator:
     @pytest.fixture
     def orchestrator(self):
         with patch("apps.infra.gpu.gpu_orchestrator.get_cache", return_value=_mock_cache()):
             from apps.infra.gpu.gpu_orchestrator import GPUOrchestrator
+
             return GPUOrchestrator()
 
     @pytest.mark.asyncio
     async def test_submit_job(self, orchestrator):
         from apps.infra.gpu.gpu_orchestrator import JobPriority
+
         job = await orchestrator.submit_job(
             job_type="image_generation",
             payload={"prompt": "sunset", "model": "flux"},
@@ -199,6 +219,7 @@ class TestGPUOrchestrator:
     @pytest.mark.asyncio
     async def test_process_queue_mock(self, orchestrator):
         from apps.infra.gpu.gpu_orchestrator import JobPriority
+
         await orchestrator.submit_job("inference", {"data": "test"}, JobPriority.NORMAL)
         await orchestrator.submit_job("inference", {"data": "test2"}, JobPriority.LOW)
         processed = await orchestrator.process_queue(max_jobs=2)
@@ -208,6 +229,7 @@ class TestGPUOrchestrator:
     @pytest.mark.asyncio
     async def test_priority_ordering(self, orchestrator):
         from apps.infra.gpu.gpu_orchestrator import JobPriority
+
         await orchestrator.submit_job("inference", {"n": 1}, JobPriority.LOW)
         await orchestrator.submit_job("inference", {"n": 2}, JobPriority.CRITICAL)
         await orchestrator.submit_job("inference", {"n": 3}, JobPriority.NORMAL)
@@ -222,6 +244,7 @@ class TestGPUOrchestrator:
     @pytest.mark.asyncio
     async def test_auto_scale_high_queue(self, orchestrator):
         from apps.infra.gpu.gpu_orchestrator import JobPriority
+
         for _ in range(25):
             await orchestrator.submit_job("inference", {}, JobPriority.LOW)
         rec = orchestrator.auto_scale_recommendation()
@@ -237,58 +260,3 @@ class TestGPUOrchestrator:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. MEDIA PIPELINE
-# ══════════════════════════════════════════════════════════════════════════════
-
-class TestMediaPipeline:
-    @pytest.fixture
-    def pipeline(self):
-        with patch("apps.infra.media_workers.media_pipeline.get_cache", return_value=_mock_cache()):
-            from apps.infra.media_workers.media_pipeline import MediaPipeline
-            return MediaPipeline()
-
-    @pytest.mark.asyncio
-    async def test_process_image(self, pipeline):
-        artifact = await pipeline.process_image(
-            "https://example.com/img.jpg",
-            transforms={"width": 800, "height": 600},
-        )
-        assert artifact.artifact_id
-        assert artifact.status.value in ("completed", "cached")
-        assert artifact.content_hash != ""
-
-    @pytest.mark.asyncio
-    async def test_process_image_cache_hit(self, pipeline):
-        url = "https://example.com/same.jpg"
-        transforms = {"width": 400, "height": 400}
-        a1 = await pipeline.process_image(url, transforms)
-        a2 = await pipeline.process_image(url, transforms)
-        assert a1.content_hash == a2.content_hash
-        assert a2.status.value == "cached"
-
-    @pytest.mark.asyncio
-    async def test_process_video(self, pipeline):
-        artifact = await pipeline.process_video(
-            "https://example.com/video.mp4",
-            operations=["trim", "add_subtitles"],
-        )
-        assert artifact.artifact_id
-        assert artifact.artifact_type.value == "video"
-        assert artifact.status.value in ("completed", "cached")
-
-    @pytest.mark.asyncio
-    async def test_pipeline_health(self, pipeline):
-        await pipeline.process_image("https://example.com/h1.jpg")
-        health = await pipeline.pipeline_health()
-        assert "total_artifacts" in health
-        assert "cache_hit_rate" in health
-        assert health["status"] == "healthy"
-
-    @pytest.mark.asyncio
-    async def test_deduplication(self, pipeline):
-        url = "https://example.com/dup.jpg"
-        a1 = await pipeline.process_image(url)
-        a2 = await pipeline.process_image(url)
-        assert a1.content_hash == a2.content_hash
-        # Second should come from cache
-        assert len(pipeline._artifacts) == 1
