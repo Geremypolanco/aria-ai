@@ -274,7 +274,16 @@ class AriaAIClient:
         agent_name: str = "aria",
         prefer_quality: bool = False,
     ) -> dict:
-        """Helper to get parsed JSON directly."""
+        """Helper to get parsed JSON directly.
+
+        json_mode is prompt-only enforcement (an appended instruction plus a
+        regex bracket-matcher, see _extract_json_safe) — not a real provider
+        JSON schema — so a model, especially a weaker/faster one, can still
+        return unparseable output. On a parse failure (not a provider-down
+        failure — no point retrying that), this makes exactly one repair
+        call asking the model to fix only the JSON formatting of its own
+        malformed output before giving up. No loop, no second repair
+        attempt — still returns {} on ultimate failure either way."""
         resp = await self.complete(
             system=system,
             user=user,
@@ -286,10 +295,45 @@ class AriaAIClient:
             prefer_quality=prefer_quality,
         )
         if not resp.success:
+            logger.warning(
+                "[%s] complete_json: all providers failed — %s",
+                agent_name,
+                (resp.error or "unknown")[:100],
+            )
             return {}
         try:
             return json.loads(resp.content)
-        except Exception:
+        except Exception as parse_err:
+            repair_resp = await self.complete(
+                system=(
+                    "The text below is supposed to be JSON but failed to parse. "
+                    "Return ONLY the corrected, valid JSON — preserve every key "
+                    "and value exactly, fixing only structural/formatting "
+                    "problems (unescaped characters, trailing commas, missing "
+                    "quotes/brackets, stray prose wrapping the JSON). No "
+                    "markdown, no code fences, no commentary."
+                ),
+                user=f"Parse error: {parse_err}\n\nMalformed JSON:\n{resp.content}",
+                model=AIModel.FAST,
+                max_tokens=max_tokens,
+                temperature=0.0,
+                json_mode=True,
+                agent_name=f"{agent_name}_json_repair",
+                prefer_quality=prefer_quality,
+            )
+            if repair_resp.success:
+                try:
+                    return json.loads(repair_resp.content)
+                except Exception:
+                    pass
+            # No resp.content here — complete_json() is fed user-derived
+            # prompts/context, so a malformed completion could echo back
+            # sensitive user data; logging it would leak that into
+            # application logs.
+            logger.warning(
+                "[%s] complete_json: malformed JSON even after repair",
+                agent_name,
+            )
             return {}
 
     async def complete(
