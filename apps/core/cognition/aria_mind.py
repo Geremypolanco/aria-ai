@@ -341,6 +341,17 @@ Talk like a real person explaining something to someone they care about — warm
   deliberate, human-readable denial (e.g. "this action is reserved for the owner") isn't a raw
   error — convey that plainly and accurately instead of hiding it behind a vague apology."""
 
+# The Shopify Revenue Suite engines (flash sales, bundles, cart recovery, SEO,
+# upsells/checkout/post-purchase flows) generate real strategy and copy but
+# never call the actual Shopify API — nothing here has write access to a live
+# store yet. Without this, tool responses like "Flash sale 'X' created" read
+# as if a real discount/product change happened, when nothing was applied.
+_SHOPIFY_DRAFT_NOTICE = (
+    "\n\n_(Draft — this hasn't been applied to your live Shopify store. "
+    "It's ready for you to create manually, or ask me once store write access "
+    "is connected.)_"
+)
+
 _HELP_TEXT = """\
 ## ARIA — Available capabilities
 
@@ -2656,7 +2667,7 @@ class AriaMind:
                     lines.append(
                         f"  +{e['delay_hours']}h ({e['discount_pct']:.0%} off) — {e['subject']}"
                     )
-                return "\n".join(lines), {}
+                return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
 
             elif tool == "create_flash_sale":
                 name = args.get("name", "")
@@ -2682,7 +2693,7 @@ class AriaMind:
                 return (
                     f"**Flash sale '{sale.name}'** (id: `{sale.sale_id}`, status: {sale.status})\n"
                     f"{len(sale.product_ids)} products at {discount_pct:.0%} off, {duration_hours:.0f}h\n"
-                    f"Urgency copy: {copy}"
+                    f"Urgency copy: {copy}" + _SHOPIFY_DRAFT_NOTICE
                 ), {}
 
             elif tool == "create_product_bundle":
@@ -2701,7 +2712,7 @@ class AriaMind:
                     f"{bundle.description}\n"
                     f"${bundle.individual_total:.2f} → ${bundle.bundle_price:.2f} "
                     f"(save ${bundle.savings:.2f}, {bundle.savings_pct:.0f}%)\n"
-                    f"CTA: {bundle.cta}"
+                    f"CTA: {bundle.cta}" + _SHOPIFY_DRAFT_NOTICE
                 ), {}
 
             elif tool == "recommend_products":
@@ -2790,7 +2801,7 @@ class AriaMind:
                     f"Title: {seo.optimized_title}\n"
                     f"Meta description: {seo.meta_description}\n"
                     f"Target keywords: {', '.join(seo.target_keywords[:5])}\n\n"
-                    f"{seo.optimized_description}"
+                    f"{seo.optimized_description}" + _SHOPIFY_DRAFT_NOTICE
                 ), {}
 
             elif tool == "audit_seo_keywords":
@@ -2823,7 +2834,7 @@ class AriaMind:
                 return (
                     f"**Upsell offer** (est. {offer.acceptance_rate_pct:.0f}% acceptance)\n"
                     f"{offer.headline}\n{offer.reason}\n"
-                    f"Urgency: {offer.urgency_trigger}"
+                    f"Urgency: {offer.urgency_trigger}" + _SHOPIFY_DRAFT_NOTICE
                 ), {}
 
             elif tool == "optimize_shopify_checkout":
@@ -2841,7 +2852,7 @@ class AriaMind:
                     "Friction points: " + ", ".join(result["friction_points"]),
                     "Fixes:\n" + "\n".join(f"  • {f}" for f in result["fixes"]),
                 ]
-                return "\n".join(lines), {}
+                return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
 
             elif tool == "create_post_purchase_flow":
                 product_name = args.get("product_name", "")
@@ -2855,7 +2866,7 @@ class AriaMind:
                 lines = [f"**Post-purchase flow: {product_name}** ({funnel.headline})"]
                 for e in funnel.stages:
                     lines.append(f"  +{e['delay']} — {e['type']}: {e['subject']}")
-                return "\n".join(lines), {}
+                return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
 
             elif tool == "shopify_store_status":
                 from apps.shopify.api_client import get_shopify_api_client
