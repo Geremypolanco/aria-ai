@@ -270,6 +270,9 @@ AVAILABLE TOOLS (you execute them, not the user):
 - github_issues    → creates or lists issues. Args: {{"action": "issues|create_issue", "owner": "...", "repo": "...", "title": "...", "body": "..."}}
 - github_search    → searches repos, code, or issues on GitHub. Args: {{"query": "...", "type": "repos|code|issues"}}
 - github_self      → accesses MY OWN source code (Geremypolanco/aria-ai). I can see my structure, read my files, and improve my own code. Args: {{"sub": "structure|read|commit", "path": "", "content": "...", "message": "refactor: ..."}}
+- remember_user_fact → saves a durable fact or preference about the CURRENT user that should be remembered across future, different conversations (e.g. "prefers concise answers", "runs a yoga studio in Austin"). Always scoped to whoever is actually signed in and talking to you — never targets or accepts another person's data. Args: {{"content": "...", "category": "fact|preference|constraint", "importance": 0.5}}
+- list_user_facts  → shows everything currently remembered about the current user — use when they ask "what do you know/remember about me" or before assuming a preference you're not sure is still recorded. Args: {{}}
+- forget_user_fact → deletes one specific remembered fact by its id (shown by list_user_facts) — use when the user asks you to forget something or tells you it's out of date. Args: {{"memory_id": "..."}}
 
 REASONING RULES:
 1. Use your "thought" field to reason step by step before deciding what to do.
@@ -316,6 +319,7 @@ REASONING RULES:
 41. select_growth_action / record_action_outcome / reinforcement_report form a closed loop: the bandit only gets smarter if real outcomes (actual revenue/conversions, not guesses) are logged back with record_action_outcome after trying the recommended action. Encourage that loop rather than only ever calling select_growth_action.
 42. track_roi / update_roi_returns / roi_summary and record_cashflow_entry / cashflow_summary / forecast_cashflow are pure bookkeeping on numbers the user gives you — never estimate an investment, return, or cashflow entry yourself and record it as if the user provided it. If they ask "how's my ROI" or "what's my runway" without having logged anything, say there's nothing tracked yet rather than guessing.
 43. Before publishing anything meant to sound distinctive (not a quick internal note) → analyze_content_originality first; if it flags real clichés, purge_generic_phrases or generate_unique_angles rather than shipping generic phrasing. engagement_score/estimated_impressions/estimated_reach/estimated_monthly_traffic fields on write_blog_post, create_linkedin_post, and create_twitter_thread/generate_tweet are the same kind of disclosed heuristic estimate as create_landing_page's placeholder numbers — flag them as estimates, never as measured performance.
+44. When a signed-in user tells you something durable about themselves (a stated preference, a recurring fact about their business, a hard constraint on how they want you to behave) that would matter in a LATER, different conversation — not just this one — use remember_user_fact. Don't call it for one-off details irrelevant beyond this turn, and don't announce you're "checking your memory" for ordinary questions — relevant facts you already remember are surfaced to you automatically before you respond, so just use them naturally. If asked "what do you remember about me" → list_user_facts. If the user says something you remembered is wrong, outdated, or asks you to forget it → forget_user_fact.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -3501,6 +3505,68 @@ class AriaMind:
                 if at_risk:
                     lines.append("At risk / churned: " + ", ".join(p["name"] for p in at_risk[:10]))
                 return "\n\n".join(lines), {}
+
+            # ── PER-USER LONG-TERM MEMORY (durable facts/preferences) ─────────
+            # Always scoped to `email` (the server-verified identity threaded
+            # through _execute_tool) — none of these three accept a target
+            # user/email argument from the model, so there is no way for a
+            # tool call to read or write another person's memory.
+            elif tool == "remember_user_fact":
+                content = args.get("content", "")
+                if not email:
+                    return "I need you to be signed in to remember anything long-term.", {}
+                if not content:
+                    return "What should I remember?", {}
+                category = args.get("category") or "fact"
+                if category not in ("fact", "preference", "constraint"):
+                    category = "fact"
+                importance = float(args.get("importance", 0.5) or 0.5)
+                from apps.core.memory.user_facts import get_user_facts
+
+                memory_id = await get_user_facts().remember(
+                    email, content, category=category, importance=importance
+                )
+                if not memory_id:
+                    return (
+                        "I couldn't save that long-term — long-term memory storage isn't "
+                        "configured right now, but I'll still have it for this conversation.",
+                        {},
+                    )
+                return f"Got it, I'll remember that ({category}).", {}
+
+            elif tool == "list_user_facts":
+                if not email:
+                    return "I need you to be signed in to look up what I remember about you.", {}
+                from apps.core.memory.user_facts import get_user_facts
+
+                facts = await get_user_facts().list_all(email, limit=50)
+                if not facts:
+                    return "I don't have anything saved long-term about you yet.", {}
+                lines = [f"**What I remember about you** ({len(facts)}):"]
+                for f in facts:
+                    lines.append(
+                        f"  • [{f.get('category', 'fact')}] {f.get('content', '')} "
+                        f"(id: `{f.get('id', '')}`)"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "forget_user_fact":
+                memory_id = args.get("memory_id", "")
+                if not email:
+                    return "I need you to be signed in to manage your remembered facts.", {}
+                if not memory_id:
+                    return "Which memory should I forget? Use list_user_facts to see the ids.", {}
+                from apps.core.memory.user_facts import get_user_facts
+
+                ok = await get_user_facts().forget(email, memory_id)
+                return (
+                    (
+                        "Forgotten."
+                        if ok
+                        else "I couldn't find that memory (already gone, or " "it isn't yours)."
+                    ),
+                    {},
+                )
 
             # ── INTERNAL LINKING & CONTENT STRATEGY ───────────────────────────
             elif tool == "audit_internal_links":
