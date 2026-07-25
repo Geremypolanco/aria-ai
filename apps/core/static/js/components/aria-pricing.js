@@ -13,7 +13,7 @@ const ARIA_PLANS = [
     cta: 'Start free',
     href: '/signup',
     highlight: false,
-    features: ['Tasks: research, write, build, images', 'Daily message limit', '1 workspace'],
+    features: ['Tasks: research, write, build, images', '15 tasks per day', '1 member'],
   },
   {
     name: 'Pro',
@@ -26,8 +26,9 @@ const ARIA_PLANS = [
     tag: 'MOST POPULAR',
     features: [
       'Unlimited tasks',
+      'The full team of 40+ AI specialists',
       'Advanced image, video & voice',
-      'Autonomous execution across every connected tool',
+      'Autonomous execution across every connected app',
       'Expanded memory & priority AI',
     ],
   },
@@ -35,14 +36,44 @@ const ARIA_PLANS = [
     name: 'Business',
     price: '$99',
     period: '/mo',
-    sub: 'For teams of any kind',
+    sub: 'For small teams working together',
     cta: 'Start Business',
     href: '/signup',
     highlight: false,
     features: [
       'Everything in Pro',
-      '5 workspaces & seats',
+      'Up to 5 members, one shared workspace',
+      'Invite & manage your team seats',
       'Scheduled autonomy & analytics',
+      'Priority support',
+    ],
+  },
+  {
+    name: 'Scale',
+    price: '$249',
+    period: '/mo',
+    sub: 'For growing teams that run on ARIA',
+    cta: 'Start Scale',
+    href: '/signup',
+    highlight: false,
+    features: [
+      'Everything in Business',
+      'Up to 15 members, one shared workspace',
+      'Admin controls & higher usage limits',
+      'Priority execution and support',
+    ],
+  },
+  {
+    name: 'Enterprise',
+    price: 'Custom',
+    sub: 'For organizations with security & scale needs',
+    cta: 'Contact sales',
+    href: 'mailto:litesaraph@gmail.com?subject=ARIA%20Enterprise',
+    highlight: false,
+    features: [
+      'Unlimited members',
+      'SSO & centralized administration',
+      'Security review & custom terms',
       'Dedicated support',
     ],
   },
@@ -82,7 +113,7 @@ class AriaPricing extends HTMLElement {
         <p class="mt-4 text-lg text-stone-600">Start free. Upgrade when ARIA is doing real work for you. Cancel anytime.</p>
       </div>
 
-      <div class="mx-auto mt-14 grid max-w-5xl gap-6 md:grid-cols-3 md:items-center">
+      <div class="mx-auto mt-14 grid max-w-6xl gap-5 sm:grid-cols-2 lg:grid-cols-5 lg:items-stretch">
         ${ARIA_PLANS.map((plan, i) => this.planCard(plan, i)).join('')}
       </div>
 

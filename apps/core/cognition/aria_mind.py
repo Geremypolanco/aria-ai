@@ -560,8 +560,6 @@ class AriaMind:
         Deterministic so the headline 'create an image' capability never depends on
         the flaky LLM planner. Returns None when the message isn't an image request
         (e.g. describing/editing an existing image)."""
-        import re
-
         t = (text or "").strip()
         low = t.lower()
         if not t or any(x in low for x in self._IMG_EXCLUDE):
