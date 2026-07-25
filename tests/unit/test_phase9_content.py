@@ -1,9 +1,7 @@
 """
-Phase 9 tests — SEO Content Engine, Blog Generator, and Product Page Optimizer.
+Phase 9 tests — Keyword Research, Blog Generator, and Product Page Optimizer.
 
 Covers:
-  - SEOEngine: research_keywords, analyze_content, optimize_meta,
-    generate_content_brief, top_opportunities, stats
   - KeywordResearcher: trending_topics (AI fallback), keyword_volume_estimate,
     buyer intent scoring
   - BlogGenerator: generate_post, generate_series, get_publishing_schedule,
@@ -12,7 +10,12 @@ Covers:
     mark_published, calendar_stats
   - ProductWriter: optimize_product, batch_optimize, generate_product_faq,
     create_collection_description, optimization_history, stats
+
+(SEOEngine was deleted — apps/content/seo/seo_engine.py fabricated
+search_volume/cpc_usd/difficulty via random.randint/uniform with no
+disclosure that the numbers were simulated.)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,8 +23,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ── Shared mock helpers ────────────────────────────────────────────────────────
+
 
 def _mock_cache():
     """In-memory cache mock — get returns None, set returns True."""
@@ -52,178 +55,9 @@ def _mock_ai_failed():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. SEOEngine
+# 1. KeywordResearcher
 # ══════════════════════════════════════════════════════════════════════════════
 
-class TestSEOEngine:
-    """8 tests for SEOEngine."""
-
-    @pytest.fixture(autouse=True)
-    def _reset_singleton(self):
-        import apps.content.seo.seo_engine as m
-        m._seo_engine = None
-        yield
-        m._seo_engine = None
-
-    async def test_research_keywords_returns_list_of_keyword_metrics(self):
-        """research_keywords returns a list of KeywordMetrics objects."""
-        from apps.content.seo.seo_engine import SEOEngine, KeywordMetrics
-
-        ai = _mock_ai("best AI tools\ncheap AI software\nAI review\nbuy AI subscription\ntop AI platform")
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            results = await engine.research_keywords("AI tools", count=5)
-
-        assert isinstance(results, list)
-        assert len(results) >= 1
-        for km in results:
-            assert isinstance(km, KeywordMetrics)
-
-    async def test_research_keywords_each_has_buyer_intent_score(self):
-        """Each KeywordMetrics has a buyer_intent_score between 0 and 1."""
-        from apps.content.seo.seo_engine import SEOEngine
-
-        ai = _mock_ai("best AI tools\nbuy AI now\ncheap AI plan")
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            results = await engine.research_keywords("AI", count=3)
-
-        for km in results:
-            assert 0.0 <= km.buyer_intent_score <= 1.0
-
-    async def test_analyze_content_scores_correctly_short_content(self):
-        """Short content (<300 words) scores lower than long content."""
-        from apps.content.seo.seo_engine import SEOEngine
-
-        ai = _mock_ai()
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            result = await engine.analyze_content("Short text.", target_keyword="AI")
-
-        assert result.seo_score < 0.5
-        assert result.word_count < 300
-
-    async def test_analyze_content_long_content_with_headers_scores_higher(self):
-        """Content with 600+ words and headers scores >= 0.6."""
-        from apps.content.seo.seo_engine import SEOEngine
-
-        content = (
-            "# Best AI Tools\n\n"
-            + ("AI tools are essential for modern businesses. " * 100)
-            + "\n\n## Top Features\n\n"
-            + ("These features make AI tools indispensable. " * 50)
-        )
-        ai = _mock_ai()
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            result = await engine.analyze_content(content, target_keyword="AI tools")
-
-        assert result.seo_score >= 0.6
-        assert result.word_count >= 600
-
-    async def test_optimize_meta_returns_title_and_description(self):
-        """optimize_meta returns dict with title, description, and keyword."""
-        from apps.content.seo.seo_engine import SEOEngine
-
-        ai_content = "TITLE: Best AI Tools for 2024\nDESCRIPTION: Discover the best AI tools on the market. Find top-rated software and start your free trial today with our expert comparison guide."
-        ai = _mock_ai(ai_content)
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            result = await engine.optimize_meta(
-                title="AI Tools Review",
-                description="We review AI tools.",
-                keyword="best AI tools",
-            )
-
-        assert "title" in result
-        assert "description" in result
-        assert "keyword" in result
-        assert result["keyword"] == "best AI tools"
-
-    async def test_generate_content_brief_returns_dict_with_outline(self):
-        """generate_content_brief returns dict with outline list."""
-        from apps.content.seo.seo_engine import SEOEngine
-
-        ai = _mock_ai(
-            "SECONDARY: AI tools guide, best AI, top AI software, AI for business, cheap AI\n"
-            "TONE: conversational\n"
-            "H2_1: What Is AI?\n"
-            "H2_2: Benefits of AI Tools\n"
-            "H2_3: How to Choose the Right AI\n"
-            "H2_4: Top AI Tools Reviewed\n"
-            "H2_5: Getting Started with AI\n"
-            "CTA: Try AI tools free today"
-        )
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            brief = await engine.generate_content_brief("AI tools", audience="marketers")
-
-        assert isinstance(brief, dict)
-        assert "target_keyword" in brief
-        assert "outline" in brief
-        assert isinstance(brief["outline"], list)
-        assert len(brief["outline"]) >= 3
-        assert "secondary_keywords" in brief
-        assert "buyer_intent" in brief
-
-    async def test_top_opportunities_returns_list_of_keyword_metrics(self):
-        """top_opportunities returns up to 10 KeywordMetrics sorted by opportunity."""
-        from apps.content.seo.seo_engine import SEOEngine, KeywordMetrics
-
-        ai = _mock_ai("\n".join([f"AI keyword {i}" for i in range(20)]))
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            results = await engine.top_opportunities("AI")
-
-        assert isinstance(results, list)
-        assert len(results) <= 10
-        # All items should be KeywordMetrics
-        for km in results:
-            assert isinstance(km, KeywordMetrics)
-
-    async def test_stats_returns_dict(self):
-        """stats() returns a dict with total_keywords_researched and avg_opportunity_score."""
-        from apps.content.seo.seo_engine import SEOEngine
-
-        ai = _mock_ai("best AI\ncheap AI\ntop AI")
-        cache = _mock_cache()
-
-        with patch("apps.content.seo.seo_engine.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.seo_engine.get_cache", return_value=cache):
-            engine = SEOEngine()
-            await engine.research_keywords("AI", count=3)
-            result = engine.stats()
-
-        assert isinstance(result, dict)
-        assert "total_keywords_researched" in result
-        assert "avg_opportunity_score" in result
-        assert result["total_keywords_researched"] > 0
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 2. KeywordResearcher
-# ══════════════════════════════════════════════════════════════════════════════
 
 class TestKeywordResearcher:
     """4 tests for KeywordResearcher."""
@@ -231,6 +65,7 @@ class TestKeywordResearcher:
     @pytest.fixture(autouse=True)
     def _reset_singleton(self):
         import apps.content.seo.keyword_research as m
+
         m._keyword_researcher = None
         yield
         m._keyword_researcher = None
@@ -241,8 +76,10 @@ class TestKeywordResearcher:
 
         ai = _mock_ai("AI marketing\nAI automation\nAI for business\nAI content\nAI SEO")
 
-        with patch("apps.content.seo.keyword_research.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.keyword_research._PYTRENDS_AVAILABLE", False):
+        with (
+            patch("apps.content.seo.keyword_research.get_ai_client", return_value=ai),
+            patch("apps.content.seo.keyword_research._PYTRENDS_AVAILABLE", False),
+        ):
             researcher = KeywordResearcher()
             researcher._pytrends = None
             result = await researcher.trending_topics("AI")
@@ -258,8 +95,10 @@ class TestKeywordResearcher:
 
         ai = _mock_ai_failed()
 
-        with patch("apps.content.seo.keyword_research.get_ai_client", return_value=ai), \
-             patch("apps.content.seo.keyword_research._PYTRENDS_AVAILABLE", False):
+        with (
+            patch("apps.content.seo.keyword_research.get_ai_client", return_value=ai),
+            patch("apps.content.seo.keyword_research._PYTRENDS_AVAILABLE", False),
+        ):
             researcher = KeywordResearcher()
             researcher._pytrends = None
             result = await researcher.trending_topics("AI")
@@ -295,8 +134,9 @@ class TestKeywordResearcher:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. BlogGenerator
+# 2. BlogGenerator
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class TestBlogGenerator:
     """8 tests for BlogGenerator."""
@@ -304,6 +144,7 @@ class TestBlogGenerator:
     @pytest.fixture(autouse=True)
     def _reset_singleton(self):
         import apps.content.blog.blog_generator as m
+
         m._blog_generator = None
         yield
         m._blog_generator = None
@@ -323,8 +164,10 @@ class TestBlogGenerator:
         ai = _mock_ai(ai_content)
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             post = await gen.generate_post("AI marketing", audience="marketers", word_count=800)
 
@@ -337,8 +180,10 @@ class TestBlogGenerator:
         ai = _mock_ai("# AI Title\n\nThis is content about AI.\n\n## Section\n\nMore content here.")
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             post = await gen.generate_post("AI tools")
 
@@ -349,11 +194,15 @@ class TestBlogGenerator:
         """Generated blog post has word_count > 0."""
         from apps.content.blog.blog_generator import BlogGenerator
 
-        ai = _mock_ai("# AI Guide\n\nContent about artificial intelligence and machine learning tools.")
+        ai = _mock_ai(
+            "# AI Guide\n\nContent about artificial intelligence and machine learning tools."
+        )
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             post = await gen.generate_post("AI")
 
@@ -366,8 +215,10 @@ class TestBlogGenerator:
         ai = _mock_ai("# The Best AI Tools for 2024\n\nContent here about AI tools.")
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             post = await gen.generate_post("best AI tools")
 
@@ -383,8 +234,10 @@ class TestBlogGenerator:
         ai = _mock_ai_failed()
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             post = await gen.generate_post("AI tools")
 
@@ -399,8 +252,10 @@ class TestBlogGenerator:
         ai = _mock_ai("# Series Post Title\n\nContent for the series post about the topic.")
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             posts = await gen.generate_series("AI marketing", count=5)
 
@@ -416,8 +271,10 @@ class TestBlogGenerator:
         ai = _mock_ai("# Draft Post\n\nDraft content for testing purposes.")
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             await gen.generate_post("test keyword")
             drafts = gen.draft_posts()
@@ -432,8 +289,10 @@ class TestBlogGenerator:
         ai = _mock_ai("# Test Post\n\nContent for statistics test.")
         cache = _mock_cache()
 
-        with patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai), \
-             patch("apps.content.blog.blog_generator.get_cache", return_value=cache):
+        with (
+            patch("apps.content.blog.blog_generator.get_ai_client", return_value=ai),
+            patch("apps.content.blog.blog_generator.get_cache", return_value=cache),
+        ):
             gen = BlogGenerator()
             await gen.generate_post("AI")
             result = gen.stats()
@@ -446,8 +305,9 @@ class TestBlogGenerator:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. ContentCalendar
+# 3. ContentCalendar
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class TestContentCalendar:
     """6 tests for ContentCalendar."""
@@ -455,6 +315,7 @@ class TestContentCalendar:
     @pytest.fixture(autouse=True)
     def _reset_singleton(self):
         import apps.content.blog.content_calendar as m
+
         m._content_calendar = None
         yield
         m._content_calendar = None
@@ -552,8 +413,9 @@ class TestContentCalendar:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5. ProductWriter
+# 4. ProductWriter
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class TestProductWriter:
     """6 tests for ProductWriter."""
@@ -561,6 +423,7 @@ class TestProductWriter:
     @pytest.fixture(autouse=True)
     def _reset_singleton(self):
         import apps.content.product_pages.product_writer as m
+
         m._product_writer = None
         yield
         m._product_writer = None
@@ -581,8 +444,10 @@ class TestProductWriter:
         )
         cache = _mock_cache()
 
-        with patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai), \
-             patch("apps.content.product_pages.product_writer.get_cache", return_value=cache):
+        with (
+            patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai),
+            patch("apps.content.product_pages.product_writer.get_cache", return_value=cache),
+        ):
             writer = ProductWriter()
             result = await writer.optimize_product(
                 product_id="prod_001",
@@ -607,8 +472,10 @@ class TestProductWriter:
         )
         cache = _mock_cache()
 
-        with patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai), \
-             patch("apps.content.product_pages.product_writer.get_cache", return_value=cache):
+        with (
+            patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai),
+            patch("apps.content.product_pages.product_writer.get_cache", return_value=cache),
+        ):
             writer = ProductWriter()
             result = await writer.optimize_product("prod_002", "AI Writer", original)
 
@@ -629,8 +496,10 @@ class TestProductWriter:
         )
         cache = _mock_cache()
 
-        with patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai), \
-             patch("apps.content.product_pages.product_writer.get_cache", return_value=cache):
+        with (
+            patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai),
+            patch("apps.content.product_pages.product_writer.get_cache", return_value=cache),
+        ):
             writer = ProductWriter()
             result = await writer.optimize_product("prod_003", "Widget", original)
 
@@ -650,8 +519,10 @@ class TestProductWriter:
         ai = _mock_ai(faq_content)
         cache = _mock_cache()
 
-        with patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai), \
-             patch("apps.content.product_pages.product_writer.get_cache", return_value=cache):
+        with (
+            patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai),
+            patch("apps.content.product_pages.product_writer.get_cache", return_value=cache),
+        ):
             writer = ProductWriter()
             faqs = await writer.generate_product_faq("prod_004", "AI Writer", "software")
 
@@ -671,8 +542,10 @@ class TestProductWriter:
         )
         cache = _mock_cache()
 
-        with patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai), \
-             patch("apps.content.product_pages.product_writer.get_cache", return_value=cache):
+        with (
+            patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai),
+            patch("apps.content.product_pages.product_writer.get_cache", return_value=cache),
+        ):
             writer = ProductWriter()
             result = await writer.create_collection_description(
                 "Premium AI Software",
@@ -694,8 +567,10 @@ class TestProductWriter:
         )
         cache = _mock_cache()
 
-        with patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai), \
-             patch("apps.content.product_pages.product_writer.get_cache", return_value=cache):
+        with (
+            patch("apps.content.product_pages.product_writer.get_ai_client", return_value=ai),
+            patch("apps.content.product_pages.product_writer.get_cache", return_value=cache),
+        ):
             writer = ProductWriter()
             await writer.optimize_product("prod_005", "Test Product", "Basic description.")
             result = writer.stats()
