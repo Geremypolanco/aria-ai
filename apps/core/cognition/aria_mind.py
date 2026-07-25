@@ -212,6 +212,11 @@ AVAILABLE TOOLS (you execute them, not the user):
 - write_upwork_proposal → a full proposal (hook, body, relevant experience, CTA, bid, delivery time) for a job already evaluated via evaluate_upwork_job. Args: {{"job_id": "...", "our_expertise": "..."}}
 - optimize_upwork_profile → headline, overview, skills to highlight, and portfolio ideas for an Upwork profile. Args: {{"skills": ["..."], "specialization": "..."}}
 - upwork_bidding_analytics → win rate, average bid, total won value across tracked jobs. Args: {{}}
+- upsert_client_profile → creates or updates a customer/client profile (matched by email). Args: {{"name": "...", "email": "...", "company": "...", "industry": "..."}}
+- record_client_interaction → logs an interaction (purchase/support/call/email) against a client profile, AI-tags its sentiment, and updates spend/purchase totals for "purchase" types. Args: {{"profile_id": "...", "interaction_type": "purchase|support|call|email|meeting", "summary": "...", "value_usd": 0}}
+- segment_client      → recomputes a client's segment (vip/high_value/standard/at_risk/churned) from spend and recency. Args: {{"profile_id": "..."}}
+- personalize_client_offer → recommends a specific product + offer for a known client based on their history and segment. Args: {{"profile_id": "...", "available_products": ["..."]}}
+- client_memory_dashboard → total clients/interactions, segment breakdown, total LTV, and who's VIP or at risk. Args: {{}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -246,22 +251,23 @@ REASONING RULES:
 19. For B2B lead generation → discover_leads first, then generate_sales_proposal for a specific one worth pursuing. Always be explicit about which leads came from a real web search vs. the illustrative examples used to pad a short result — never present a synthetic example as a real, contactable business. For LinkedIn specifically → add_linkedin_prospect, score_linkedin_prospect to prioritize, then generate_linkedin_connection_request (single note) or generate_linkedin_outreach_sequence (full 4-message sequence) once you know the fit is good. Check linkedin_outreach_pipeline before suggesting who to follow up with next.
 20. create_landing_page generates copy with placeholder social-proof numbers ("2,000+ customers", "47 spots remaining") — flag these as templates to replace with real figures before publishing, the same rule as persuasion copy. Use generate_landing_headlines to A/B test the headline specifically. Before recommending a price → analyze_pricing (real competitor data beats an AI estimate — ask for it if the user has it) or build_pricing_strategy for a brand-new product line; use suggest_dynamic_price only for an already-analyzed product reacting to inventory/demand.
 21. For freelance platform work → create_fiverr_gig or evaluate_upwork_job first (Upwork jobs need a fit score before writing a proposal — don't skip straight to write_upwork_proposal). Fiverr package prices and Upwork bid suggestions are starting points based on general market patterns, not researched-for-this-gig numbers — say so if the user might treat them as precise. optimize_fiverr_title and optimize_upwork_profile are standalone touch-ups, not full gig/job flows.
-22. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-23. For recurring automations → use create_workflow + run_workflow.
-24. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-25. If you're unsure what the user wants → interpret the most useful intent and execute it.
-26. Never make up data, prices, statistics, or facts. Search if you don't know.
-27. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-28. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-29. If the user asks to search for repos or projects on GitHub → use github_search.
-30. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-31. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-32. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-33. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-34. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-35. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-36. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-37. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+22. For a known, named customer/client (not an anonymous ad audience or cold lead) → upsert_client_profile once, then record_client_interaction as things happen so segment_client and personalize_client_offer reflect reality. This is CRM memory for people you already have a relationship with — different from AudienceSegmenter (ad targeting) or LeadEngine/LinkedInOutreach (prospects not yet clients). Check client_memory_dashboard before flagging who's VIP or at risk of churning.
+23. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+24. For recurring automations → use create_workflow + run_workflow.
+25. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+26. If you're unsure what the user wants → interpret the most useful intent and execute it.
+27. Never make up data, prices, statistics, or facts. Search if you don't know.
+28. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+29. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+30. If the user asks to search for repos or projects on GitHub → use github_search.
+31. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+32. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+33. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+34. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+35. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+36. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+37. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+38. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -404,6 +410,13 @@ _HELP_TEXT = """\
 - `write a proposal for this job` — hook, body, experience, CTA
 - `optimize my Upwork profile for [specialization]` — headline, overview, portfolio ideas
 - `how are my gigs/bids doing?` — SEO scores, win rate, avg bid
+
+**Client memory (CRM)**
+- `save this client: [name, email]` — create or update their profile
+- `log this interaction with [client]` — purchase/support/call, sentiment-tagged
+- `what segment is [client] in?` — VIP/high-value/standard/at-risk/churned
+- `what offer should I give [client]?` — personalized recommendation
+- `how's my client base doing?` — totals, segments, LTV, who needs attention
 
 **Management**
 - `/goals` — list active goals
@@ -2929,6 +2942,86 @@ class AriaMind:
                     f"({stats['win_rate_pct']:.0f}% win rate)\n"
                     f"Avg bid: ${stats['avg_bid']:.2f} · Total won value: ${stats['total_won_value']:,.2f}"
                 ), {}
+
+            # ── CLIENT MEMORY (CRM) ──────────────────────────────────────────
+            elif tool == "upsert_client_profile":
+                name = args.get("name", "")
+                email = args.get("email", "")
+                company = args.get("company", "")
+                industry = args.get("industry", "")
+                if not name or not email:
+                    return "I need at least a name and email to save this client profile.", {}
+                from apps.memory.client.client_memory import get_client_memory
+
+                profile = await get_client_memory().upsert_profile(name, email, company, industry)
+                return (
+                    f"**Client profile saved: {profile.name}** (id: `{profile.profile_id}`)\n"
+                    f"{profile.email} · {profile.company or 'no company'} · segment: {profile.segment}"
+                ), {}
+
+            elif tool == "record_client_interaction":
+                profile_id = args.get("profile_id", "")
+                interaction_type = args.get("interaction_type", "")
+                summary = args.get("summary", "")
+                value_usd = float(args.get("value_usd", 0))
+                if not profile_id or not interaction_type:
+                    return "I need a profile_id and an interaction type to record this.", {}
+                from apps.memory.client.client_memory import get_client_memory
+
+                interaction = await get_client_memory().record_interaction(
+                    profile_id, interaction_type, summary, value_usd
+                )
+                return (
+                    f"**{interaction.interaction_type}** recorded ({interaction.sentiment})"
+                    + (f", ${value_usd:.2f}" if value_usd else "")
+                ), {}
+
+            elif tool == "segment_client":
+                profile_id = args.get("profile_id", "")
+                if not profile_id:
+                    return "I need a profile_id (from upsert_client_profile) to segment.", {}
+                from apps.memory.client.client_memory import get_client_memory
+
+                segment = await get_client_memory().segment_client(profile_id)
+                return f"**Segment: {segment}**", {}
+
+            elif tool == "personalize_client_offer":
+                profile_id = args.get("profile_id", "")
+                available_products = args.get("available_products", []) or []
+                if not profile_id or not available_products:
+                    return (
+                        "I need a profile_id and the available products to personalize an offer.",
+                        {},
+                    )
+                from apps.memory.client.client_memory import get_client_memory
+
+                result = await get_client_memory().personalize_offer(profile_id, available_products)
+                return (
+                    f"**Recommended: {result['recommended_product']}** — {result['offer']}\n"
+                    f"{result['reasoning']}"
+                ), {}
+
+            elif tool == "client_memory_dashboard":
+                from apps.memory.client.client_memory import get_client_memory
+
+                memory = get_client_memory()
+                await memory._load()
+                stats = memory.client_memory_summary()
+                vip = memory.vip_clients()
+                at_risk = memory.at_risk_clients()
+                if stats["total_profiles"] == 0:
+                    return "No client profiles yet. Use upsert_client_profile first.", {}
+                by_segment = ", ".join(f"{k}: {v}" for k, v in stats["by_segment"].items())
+                lines = [
+                    f"**Client memory: {stats['total_profiles']} profiles, "
+                    f"{stats['total_interactions']} interactions**\n"
+                    f"By segment: {by_segment} · Total LTV: ${stats['total_ltv']:,.2f}"
+                ]
+                if vip:
+                    lines.append("VIP: " + ", ".join(p["name"] for p in vip[:10]))
+                if at_risk:
+                    lines.append("At risk / churned: " + ", ".join(p["name"] for p in at_risk[:10]))
+                return "\n\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":
