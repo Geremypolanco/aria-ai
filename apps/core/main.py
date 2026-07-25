@@ -5,6 +5,7 @@ Full-featured FastAPI server with AI integration, chat, and web interface.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -2448,22 +2449,18 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
         if pctx:
             user_context = f"{pctx}\n\n{user_context}".strip()
 
-    # Recall relevant memory from PAST sessions (different chat threads, earlier
-    # days) — distinct from aria_mind's own history, which only covers this one
-    # chat_id. Signed-in users only; there is no identity to scope memory to
-    # for an anonymous request.
+    # Recall relevant long-term memory (past conversation snippets + durable
+    # facts/preferences — see apps/core/memory/context_loader.py) from PAST
+    # sessions (different chat threads, earlier days) — distinct from
+    # aria_mind's own history, which only covers this one chat_id. Signed-in
+    # users only; there is no identity to scope memory to for an anonymous
+    # request. load_user_context() never raises.
     if email:
-        try:
-            from apps.core.cognition.episodic_memory import get_episodic_memory
+        from apps.core.memory.context_loader import load_user_context
 
-            recalled = await get_episodic_memory().recall(email, req.message, n=4)
-            if recalled:
-                mem_lines = "\n".join(f"- {e['content']}" for e in recalled)
-                user_context = (
-                    f"[From earlier sessions with this user:\n{mem_lines}]\n\n{user_context}"
-                ).strip()
-        except Exception as exc:
-            logger.warning(f"Memory recall failed (non-fatal): {exc}")
+        memory_context = await load_user_context(email, req.message)
+        if memory_context:
+            user_context = f"{memory_context}\n\n{user_context}".strip()
 
     try:
         from apps.core.cognition.aria_mind import get_aria_mind
@@ -3028,10 +3025,23 @@ async def websocket_chat(ws: WebSocket):
                     continue
 
             msg = json.loads(data)
+            user_text = msg.get("message", "")
             convo_id = _conversation_id(user, msg.get("session_id"))
-            resp = await mind.handle(msg.get("message", ""), convo_id, email=email)
+
+            # Same long-term memory injection as /api/v1/chat (HTTP) — this
+            # was previously HTTP-only, meaning WebSocket users never got
+            # context from earlier sessions. See context_loader.py.
+            memory_context = None
+            if email:
+                from apps.core.memory.context_loader import load_user_context
+
+                memory_context = await load_user_context(email, user_text)
+
+            resp = await mind.handle(user_text, convo_id, user_context=memory_context, email=email)
             reply_text = resp.text or resp.caption or ""
-            await _record_ai_cost(email, plan, msg.get("message", ""), reply_text)
+            await _record_ai_cost(email, plan, user_text, reply_text)
+            if email and reply_text:
+                asyncio.create_task(_remember_turn(email, user_text, reply_text))
             await ws.send_json({"reply": reply_text, "tool": resp.tool_used})
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
