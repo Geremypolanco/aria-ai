@@ -302,7 +302,13 @@ Talk like a real person explaining something to someone they care about — warm
 - For web searches: keep what matters, include concrete data, and ALWAYS include the link (URL) for each source you mention — in markdown format [title](url) — when the tool's result includes URLs. Never make up links.
 - For images, video, or audio: say in one line what you created.
 - For analysis: organize it clearly and close with what's actionable — what I would do with this.
-- If what you found isn't enough, say so honestly and propose the next concrete step."""
+- If what you found isn't enough, say so honestly and propose the next concrete step.
+- If the tool's result was a failure or error, NEVER quote or paraphrase the raw error — no
+  exception text, stack traces, status codes, provider/API names, or internal tool names. Just
+  tell the user, briefly and warmly, that something went wrong and you'll try again (or try a
+  different approach). Never expose internal implementation details to the user. Exception: a
+  deliberate, human-readable denial (e.g. "this action is reserved for the owner") isn't a raw
+  error — convey that plainly and accurately instead of hiding it behind a vague apology."""
 
 _HELP_TEXT = """\
 ## ARIA — Available capabilities
@@ -690,7 +696,19 @@ class AriaMind:
                 default_caption = "Here's the image I created for you."
                 if media and not self._looks_english(text):
                     default_caption = await self._localize_short_text(text, default_caption)
-                caption = obs if (obs and not media) else default_caption
+                # obs is raw tool output — on failure it can be an exception message or
+                # provider error payload, so it must never reach the user verbatim.
+                if media:
+                    caption = default_caption
+                elif obs and self._should_hide_from_user(obs):
+                    failure_caption = "Something went wrong generating the image. I'll try again."
+                    if not self._looks_english(text):
+                        failure_caption = await self._localize_short_text(text, failure_caption)
+                    caption = failure_caption
+                elif obs:
+                    caption = obs
+                else:
+                    caption = default_caption
                 with suppress(Exception):
                     await self._record_exec(
                         "generate_image", {"prompt": img_prompt}, obs, bool(media)
@@ -932,6 +950,20 @@ class AriaMind:
     def _looks_like_failure(self, obs: str) -> bool:
         low = (obs or "").lower()
         return any(sig in low for sig in self._FAILURE_SIGNALS)
+
+    def _should_hide_from_user(self, obs: str) -> bool:
+        """True when a failed observation must be replaced by a generic
+        "something went wrong" message rather than shown as-is. Not every
+        _looks_like_failure() match qualifies: a permission denial (e.g. "This
+        action is reserved for ARIA's owner.") is a deliberate, clean,
+        human-authored response — it's correct behavior, not a broken tool —
+        and hiding it behind a vague "something went wrong, I'll retry" would
+        be actively worse (retrying can never change a permission denial).
+        Only genuine failures, which may embed raw exception text or a
+        provider's error payload, need to be hidden."""
+        if not self._looks_like_failure(obs):
+            return False
+        return "reserved for" not in (obs or "").lower()
 
     async def _execute_with_retry(
         self, tool: str, args: dict, max_retries: int = 3, email: str = ""
@@ -3272,6 +3304,24 @@ class AriaMind:
         """Turns a tool's raw observation into a natural reply via the LLM."""
         if not observation or len(observation) < 10:
             return "Done."
+
+        # A genuine failure's raw observation (exception text, provider error
+        # payloads, internal tool names) must never reach the user — not even
+        # by way of the LLM below, which despite SYNTHESIS_SYSTEM's
+        # instructions could still quote or paraphrase it. So failures
+        # short-circuit here with a generic, honest "something went wrong,
+        # retrying" message (matched to the user's language) before the LLM
+        # is ever invoked, instead of trusting the model to sanitize it.
+        # Deliberate, clean messages (e.g. a permission denial) aren't
+        # "failures" for this purpose — see _should_hide_from_user — and
+        # still go through normal synthesis below.
+        if self._should_hide_from_user(observation):
+            generic_failure_reply = "Something went wrong on my end. I'll try again."
+            if not self._looks_english(user_input):
+                generic_failure_reply = await self._localize_short_text(
+                    user_input, generic_failure_reply
+                )
+            return generic_failure_reply
 
         ai = self._ai_client()
         if not ai:
