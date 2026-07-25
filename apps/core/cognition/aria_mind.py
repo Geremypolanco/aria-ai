@@ -542,8 +542,6 @@ class AriaMind:
         Deterministic so the headline 'create an image' capability never depends on
         the flaky LLM planner. Returns None when the message isn't an image request
         (e.g. describing/editing an existing image)."""
-        import re
-
         t = (text or "").strip()
         low = t.lower()
         if not t or any(x in low for x in self._IMG_EXCLUDE):
@@ -2498,7 +2496,7 @@ class AriaMind:
                         {},
                     )
                 lines = [f"**Recommendations ({result.strategy}, {context}):**"]
-                for title, score in zip(result.recommended_titles, result.scores):
+                for title, score in zip(result.recommended_titles, result.scores, strict=False):
                     lines.append(f"  • {title or '(untitled)'} — match {score:.0%}")
                 return "\n".join(lines), {}
 
