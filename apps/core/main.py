@@ -114,9 +114,22 @@ _RATE_HITS: dict[str, deque] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
+    """Best-effort real client IP for rate-limit keying.
+
+    Deployed behind Fly.io's edge proxy (see fly.toml) — a single trusted hop.
+    `Fly-Client-IP` is set by that edge itself and can't be spoofed by the
+    caller. X-Forwarded-For's *first* entry, by contrast, is whatever the
+    client put there themselves before the request ever reached Fly — trusting
+    it let anyone reset their own rate-limit bucket per request by sending a
+    different X-Forwarded-For each time. If XFF is used as a fallback, the
+    *last* entry (the hop Fly's own proxy appended) is the trustworthy one.
+    """
+    fly_ip = request.headers.get("fly-client-ip", "").strip()
+    if fly_ip:
+        return fly_ip
     fwd = request.headers.get("x-forwarded-for", "")
     if fwd:
-        return fwd.split(",")[0].strip()
+        return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -2023,6 +2036,17 @@ async def billing_webhook(request: Request):
             paid = obj.get("payment_status") == "paid"
             if email and paid:
                 await _set_user_plan(email, tier)
+                # The only place real revenue ever enters the system — without
+                # this, admin_overview()'s revenue_usd/net_margin_usd always
+                # read 0.0 (AriaMetrics.record_income_cycle was never called
+                # anywhere), making the God Mode console permanently show the
+                # business as unprofitable regardless of actual Stripe revenue.
+                from apps.core.observability.metrics import get_metrics
+
+                amount_total_cents = obj.get("amount_total") or 0
+                get_metrics().record_income_cycle(
+                    success=True, revenue_usd=amount_total_cents / 100
+                )
     except Exception as e:
         logger.error(f"Stripe webhook handling error: {e}")
 

@@ -106,16 +106,24 @@ async def _next_task(q: MissionQueue, stop: asyncio.Event | None, poll: float) -
         deq.cancel()
         stopper.cancel()
         raise
-    if stopper in done:
-        # Stop requested — cancel the in-flight dequeue and drain it cleanly.
-        deq.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await deq
-        return None
     stopper.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await stopper
-    return deq.result()
+    if deq in done:
+        # A task was already popped off the queue (removed from Redis/memory)
+        # before `stop` fired — it must still be returned and processed even
+        # though shutdown was also requested in the same instant, or it's
+        # silently dropped with no requeue path (the old code checked `stopper
+        # in done` first and discarded deq's result whenever both futures
+        # completed in the same asyncio.wait() cycle).
+        return deq.result()
+    # Stop requested and nothing was dequeued yet — safe to cancel outright,
+    # since dequeue()'s underlying pop (Redis BRPOP or the in-memory deque)
+    # never leaves a task half-removed when cancelled mid-wait.
+    deq.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await deq
+    return None
 
 
 async def run_forever(

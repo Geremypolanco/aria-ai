@@ -51,9 +51,22 @@ _HITS: dict[str, deque] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
+    """Best-effort real client IP for rate-limit keying.
+
+    Deployed behind Fly.io's edge proxy (see fly.toml) — a single trusted hop.
+    `Fly-Client-IP` is set by that edge itself and can't be spoofed by the
+    caller. X-Forwarded-For's *first* entry, by contrast, is whatever the
+    client put there themselves before the request ever reached Fly — trusting
+    it let anyone reset their own rate-limit bucket per request by sending a
+    different X-Forwarded-For each time. If XFF is used as a fallback, the
+    *last* entry (the hop Fly's own proxy appended) is the trustworthy one.
+    """
+    fly_ip = request.headers.get("fly-client-ip", "").strip()
+    if fly_ip:
+        return fly_ip
     fwd = request.headers.get("x-forwarded-for", "")
     if fwd:
-        return fwd.split(",")[0].strip()
+        return fwd.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 

@@ -125,7 +125,8 @@ COMPLIANCE_STATUS: list[dict[str, str]] = [
 SECURITY_CONTROLS: list[str] = [
     "All traffic is served over HTTPS, with HSTS enforced.",
     "Baseline security headers on every response (content-type, framing, referrer, permissions).",
-    "Sign-in is delegated to Google and GitHub OAuth — ARIA never sees or stores your password.",
+    "Sign in with Google or GitHub OAuth, or with an email and password — passwords are never "
+    "stored in plain text, only as a salted PBKDF2-HMAC-SHA256 hash.",
     "Payments are processed by Stripe; ARIA does not store card numbers.",
     "Secrets are kept in environment configuration, never committed to the codebase.",
     "ARIA operates within explicit, published operating boundaries (see Responsible AI, above).",
