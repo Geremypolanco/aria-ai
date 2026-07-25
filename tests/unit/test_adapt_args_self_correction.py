@@ -144,7 +144,7 @@ async def test_execute_with_retry_applies_generic_adaptation_between_attempts():
         patch.object(mind, "_execute_tool", fake_execute_tool),
         patch("apps.core.cognition.aria_mind.asyncio.sleep", AsyncMock()),
     ):
-        obs, media = await mind._execute_with_retry(
+        obs, media, executed_args = await mind._execute_with_retry(
             "optimize_product_seo", {"product_name": "widget", "category": ""}
         )
 
@@ -152,3 +152,8 @@ async def test_execute_with_retry_applies_generic_adaptation_between_attempts():
     assert len(calls) == 2
     assert calls[0] == {"product_name": "widget", "category": ""}
     assert calls[1] == {"product_name": "Widget Pro", "category": "gadgets"}
+    # Regression (CodeRabbit, PR #131): the returned args must be whichever
+    # ones actually produced the result — the adapted retry args, not the
+    # caller's original pre-retry args — so a caller auditing/tracing this
+    # call doesn't misattribute the result to arguments that were never run.
+    assert executed_args == {"product_name": "Widget Pro", "category": "gadgets"}

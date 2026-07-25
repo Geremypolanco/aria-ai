@@ -10,11 +10,13 @@ a large tool_args payload (e.g. execute_code's code) can't bloat storage.
 from __future__ import annotations
 
 import time
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from apps.core.cognition.aria_mind import AriaMind
+from apps.core.safety.guardrails import ModerationResult
 from apps.evaluation.phoenix.tracer import AITrace, CognitionTracer
 
 
@@ -122,6 +124,69 @@ async def test_trace_turn_defaults_to_empty_for_conversation_turns():
     kwargs = fake_tracer.record.call_args.kwargs
     assert kwargs["tool_args"] is None
     assert kwargs["raw_observation"] == ""
+
+
+@pytest.mark.asyncio
+async def test_handle_traces_the_executed_retry_args_not_the_original_plan_args():
+    """End-to-end regression (CodeRabbit, PR #131): a full AriaMind.handle()
+    call, where the planned tool_args fail once and _adapt_args_generic
+    corrects them on retry, must trace the args that actually produced the
+    result — not the original plan's args, which were never executed."""
+    plan_args = {"product_name": "widget", "category": ""}
+    adapted_args = {"product_name": "Widget Pro", "category": "gadgets"}
+
+    async def fake_reason(*a, **k):
+        return {"tool": "optimize_product_seo", "tool_args": plan_args, "reply": ""}
+
+    calls = []
+
+    async def fake_execute_tool(tool, args, attempt=0, email=""):
+        calls.append(dict(args))
+        if attempt == 0:
+            return "Error: category cannot be empty", {}
+        return "SEO optimized successfully", {}
+
+    fake_adapt_ai = AsyncMock()
+    fake_adapt_ai.complete_json = AsyncMock(return_value={"tool_args": adapted_args})
+
+    fake_tracer = AsyncMock()
+    clean_moderation = ModerationResult(blocked=False, layer="llm")
+
+    mind = AriaMind()
+    with ExitStack() as stack:
+        mock_ks = stack.enter_context(patch("apps.core.safety.guardrails.get_kill_switch"))
+        stack.enter_context(
+            patch(
+                "apps.core.safety.guardrails.moderate_input",
+                AsyncMock(return_value=clean_moderation),
+            )
+        )
+        stack.enter_context(
+            patch("apps.evaluation.phoenix.tracer.get_cognition_tracer", return_value=fake_tracer)
+        )
+        stack.enter_context(patch.object(mind, "_reason", fake_reason))
+        stack.enter_context(patch.object(mind, "_execute_tool", fake_execute_tool))
+        stack.enter_context(patch.object(mind, "_ai_client", return_value=fake_adapt_ai))
+        stack.enter_context(patch("apps.core.cognition.aria_mind.asyncio.sleep", AsyncMock()))
+        stack.enter_context(patch.object(mind, "_load_history", AsyncMock(return_value=[])))
+        stack.enter_context(patch.object(mind, "_load_state", AsyncMock(return_value={})))
+        stack.enter_context(patch.object(mind, "_load_goals", AsyncMock(return_value=[])))
+        stack.enter_context(patch.object(mind, "_load_learned", AsyncMock(return_value=[])))
+        stack.enter_context(patch.object(mind, "_store_interaction", AsyncMock()))
+        stack.enter_context(patch.object(mind, "_evolve_state", AsyncMock()))
+        stack.enter_context(patch.object(mind, "_maybe_reflect", AsyncMock()))
+        stack.enter_context(patch.object(mind, "_record_exec", AsyncMock()))
+        mock_ks.return_value.is_active = AsyncMock(return_value=False)
+
+        await mind.handle("optimize my widget listing", "chat-1", email="owner@example.com")
+
+    assert len(calls) == 2
+    assert calls[0] == plan_args
+    assert calls[1] == adapted_args
+    fake_tracer.record.assert_awaited_once()
+    kwargs = fake_tracer.record.call_args.kwargs
+    assert kwargs["tool_args"] == adapted_args
+    assert kwargs["tool_args"] != plan_args
 
 
 @pytest.mark.asyncio
