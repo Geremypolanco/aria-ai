@@ -225,17 +225,36 @@ class AriaTelegramBot:
             return
 
         # Everything through AriaMind — no pre-programmed shortcuts
+        email = self._owner_email()
         try:
             from apps.core.cognition.aria_mind import get_aria_mind
 
             mind = get_aria_mind()
-            response = await mind.handle(text, chat_id)
+            # Same long-term memory injection as the web chat entrypoints
+            # (apps/core/main.py) — see apps/core/memory/context_loader.py.
+            # Only meaningful for the actually-authorized owner (see
+            # _owner_email's docstring); a no-op ("") otherwise.
+            memory_context = None
+            if email:
+                from apps.core.memory.context_loader import load_user_context
+
+                memory_context = await load_user_context(email, text)
+            response = await mind.handle(text, chat_id, user_context=memory_context, email=email)
         except Exception as exc:
             logger.error("[Bot] AriaMind error: %s", exc)
             await self._edit_or_send(
                 chat_id, placeholder_id, "⚠️ Something failed internally. Please try again."
             )
             return
+
+        if email and (response.text or response.caption):
+            from apps.core.cognition.episodic_memory import get_episodic_memory
+
+            asyncio.create_task(
+                get_episodic_memory().store_conversation(
+                    email, text, response.text or response.caption or ""
+                )
+            )
 
         if response.silent or (
             not response.text
@@ -405,6 +424,32 @@ class AriaTelegramBot:
         allowed = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "").strip()
         return not allowed or str(chat_id).strip() == allowed
 
+    @staticmethod
+    def _owner_email() -> str:
+        """This bot's authorized identity, IF AND ONLY IF TELEGRAM_CHAT_ID
+        is actually configured — _is_authorized() only restricts to a
+        single known chat when that setting is set; with it unset, the bot
+        is open to anyone, and this must return "" in that case rather
+        than grant owner-level identity to an arbitrary Telegram user.
+
+        Previously every mind.handle() call here omitted `email` entirely
+        (defaulting to ""), which meant even a properly-configured,
+        single-owner-only bot could never reach any owner-only tool
+        (execute_code, computer_use, the Shopify/finance tools, ...) and
+        got no long-term memory (episodic recall / user_facts — see
+        apps/core/memory/context_loader.py), since those require a real
+        identity too. Resolves the same way apps.core.auth.owner_emails()
+        does: settings.OWNER_EMAIL first, else the hardcoded owner
+        fallback."""
+        if not (getattr(settings, "TELEGRAM_CHAT_ID", "") or "").strip():
+            return ""
+        owner = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
+        if owner:
+            return owner
+        from apps.core import auth
+
+        return next(iter(auth.owner_emails()), "")
+
     # ── Markdown → HTML conversion ─────────────────────────────────────────
 
     @staticmethod
@@ -475,6 +520,7 @@ class AriaTelegramBot:
                 "while I was offline: revenue cycles run, products created, "
                 "URLs published, and what you plan to do now.",
                 chat_id,
+                email=self._owner_email(),
             )
             text = response.text or "ARIA online. What shall we do?"
             await self._send(chat_id, self._md_to_html(text), already_html=True)
