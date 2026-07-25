@@ -1188,22 +1188,72 @@ class AriaMind:
             )
 
             # Adapt args for the next attempt
-            args = self._adapt_args(tool, args, obs, attempt)
+            args = await self._adapt_args(tool, args, obs, attempt)
 
         return f"I tried {max_retries} times and couldn't complete '{tool}': {last_error}", {}
 
-    def _adapt_args(self, tool: str, args: dict, error: str, attempt: int) -> dict:
-        """Adapts the arguments based on the error for the next attempt."""
+    async def _adapt_args(self, tool: str, args: dict, error: str, attempt: int) -> dict:
+        """Adapts the arguments based on the error for the next attempt.
+
+        generate_image/web_search have hand-tuned adaptations below (swap
+        model, shorten query). Every other tool used to just retry with the
+        exact same args that already failed — no self-correction at all for
+        ~98 of the ~100 tool branches. They now fall through to a generic
+        LLM-based correction: propose new argument VALUES for the same keys,
+        given the error, instead of blindly repeating what just failed.
+        Fails open to the original args on any error/mismatch — a broken
+        self-correction attempt must never break the retry loop itself."""
         if tool == "generate_image" and attempt == 1:
             # First fallback: change model
-            args = dict(args, _fallback_model="stabilityai/stable-diffusion-xl-base-1.0")
-        elif tool == "generate_image" and attempt == 2:
-            args = dict(args, _fallback_model="stabilityai/sdxl-turbo")
-        elif tool == "web_search" and attempt > 0:
+            return dict(args, _fallback_model="stabilityai/stable-diffusion-xl-base-1.0")
+        if tool == "generate_image" and attempt == 2:
+            return dict(args, _fallback_model="stabilityai/sdxl-turbo")
+        if tool == "web_search" and attempt > 0:
             # Simplify the query
             query = args.get("query", "")
             words = query.split()
-            args = {"query": " ".join(words[:4])}  # shorter query
+            return {"query": " ".join(words[:4])}  # shorter query
+        return await self._adapt_args_generic(tool, args, error)
+
+    async def _adapt_args_generic(self, tool: str, args: dict, error: str) -> dict:
+        """Generic self-correction fallback for any tool without a
+        hand-tuned adaptation above. Asks a FAST model to propose corrected
+        argument values (same keys only — never adding, removing, or
+        renaming one) given the tool, its current args, and the error. The
+        matching-key-set check is a deliberate guardrail: it's cheap to
+        verify and stops a confused/hallucinated response from smuggling in
+        an unrelated argument shape the next _execute_tool call wasn't
+        expecting."""
+        if not args:
+            return args
+        ai = self._ai_client()
+        if not ai:
+            return args
+        try:
+            import json
+
+            from apps.core.tools.ai_client import AIModel
+
+            result = await ai.complete_json(
+                system=(
+                    "A tool call failed. Given the tool name, its current "
+                    "arguments, and the error, propose corrected argument "
+                    "VALUES for the SAME KEYS — never add, remove, or rename "
+                    "a key. If you can't identify a plausible fix, return "
+                    "the arguments completely unchanged. Respond ONLY with "
+                    'JSON: {"tool_args": {...same keys as given...}}.'
+                ),
+                user=f"Tool: {tool}\nCurrent args: {json.dumps(args)}\nError: {error[:300]}",
+                model=AIModel.FAST,
+                max_tokens=400,
+                temperature=0.2,
+                agent_name="aria_mind_adapt_args",
+            )
+            adapted = result.get("tool_args") if isinstance(result, dict) else None
+            if isinstance(adapted, dict) and set(adapted.keys()) == set(args.keys()):
+                return adapted
+        except Exception as exc:
+            logger.debug("[AriaMind] generic arg adaptation failed for %s: %s", tool, exc)
         return args
 
     # Tools that write to a real, external system of record on the owner's
