@@ -186,6 +186,11 @@ AVAILABLE TOOLS (you execute them, not the user):
 - cart_abandonment_sequence → a 3-touch retargeting ad sequence (immediate/24h/72h, escalating urgency+discount) for a specific abandoned cart. Args: {{"cart_items": [{{"name": "..."}}], "user_id": "..."}}
 - record_retargeting_metrics → logs real performance (impressions/clicks/conversions/spend/revenue) against a retargeting campaign created via create_retargeting_campaign. Args: {{"campaign_id": "...", "impressions": 0, "clicks": 0, "conversions": 0, "spend": 0.0, "revenue": 0.0}}
 - retargeting_performance → aggregate spend/revenue/ROAS/CAC across all retargeting campaigns, plus the top performers by ROAS. Args: {{"limit": 5}}
+- recover_abandoned_cart → registers an abandoned Shopify cart and generates a 3-email recovery sequence (reminder → 5% off → 10% off, escalating over 72h). Args: {{"email": "...", "user_id": "...", "items": [{{"title": "...", "price": 0}}], "cart_value": 0}}
+- create_flash_sale   → creates a time-limited sale on named products with AI urgency copy. Args: {{"name": "...", "products": [{{"id": "...", "title": "...", "price": 0}}], "discount_pct": 0.2, "duration_hours": 24}}
+- create_product_bundle → bundles 2+ products with AI-generated name/description/CTA at a discount. Args: {{"products": [{{"id": "...", "title": "...", "price": 0}}], "bundle_type": "complementary|quantity|starter|premium", "discount_pct": 0.15}}
+- recommend_products  → context-aware product recommendations (collaborative/content/trending) from a catalog, for cart/product/homepage/post-purchase placements. Args: {{"user_id": "...", "context": "cart|product|homepage|post_purchase", "catalog": [{{"id": "...", "title": "...", "price": 0, "category": "...", "tags": []}}], "current_product_id": "...", "limit": 5}}
+- shopify_revenue_dashboard → snapshot of cart recovery, flash sale, bundle, and recommendation performance in one call. Args: {{}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -216,22 +221,23 @@ REASONING RULES:
 15. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
 16. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
 17. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
-18. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-19. For recurring automations → use create_workflow + run_workflow.
-20. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-21. If you're unsure what the user wants → interpret the most useful intent and execute it.
-22. Never make up data, prices, statistics, or facts. Search if you don't know.
-23. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-24. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-25. If the user asks to search for repos or projects on GitHub → use github_search.
-26. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-27. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-28. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-29. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-30. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-31. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-32. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-33. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+18. For an existing Shopify store's revenue optimization (not creating new products — that's run_business_agent with agent="ecommerce") → recover_abandoned_cart for cart abandoners, create_flash_sale or create_product_bundle to move underperforming or complementary inventory, recommend_products for on-site placements, and shopify_revenue_dashboard for a quick health check across all of them.
+19. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+20. For recurring automations → use create_workflow + run_workflow.
+21. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+22. If you're unsure what the user wants → interpret the most useful intent and execute it.
+23. Never make up data, prices, statistics, or facts. Search if you don't know.
+24. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+25. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+26. If the user asks to search for repos or projects on GitHub → use github_search.
+27. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+28. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+29. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+30. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+31. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+32. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+33. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+34. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -343,6 +349,13 @@ _HELP_TEXT = """\
 - `set up a retargeting campaign for [cart abandoners/product viewers/...]` — audience + ready-to-review ad
 - `cart abandonment sequence for [user]` — 3-touch escalating ad sequence
 - `how are my retargeting campaigns doing?` — spend, ROAS, CAC, top performers
+
+**Shopify revenue**
+- `recover this abandoned cart: [customer, items]` — 3-email recovery sequence
+- `start a flash sale on [products]` — time-limited sale + urgency copy
+- `bundle these products together` — discounted bundle with AI copy
+- `recommend products for [context]` — cart/product/homepage/post-purchase picks
+- `how's my store's revenue engine doing?` — cart recovery, sales, bundles, recs at a glance
 
 **Management**
 - `/goals` — list active goals
@@ -2346,6 +2359,131 @@ class AriaMind:
                     ),
                 ]
                 return "\n\n".join(lines), {}
+
+            # ── SHOPIFY REVENUE SUITE ──────────────────────────────────────────
+            elif tool == "recover_abandoned_cart":
+                user_id = args.get("user_id", "") or args.get("email", "")
+                email = args.get("email", "")
+                items = args.get("items", []) or []
+                cart_value = float(args.get("cart_value", 0))
+                if not email or not items:
+                    return (
+                        "I need the customer's email and the cart items to build a recovery sequence.",
+                        {},
+                    )
+                from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
+
+                engine = get_cart_recovery_engine()
+                cart = await engine.register_abandoned_cart(user_id, email, items, cart_value)
+                sequence = await engine.generate_recovery_sequence(cart)
+                lines = [
+                    f"**Recovery sequence for {email}** (cart: `{cart.cart_id}`, ${cart_value:.2f})"
+                ]
+                for e in sequence:
+                    lines.append(
+                        f"  +{e['delay_hours']}h ({e['discount_pct']:.0%} off) — {e['subject']}"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "create_flash_sale":
+                name = args.get("name", "")
+                products = args.get("products", []) or []
+                discount_pct = float(args.get("discount_pct", 0.2))
+                duration_hours = float(args.get("duration_hours", 24))
+                if not name or not products:
+                    return "I need a sale name and at least one product to create a flash sale.", {}
+                from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+
+                engine = get_flash_sale_engine()
+                prices = {
+                    p.get("id", p.get("title", "")): float(p.get("price", 0)) for p in products
+                }
+                sale = await engine.create_sale(
+                    name,
+                    [p.get("id", p.get("title", "")) for p in products],
+                    discount_pct,
+                    duration_hours,
+                    prices,
+                )
+                copy = await engine.create_urgency_copy(sale)
+                return (
+                    f"**Flash sale '{sale.name}'** (id: `{sale.sale_id}`, status: {sale.status})\n"
+                    f"{len(sale.product_ids)} products at {discount_pct:.0%} off, {duration_hours:.0f}h\n"
+                    f"Urgency copy: {copy}"
+                ), {}
+
+            elif tool == "create_product_bundle":
+                products = args.get("products", []) or []
+                bundle_type = args.get("bundle_type", "complementary")
+                discount_pct = float(args.get("discount_pct", 0.15))
+                if len(products) < 2:
+                    return "I need at least 2 products to build a bundle.", {}
+                from apps.shopify.bundles.bundle_generator import get_bundle_generator
+
+                bundle = await get_bundle_generator().create_bundle(
+                    products, bundle_type, discount_pct
+                )
+                return (
+                    f"**{bundle.name}** (id: `{bundle.bundle_id}`, {bundle.bundle_type})\n"
+                    f"{bundle.description}\n"
+                    f"${bundle.individual_total:.2f} → ${bundle.bundle_price:.2f} "
+                    f"(save ${bundle.savings:.2f}, {bundle.savings_pct:.0f}%)\n"
+                    f"CTA: {bundle.cta}"
+                ), {}
+
+            elif tool == "recommend_products":
+                user_id = args.get("user_id", "")
+                context = args.get("context", "homepage")
+                catalog = args.get("catalog", []) or []
+                current_product_id = args.get("current_product_id", "")
+                limit = int(args.get("limit", 5))
+                if not catalog:
+                    return "I need a product catalog to recommend from.", {}
+                from apps.shopify.revenue.product_recommender import get_product_recommender
+
+                result = await get_product_recommender().recommend(
+                    user_id, context, catalog, current_product_id, limit
+                )
+                if not result.recommended_ids:
+                    return (
+                        f"No recommendations available for context '{context}' from this catalog.",
+                        {},
+                    )
+                lines = [f"**Recommendations ({result.strategy}, {context}):**"]
+                for title, score in zip(result.recommended_titles, result.scores):
+                    lines.append(f"  • {title or '(untitled)'} — match {score:.0%}")
+                return "\n".join(lines), {}
+
+            elif tool == "shopify_revenue_dashboard":
+                from apps.shopify.bundles.bundle_generator import get_bundle_generator
+                from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+                from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
+                from apps.shopify.revenue.product_recommender import get_product_recommender
+
+                cart_engine = get_cart_recovery_engine()
+                await cart_engine._load()
+                sale_engine = get_flash_sale_engine()
+                await sale_engine._load()
+                bundle_engine = get_bundle_generator()
+                await bundle_engine._load()
+                rec_engine = get_product_recommender()
+                await rec_engine._load()
+
+                cart_stats = cart_engine.recovery_stats()
+                sale_stats = sale_engine.sales_analytics()
+                bundle_stats = bundle_engine.bundle_stats()
+                rec_stats = rec_engine.recommendation_stats()
+                return (
+                    f"**Shopify revenue dashboard**\n"
+                    f"Cart recovery: {cart_stats['recovered']}/{cart_stats['total_abandoned']} recovered "
+                    f"({cart_stats['recovery_rate']:.0%}), ${cart_stats['revenue_recovered']:,.2f} recovered\n"
+                    f"Flash sales: {sale_stats['active_count']} active, "
+                    f"${sale_stats['total_revenue']:,.2f} total revenue\n"
+                    f"Bundles: {bundle_stats['total_bundles']} created, "
+                    f"avg {bundle_stats['avg_savings_pct']:.0f}% savings\n"
+                    f"Recommendations: {rec_stats['users_tracked']} users tracked, "
+                    f"{rec_stats['total_recommendations']} interactions"
+                ), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":
