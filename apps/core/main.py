@@ -1114,6 +1114,43 @@ async def admin_api_hitl_decision(request_id: str, body: HitlDecisionRequest, re
     }
 
 
+@app.get("/admin/api/mission-control/telemetry")
+async def admin_api_mission_control_telemetry(request: Request):
+    """Real AI-spend telemetry for Mission Control's Financial/Resource
+    module — per-user monthly burn against plan budget, frozen status, and a
+    recent-charges sample series for the burn-rate chart. Sourced entirely
+    from CostLedger (apps/core/ops/cost_ledger.py); no figures are estimated
+    or fabricated beyond what it has actually recorded. In-memory and
+    per-process, same caveat as the ledger itself — see its module docstring."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    from apps.core.ops.cost_ledger import get_ledger
+
+    led = get_ledger()
+    month_costs = led.all_month_costs()
+    users = []
+    for email, cost in sorted(month_costs.items(), key=lambda kv: kv[1], reverse=True):
+        plan = "business" if email in _owner_emails() else await _get_user_plan(email)
+        users.append(
+            {
+                "email": email,
+                "plan": plan,
+                "month_cost_usd": cost,
+                "budget_usd": led.budget(plan),
+                "fraction": led.usage_fraction(email, plan),
+                "frozen": await led.is_frozen(email),
+            }
+        )
+    return {
+        "users": users,
+        "samples": led.recent_samples(200),
+        "note": (
+            "In-memory, per-process telemetry — resets on restart and does not "
+            "aggregate across instances."
+        ),
+    }
+
+
 @app.get("/api/v1/connectors/health")
 async def connectors_health():
     """Connector health for the preventive banner. Refreshes lazily if stale
