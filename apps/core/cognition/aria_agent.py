@@ -115,10 +115,19 @@ class AriaAgent:
         5. If a tool fails, analyze the error in 'thought' and try a different approach.
         """
 
+        # The full transcript (original task + every thought/action/
+        # observation since) — not just the most recent entry. This used to
+        # pass only self.history[-1], so from step 2 onward the model never
+        # saw the original task again, only the latest tool observation —
+        # it would lose track of what it was actually trying to accomplish
+        # partway through a multi-step run. max_steps (15) already bounds
+        # how large this can grow.
+        transcript = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in self.history)
+
         try:
             return await self.ai.complete_json(
                 system=system_prompt,
-                user=self.history[-1]["content"],
+                user=transcript,
                 model=AIModel.STRATEGY,
                 agent_name=self.name,
             )
