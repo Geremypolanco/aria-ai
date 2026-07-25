@@ -14,12 +14,18 @@ def _mock_cache():
 
 def _mock_ai(
     content="1. Focus on highest ROI channels\n2. Repeat what works\n3. Track all experiments",
+    json_result=None,
 ):
     ai = MagicMock()
     r = MagicMock()
     r.success = True
     r.content = content
     ai.complete = AsyncMock(return_value=r)
+    # complete_json() isn't just complete() with a different name on this mock —
+    # callers that use it directly need it to be awaitable on its own. json_result
+    # defaults to {} to mirror what real complete_json() returns when the model's
+    # output isn't valid JSON.
+    ai.complete_json = AsyncMock(return_value=json_result if json_result is not None else {})
     return ai
 
 
@@ -200,6 +206,56 @@ class TestClientMemory:
         profile = await memory.upsert_profile("Frank", "frank@test.com")
         segment = await memory.segment_client(profile.profile_id)
         assert segment == "standard"
+
+    @pytest.mark.asyncio
+    async def test_personalize_offer_uses_real_ai_pick_when_valid(self):
+        """Regression: personalize_offer used to ask the AI to "pick best
+        offer" but then always hardcoded available_products[0] regardless of
+        what the AI actually picked — the AI's structured recommendation was
+        completely ignored, only its free-text reasoning was used."""
+        with patch("apps.memory.client.client_memory.get_cache", return_value=_mock_cache()):
+            with patch(
+                "apps.memory.client.client_memory.get_ai_client",
+                return_value=_mock_ai(
+                    json_result={
+                        "recommended_product": "basic_plan",
+                        "offer": "20% first-month discount",
+                        "reasoning": "Client is price-sensitive based on history",
+                    }
+                ),
+            ):
+                from apps.memory.client.client_memory import ClientMemory
+
+                memory = ClientMemory()
+                profile = await memory.upsert_profile("Grace2", "grace2@test.com")
+                offer = await memory.personalize_offer(
+                    profile.profile_id, ["premium_plan", "basic_plan"]
+                )
+
+        assert offer["recommended_product"] == "basic_plan"
+        assert offer["offer"] == "20% first-month discount"
+
+    @pytest.mark.asyncio
+    async def test_personalize_offer_ignores_hallucinated_product(self):
+        """A recommended_product that isn't one of the given products (a
+        hallucination) must fall back to the safe default, not recommend
+        something that doesn't exist."""
+        with patch("apps.memory.client.client_memory.get_cache", return_value=_mock_cache()):
+            with patch(
+                "apps.memory.client.client_memory.get_ai_client",
+                return_value=_mock_ai(
+                    json_result={"recommended_product": "made_up_plan", "offer": "50% off"}
+                ),
+            ):
+                from apps.memory.client.client_memory import ClientMemory
+
+                memory = ClientMemory()
+                profile = await memory.upsert_profile("Grace3", "grace3@test.com")
+                offer = await memory.personalize_offer(
+                    profile.profile_id, ["premium_plan", "basic_plan"]
+                )
+
+        assert offer["recommended_product"] == "premium_plan"
 
     @pytest.mark.asyncio
     async def test_personalize_offer_returns_dict(self, memory):

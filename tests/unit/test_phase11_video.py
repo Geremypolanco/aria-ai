@@ -12,12 +12,17 @@ def _mock_cache():
     return c
 
 
-def _mock_ai(content="10 Ways to Grow on YouTube | Complete 2024 Guide"):
+def _mock_ai(content="10 Ways to Grow on YouTube | Complete 2024 Guide", json_result=None):
     ai = MagicMock()
     r = MagicMock()
     r.success = True
     r.content = content
     ai.complete = AsyncMock(return_value=r)
+    # complete_json() isn't just complete() with a different name on this mock —
+    # generate_content_calendar/optimize_retention call it directly, so it must be
+    # awaitable on its own. json_result=None mirrors what real complete_json()
+    # returns when the model's output isn't valid JSON: {}.
+    ai.complete_json = AsyncMock(return_value=json_result if json_result is not None else {})
     return ai
 
 
@@ -101,6 +106,35 @@ class TestYouTubeEngine:
         assert all("content_type" in item for item in cal)
 
     @pytest.mark.asyncio
+    async def test_content_calendar_uses_real_ai_output_when_available(self):
+        """Regression: the AI call used to be made and its response thrown
+        away — the calendar was always the same hardcoded placeholder
+        regardless of what the model actually returned. When the model gives
+        back valid structured videos, they must be what's returned."""
+        ai_videos = [
+            {
+                "week": 1,
+                "day": 1,
+                "topic": "A real AI-generated topic",
+                "keyword": "real keyword",
+                "content_type": "tutorial",
+                "estimated_views": 5000,
+                "posting_day": "Monday",
+            }
+        ]
+        with patch("apps.video.youtube.youtube_engine.get_cache", return_value=_mock_cache()):
+            with patch(
+                "apps.video.youtube.youtube_engine.get_ai_client",
+                return_value=_mock_ai(json_result={"videos": ai_videos}),
+            ):
+                from apps.video.youtube.youtube_engine import YouTubeEngine
+
+                engine = YouTubeEngine()
+                cal = await engine.generate_content_calendar("fitness", videos_per_week=3)
+
+        assert cal == ai_videos
+
+    @pytest.mark.asyncio
     async def test_seo_audit_returns_dict(self, engine):
         audit = await engine.seo_audit("personal finance")
         assert "keyword_gaps" in audit
@@ -119,6 +153,30 @@ class TestYouTubeEngine:
         ]
         optimized = await engine.optimize_retention(body)
         assert len(optimized) > len(body)
+
+    @pytest.mark.asyncio
+    async def test_optimize_retention_uses_real_ai_hooks_when_available(self):
+        """Regression: the AI call used to be made and its response thrown
+        away — hooks were always one of 4 hardcoded strings regardless of
+        what the model suggested. When the model gives back real hooks,
+        those must be the ones inserted."""
+        body = [
+            {"timestamp": "1:00", "content": "Section 1", "visual": "talking head"},
+            {"timestamp": "3:00", "content": "Section 2", "visual": "screen"},
+        ]
+        with patch("apps.video.youtube.youtube_engine.get_cache", return_value=_mock_cache()):
+            with patch(
+                "apps.video.youtube.youtube_engine.get_ai_client",
+                return_value=_mock_ai(json_result={"hooks": ["A real AI-generated hook"]}),
+            ):
+                from apps.video.youtube.youtube_engine import YouTubeEngine
+
+                engine = YouTubeEngine()
+                optimized = await engine.optimize_retention(body)
+
+        hook_sections = [s for s in optimized if s.get("is_hook")]
+        assert len(hook_sections) == 1
+        assert hook_sections[0]["content"] == "A real AI-generated hook"
 
     @pytest.mark.asyncio
     async def test_channel_analytics_has_required_keys(self, engine):

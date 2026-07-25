@@ -294,19 +294,24 @@ class YouTubeEngine:
         """4-week content calendar with topics, keywords, types."""
         ai = get_ai_client()
         total_videos = 4 * videos_per_week
-        await ai.complete(
+        data = await ai.complete_json(
             system=(
                 "You are a YouTube content strategist. Generate a 4-week content calendar. "
-                f"Include {total_videos} video ideas with: week number, topic, target keyword, "
-                "content type (tutorial/review/shorts/vlog/listicle), estimated views, "
-                "and posting day."
+                'Return JSON: {"videos": [{"week": int, "day": int, "topic": str, '
+                '"keyword": str, "content_type": "tutorial|review|shorts|vlog|listicle", '
+                '"estimated_views": int, "posting_day": str}, ...]}. '
+                f"Include exactly {total_videos} videos."
             ),
             user=f"Niche: {niche}\nVideos per week: {videos_per_week}\n\nGenerate 4-week content calendar.",
             model=AIModel.STRATEGY,
-            max_tokens=1000,
+            max_tokens=1500,
         )
+        videos = data.get("videos") if isinstance(data, dict) else None
+        if isinstance(videos, list) and videos:
+            return videos[:total_videos]
 
-        # Generate structured calendar
+        # Fallback if the AI call failed or returned something unparseable —
+        # a deterministic placeholder calendar beats leaving the caller with nothing.
         content_types = ["tutorial", "listicle", "review", "shorts", "vlog"]
         calendar = []
         for week in range(1, 5):
@@ -365,31 +370,35 @@ class YouTubeEngine:
 
     async def optimize_retention(self, script_body: list) -> list:
         """AI adds retention hooks between sections."""
+        if not script_body:
+            return script_body
+
         ai = get_ai_client()
-        await ai.complete(
+        data = await ai.complete_json(
             system=(
-                "You are a YouTube retention expert. Add pattern interrupt hooks between script sections "
-                "to keep viewers watching. Add preview hooks, curiosity gaps, and re-engagement lines."
+                "You are a YouTube retention expert. Add pattern interrupt hooks between script "
+                "sections to keep viewers watching — preview hooks, curiosity gaps, re-engagement "
+                'lines. Return JSON: {"hooks": [str, ...]}, one hook per gap between sections.'
             ),
             user=f"Script body sections: {json.dumps(script_body)}\n\nAdd retention hooks between each section.",
             model=AIModel.CREATIVE,
             max_tokens=800,
         )
-        if not script_body:
-            return script_body
-
-        # Insert retention hooks between sections
-        optimized = []
-        retention_hooks = [
+        ai_hooks = data.get("hooks") if isinstance(data, dict) else None
+        fallback_hooks = [
             "But wait — the most important part is coming up...",
             "Here's where it gets interesting...",
             "I almost didn't share this next part...",
             "This next section changed everything for me...",
         ]
+        hooks = ai_hooks if isinstance(ai_hooks, list) and ai_hooks else fallback_hooks
+
+        # Insert retention hooks between sections
+        optimized = []
         for i, section in enumerate(script_body):
             optimized.append(dict(section))
             if i < len(script_body) - 1:
-                hook = retention_hooks[i % len(retention_hooks)]
+                hook = hooks[i % len(hooks)]
                 optimized.append(
                     {
                         "timestamp": "",
