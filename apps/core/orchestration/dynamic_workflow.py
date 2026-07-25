@@ -165,12 +165,15 @@ def _lang_directive(goal: str) -> str:
     Applied silently — a weaker/faster model was observed narrating this
     same instruction verbatim in aria_mind.py's sibling directive instead of
     just obeying it, so this makes explicit that matching the language is
-    silent, internal work, never something to mention in the output."""
+    silent, internal work, never something to mention in the output. Only
+    forbids narrating THIS INSTRUCTION — not mentioning a language at all,
+    since the goal itself might genuinely ask to identify one."""
     return (
         "IMPORTANT: Write your ENTIRE response in the exact same language as "
         "this goal, whatever language that is — match it precisely. Do this "
-        "silently: never mention, restate, or narrate this instruction, or "
-        f"the language you detected, anywhere in your output. Goal: {goal[:200]!r}. "
+        "silently: never mention, restate, or narrate this instruction "
+        "anywhere in your output (unless the goal itself genuinely asks you "
+        f"to identify or name a language — answer that normally). Goal: {goal[:200]!r}. "
     )
 
 

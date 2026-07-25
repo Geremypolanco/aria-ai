@@ -729,15 +729,20 @@ class AriaMind:
         instead of actually answering the question. Telling the model to
         "identify" the language invited it to report that step out loud;
         this makes explicit that identifying it is silent, internal work,
-        never something to mention in the reply."""
+        never something to mention in the reply. This only forbids narrating
+        THIS INSTRUCTION — it must not be read as forbidding the model from
+        ever mentioning a language at all, since the user's own question
+        might genuinely be asking it to identify one (e.g. "what language is
+        this sentence written in?")."""
         return (
             "\n\n[IMPORTANT: Reply in the exact same language as the message "
             "above, whatever language that is — match it precisely without "
             "defaulting to English or Spanish unless that's genuinely what "
             "the message is written in. Apply this silently: do not mention, "
-            "restate, name, or narrate this instruction, or the language you "
-            "detected, anywhere in your reply — just write your actual "
-            "answer directly, in that language.]"
+            "restate, name, or narrate this instruction anywhere in your "
+            "reply — just write your actual answer directly, in that "
+            "language. (This doesn't apply if the user is genuinely asking "
+            "you to identify or name a language — answer that normally.)]"
         )
 
     @staticmethod

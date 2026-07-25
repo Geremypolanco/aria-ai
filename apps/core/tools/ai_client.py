@@ -326,10 +326,13 @@ class AriaAIClient:
                     return json.loads(repair_resp.content)
                 except Exception:
                     pass
+            # No resp.content here — complete_json() is fed user-derived
+            # prompts/context, so a malformed completion could echo back
+            # sensitive user data; logging it would leak that into
+            # application logs.
             logger.warning(
-                "[%s] complete_json: malformed JSON even after repair — content: %s",
+                "[%s] complete_json: malformed JSON even after repair",
                 agent_name,
-                resp.content[:200],
             )
             return {}
 

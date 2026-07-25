@@ -39,7 +39,18 @@ def test_aria_mind_lang_directive_forbids_narrating_the_instruction():
     instruction verbatim ("Identifico el idioma como español...") instead of
     silently applying it, producing a non-answer instead of a real reply."""
     directive = AriaMind._lang_directive("Cuáles son las top 10 mejores AIs?")
-    assert "do not mention" in directive.lower()
+    lowered = directive.lower()
+    assert "do not mention" in lowered
+    assert "restate" in lowered
+    assert "narrate" in lowered
+
+
+def test_aria_mind_lang_directive_still_permits_answering_language_questions():
+    """The no-narration clause must forbid narrating THIS INSTRUCTION, not
+    forbid the model from ever mentioning a language — a user might
+    genuinely ask "what language is this sentence written in?"."""
+    directive = AriaMind._lang_directive("What language is this sentence written in?")
+    assert "genuinely asking" in directive.lower() or "genuinely ask" in directive.lower()
 
 
 @pytest.mark.parametrize(
@@ -172,4 +183,14 @@ def test_workflow_lang_directive_forbids_narrating_the_instruction():
     """Same regression as aria_mind's sibling directive — this is an
     independently-implemented copy with the same original phrasing bug."""
     directive = workflow_lang_directive("Erstelle einen Marketingplan für mein Café")
-    assert "never mention" in directive.lower()
+    lowered = directive.lower()
+    assert "never mention" in lowered
+    assert "restate" in lowered
+    assert "narrate" in lowered
+
+
+def test_workflow_lang_directive_still_permits_answering_language_questions():
+    """Same carve-out as aria_mind's sibling — must not suppress a goal that
+    genuinely asks to identify a language."""
+    directive = workflow_lang_directive("What language is this sentence written in?")
+    assert "genuinely asks" in directive.lower() or "genuinely ask" in directive.lower()

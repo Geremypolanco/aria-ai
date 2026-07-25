@@ -225,8 +225,10 @@ async def test_complete_json_repairs_malformed_json_on_first_parse_failure(clien
 async def test_complete_json_returns_empty_dict_and_logs_when_repair_also_fails(
     client, monkeypatch, caplog
 ):
+    malformed = "MODEL_OUTPUT_MUST_NOT_BE_LOGGED"
+
     async def fake_complete(**kwargs):
-        return _ai_response("still not valid json")
+        return _ai_response(malformed)
 
     monkeypatch.setattr(client, "complete", fake_complete)
 
@@ -235,6 +237,9 @@ async def test_complete_json_returns_empty_dict_and_logs_when_repair_also_fails(
 
     assert result == {}
     assert any("malformed JSON even after repair" in r.message for r in caplog.records)
+    # The malformed completion is user-derived-prompt-adjacent output — must
+    # never be logged, since it could echo back sensitive user data.
+    assert all(malformed not in r.message for r in caplog.records)
 
 
 @pytest.mark.asyncio
