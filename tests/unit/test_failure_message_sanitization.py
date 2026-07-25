@@ -66,7 +66,7 @@ async def test_image_fast_path_caption_hides_raw_error_on_failure():
     mind = AriaMind()
 
     async def fake_retry(tool, args, email=""):
-        return RAW_ERROR, {}
+        return RAW_ERROR, {}, args
 
     with (
         patch.object(mind, "_ai_client", return_value=AsyncMock()),

@@ -836,7 +836,7 @@ class AriaMind:
             # flaky) LLM planner, which otherwise falls back to a text-only apology.
             img_prompt = self._detect_image_request(text)
             if img_prompt:
-                obs, media = await self._execute_with_retry(
+                obs, media, _ = await self._execute_with_retry(
                     "generate_image", {"prompt": img_prompt}
                 )
                 # This caption is returned directly to the user with no LLM synthesis
@@ -954,7 +954,9 @@ class AriaMind:
                 if decline:
                     await self._store_interaction(chat_id, text, decline, tool)
                     return MindResponse(text=decline)
-                obs, media = await self._execute_with_retry(tool, tool_args, email=email)
+                obs, media, executed_args = await self._execute_with_retry(
+                    tool, tool_args, email=email
+                )
                 final_text = await self._synthesize(text, tool, obs)
                 # bool(media or obs) was always True (obs is a non-empty string even on
                 # failure), so self-reflection never saw a real failure signal — every
@@ -963,7 +965,11 @@ class AriaMind:
                 # final screenshot even when the run failed, so `media` alone isn't a
                 # reliable success signal — judge success from the observation text.
                 turn_success = not self._looks_like_failure(obs)
-                await self._record_exec(tool, tool_args, obs, turn_success)
+                # executed_args, not the original tool_args plan — a retry may have
+                # adapted them (_adapt_args), so the plan's args can differ from what
+                # actually ran; recording/tracing the plan would misattribute a
+                # successful retry to arguments that were never executed.
+                await self._record_exec(tool, executed_args, obs, turn_success)
                 await self._store_interaction(chat_id, text, final_text, tool)
                 await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
@@ -975,6 +981,8 @@ class AriaMind:
                     turn_success,
                     chat_id=chat_id,
                     email=email,
+                    tool_args=executed_args,
+                    raw_observation=obs,
                 )
                 # For documents, send text + doc; for A/V media, send caption only
                 is_doc = "document_bytes" in media
@@ -1158,11 +1166,16 @@ class AriaMind:
 
     async def _execute_with_retry(
         self, tool: str, args: dict, max_retries: int = 3, email: str = ""
-    ) -> tuple[str, dict]:
+    ) -> tuple[str, dict, dict]:
         """
         Executes the tool with up to max_retries attempts.
         Each attempt may use adapted parameters.
-        Returns (observation_text, media_dict).
+        Returns (observation_text, media_dict, executed_args) — executed_args
+        is whichever args actually produced this result, which can differ
+        from the caller's original `args` once a retry has adapted them
+        (see _adapt_args). Callers that audit/trace this call must use
+        executed_args, not their own copy of the pre-retry args, or a
+        successful retry gets audited with arguments that were never run.
         """
         last_error = ""
         for attempt in range(max_retries):
@@ -1175,12 +1188,12 @@ class AriaMind:
             # reliable on its own (computer_use always returns a final screenshot
             # even when the run failed).
             if not self._looks_like_failure(obs):
-                return obs, media
+                return obs, media, args
 
             # Permission denials are deterministic — another attempt can't
             # change the outcome, so don't burn 2s/4s of backoff on one.
             if "reserved for" in obs.lower():
-                return obs, media
+                return obs, media, args
 
             last_error = obs
             logger.warning(
@@ -1190,7 +1203,11 @@ class AriaMind:
             # Adapt args for the next attempt
             args = await self._adapt_args(tool, args, obs, attempt)
 
-        return f"I tried {max_retries} times and couldn't complete '{tool}': {last_error}", {}
+        return (
+            f"I tried {max_retries} times and couldn't complete '{tool}': {last_error}",
+            {},
+            args,
+        )
 
     async def _adapt_args(self, tool: str, args: dict, error: str, attempt: int) -> dict:
         """Adapts the arguments based on the error for the next attempt.
@@ -4718,12 +4735,20 @@ class AriaMind:
         *,
         chat_id: str = "",
         email: str = "",
+        tool_args: dict | None = None,
+        raw_observation: str = "",
     ) -> None:
         """Records this turn with CognitionTracer (for ai_performance_report
         and the admin activity feed's history) and broadcasts it live to any
         admin console currently watching. Both are best-effort — a tracing or
         broadcast failure must never affect the actual reply the user already
-        received, so every error is swallowed independently of the other."""
+        received, so every error is swallowed independently of the other.
+
+        tool_args/raw_observation are optional — without them, a trace only
+        showed the user's message and the final, already-synthesized reply,
+        with no way to see what the tool was actually called with or what it
+        actually returned before _synthesize() rewrote it. Empty for the
+        "conversation" task_type, which has neither."""
         latency_ms = (time.monotonic() - started_at) * 1000
         with suppress(Exception):
             from apps.evaluation.phoenix.tracer import get_cognition_tracer
@@ -4736,6 +4761,8 @@ class AriaMind:
                 latency_ms=latency_ms,
                 success=success,
                 metadata={"chat_id": chat_id, "email": email},
+                tool_args=tool_args,
+                raw_observation=raw_observation,
             )
         with suppress(Exception):
             import json
@@ -4754,6 +4781,8 @@ class AriaMind:
                         "response": response[:300],
                         "success": success,
                         "latency_ms": round(latency_ms, 1),
+                        "tool_args": str(tool_args)[:300] if tool_args else None,
+                        "raw_observation": raw_observation[:300],
                     },
                     ensure_ascii=False,
                 ),

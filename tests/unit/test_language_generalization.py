@@ -130,7 +130,7 @@ async def test_image_fast_path_localizes_caption_for_non_english_request():
     )
 
     async def fake_retry(tool, args, email=""):
-        return "Image generated: a cat", {"image_bytes": b"fakepng"}
+        return "Image generated: a cat", {"image_bytes": b"fakepng"}, args
 
     with (
         patch.object(mind, "_ai_client", return_value=fake_ai),
@@ -158,7 +158,7 @@ async def test_image_fast_path_skips_localization_for_english_request():
     )
 
     async def fake_retry(tool, args, email=""):
-        return "Image generated: a cat", {"image_bytes": b"fakepng"}
+        return "Image generated: a cat", {"image_bytes": b"fakepng"}, args
 
     with (
         patch.object(mind, "_ai_client", return_value=fake_ai),

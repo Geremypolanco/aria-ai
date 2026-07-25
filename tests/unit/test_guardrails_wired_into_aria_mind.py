@@ -252,7 +252,9 @@ async def test_handle_executes_safe_high_risk_plan():
         )
         stack.enter_context(
             patch.object(
-                mind, "_execute_with_retry", AsyncMock(return_value=("[python OK]\nhi", {}))
+                mind,
+                "_execute_with_retry",
+                AsyncMock(return_value=("[python OK]\nhi", {}, {"code": "print('hi')"})),
             )
         )
         stack.enter_context(
@@ -292,7 +294,11 @@ async def test_handle_skips_constitutional_review_for_low_risk_tools():
             )
         )
         stack.enter_context(
-            patch.object(mind, "_execute_with_retry", AsyncMock(return_value=("some results", {})))
+            patch.object(
+                mind,
+                "_execute_with_retry",
+                AsyncMock(return_value=("some results", {}, {"query": "yoga tips"})),
+            )
         )
         stack.enter_context(
             patch.object(mind, "_synthesize", AsyncMock(return_value="Here's what I found."))
