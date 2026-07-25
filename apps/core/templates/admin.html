@@ -59,6 +59,9 @@
   <div id="panicBanner" class="mt-4 hidden rounded-xl border border-red-500/50 bg-red-500/15 px-4 py-3 text-sm font-semibold text-red-200">
     GLOBAL PANIC ACTIVE — all user missions are frozen. <button onclick="togglePanic()" class="ml-2 underline">Release</button>
   </div>
+  <div id="killswitchBanner" class="mt-4 hidden rounded-xl border border-amber-500/50 bg-amber-500/15 px-4 py-3 text-sm font-semibold text-amber-700">
+    GUARDRAILS KILL SWITCH ACTIVE — an automated safety check froze the system (see the activity feed below for why). Release from a shell (guardrails.get_kill_switch().release()) after review.
+  </div>
 
   <!-- KPI cards -->
   <section class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -258,6 +261,7 @@ function render(d){
   PANIC = !!d.panic;
   document.getElementById('panicBanner').classList.toggle('hidden', !PANIC);
   document.getElementById('panicBtn').textContent = PANIC ? 'Release Panic' : 'Global Panic';
+  document.getElementById('killswitchBanner').classList.toggle('hidden', !d.guardrails_killswitch);
 }
 
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')}

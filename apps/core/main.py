@@ -216,6 +216,23 @@ _PANIC: dict[str, bool] = {"on": False}
 _BILLING_MODEL = "claude-haiku-4-5"
 
 
+async def _is_globally_frozen() -> bool:
+    """True if either the owner's Global Panic button OR the Guardrails
+    kill switch (apps/core/safety/guardrails.py \u2014 Layer 4, tripped manually
+    or by the anomaly watcher) has frozen the whole system. Two independent
+    mechanisms gating the same request paths on purpose: Global Panic is a
+    manual, in-process-only button; the kill switch is Redis-persisted and
+    can trip itself. Either one is enough to freeze."""
+    if _PANIC["on"]:
+        return True
+    try:
+        from apps.core.safety.guardrails import get_kill_switch
+
+        return await get_kill_switch().is_active()
+    except Exception:  # noqa: BLE001 \u2014 a broken safety check must not itself 503 everyone
+        return False
+
+
 async def _record_ai_cost(email: str, plan: str, prompt: str, reply: str) -> None:
     """Estimate + record the AI cost of a chat turn and enforce the burn cap."""
     if not email:
@@ -799,6 +816,7 @@ async def admin_overview(request: Request):
         "frozen_users": led.frozen_users(),
         "connectors": get_store().get_all(),
         "panic": _PANIC["on"],
+        "guardrails_killswitch": await _is_globally_frozen() and not _PANIC["on"],
         "traffic": await _read_traffic(),
     }
 
@@ -2297,7 +2315,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             }
 
     # Global panic freeze + AI burn-rate cap (paid plans frozen over budget).
-    if _PANIC["on"]:
+    if await _is_globally_frozen():
         return {
             "reply": "ARIA is temporarily paused by an operator. Please try again shortly.",
             "model_used": "paused",
@@ -2516,7 +2534,7 @@ async def dynamic_workflow(req: WorkflowRequest, request: Request):
             },
             status_code=429,
         )
-    if _PANIC["on"]:
+    if await _is_globally_frozen():
         return JSONResponse(
             {
                 "ok": False,
@@ -2590,7 +2608,7 @@ async def dynamic_workflow_stream(req: WorkflowRequest, request: Request):
         return JSONResponse({"ok": False, "error": "auth"}, status_code=401)
     if not await _rate_ok(request, "workflow", 6, 300):
         return JSONResponse({"ok": False, "error": "rate_limited"}, status_code=429)
-    if _PANIC["on"]:
+    if await _is_globally_frozen():
         return JSONResponse({"ok": False, "error": "paused"}, status_code=503)
 
     email = ""
@@ -2891,7 +2909,7 @@ async def websocket_chat(ws: WebSocket):
             if not await _rate_ok(ws, "ws_chat", 30, 60):
                 await ws.send_json({"error": "You're sending messages too fast."})
                 continue
-            if _PANIC["on"]:
+            if await _is_globally_frozen():
                 await ws.send_json({"error": "ARIA is temporarily paused by an operator."})
                 continue
             if plan == "free":

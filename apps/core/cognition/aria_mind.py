@@ -741,6 +741,27 @@ class AriaMind:
                     )
                 return await self._build_status()
 
+            # ── SAFETY LAYERS 1 & 4: kill switch + input moderation ─────
+            # Runs before anything else touches the message — a blocked/frozen
+            # request never reaches the planner, image fast-path, or any tool.
+            from apps.core.config import settings as _guardrail_settings
+
+            if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+                from apps.core.safety import guardrails
+
+                if await guardrails.get_kill_switch().is_active(email):
+                    return MindResponse(
+                        text="This account is temporarily frozen pending a safety review. "
+                        "Contact the owner if you believe this is a mistake."
+                    )
+                moderation = await guardrails.moderate_input(text, email=email)
+                if moderation.blocked:
+                    return MindResponse(
+                        text="I can't help with that request — it falls under "
+                        f"{', '.join(moderation.categories) or 'a restricted category'}. "
+                        "Rephrase if I've misunderstood what you're asking."
+                    )
+
             # Deterministic fast-path for image generation.
             # Creating images is a headline capability, so we route obvious image
             # requests straight to the tool instead of depending on the (occasionally
@@ -852,6 +873,21 @@ class AriaMind:
 
             # Execute the tool if there is one
             if has_tool:
+                # ── SAFETY LAYER 2: constitutional plan review ──────────
+                # Only for consequential tools (see _CONSTITUTIONAL_REVIEW_TOOLS)
+                # — reviews the SPECIFIC tool+args the planner picked, not the
+                # raw text (Layer 1 already covers that). Fails closed.
+                if (
+                    getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True)
+                    and tool in self._CONSTITUTIONAL_REVIEW_TOOLS
+                ):
+                    from apps.core.safety import guardrails
+
+                    verdict = await guardrails.evaluate_plan(tool, tool_args, text, email=email)
+                    if not verdict.safe:
+                        decline = f"I'm not going to do that ({tool}) — {verdict.reason or 'it failed a safety review'}."
+                        await self._store_interaction(chat_id, text, decline, tool)
+                        return MindResponse(text=decline)
                 obs, media = await self._execute_with_retry(tool, tool_args, email=email)
                 final_text = await self._synthesize(text, tool, obs)
                 # bool(media or obs) was always True (obs is a non-empty string even on
@@ -1140,6 +1176,29 @@ class AriaMind:
             "list_social_sessions",
             "check_social_session",
             "post_to_social",
+        }
+    )
+
+    # Tools consequential enough (code execution, browser/OS control, live
+    # publishing, real money movement) to warrant Guardrails Layer 2's extra
+    # LLM call before running — running a constitutional review on every one
+    # of ~150 tools (including plain content generation, already covered by
+    # Layer 1's input moderation) would add real latency/cost to every
+    # benign interaction for no safety benefit.
+    _CONSTITUTIONAL_REVIEW_TOOLS = frozenset(
+        {
+            "execute_code",
+            "computer_use",
+            "post_to_social",
+            "github_write",
+            "github_pr",
+            "github_issues",
+            "record_cashflow_entry",
+            "track_roi",
+            "update_roi_returns",
+            "create_flash_sale",
+            "create_product_bundle",
+            "shopify_live_analytics",
         }
     )
 
@@ -1551,6 +1610,31 @@ class AriaMind:
             elif tool == "execute_code":
                 code = args.get("code", "")
                 language = args.get("language", "python")
+
+                # ── SAFETY LAYER 3: deterministic code firewall ──────────
+                # Regex + (if installed) bandit static analysis — unlike
+                # Layers 1-2 this can't be reasoned around by clever phrasing.
+                from apps.core.config import settings as _guardrail_settings
+
+                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+                    from apps.core.safety import guardrails
+
+                    safety = guardrails.check_code_safety(code)
+                    if not safety.safe:
+                        with suppress(Exception):
+                            await guardrails.record_audit_event(
+                                "code_blocked",
+                                {"email": email, "findings": safety.findings},
+                            )
+                            await guardrails.get_kill_switch().record_and_check_anomaly(
+                                email=email, kind="code_blocked"
+                            )
+                        return (
+                            "I can't run that code — it matched a blocked pattern: "
+                            f"{'; '.join(safety.findings)}.",
+                            {},
+                        )
+
                 from apps.core.tools.code_runner import CodeRunner
 
                 r = await CodeRunner().run(code=code, language=language)

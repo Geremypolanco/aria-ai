@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from apps.core.cognition.aria_mind import AriaMind
+from apps.core.safety.guardrails import ModerationResult
 from apps.evaluation.phoenix.evaluator import AIEvaluator
 from apps.evaluation.phoenix.tracer import CognitionTracer
 
@@ -170,6 +171,15 @@ async def test_handle_broadcasts_turn_to_admin_activity_channel():
         patch("apps.evaluation.phoenix.tracer.get_cache", return_value=fake_cache),
         patch("apps.evaluation.phoenix.tracer.get_cognition_tracer", return_value=tracer),
         patch("apps.core.scale.log_bus.publish", side_effect=fake_publish),
+        # Isolate from the live Guardrails Layer 1 pipeline (apps/core/safety/
+        # guardrails.py) — this test is about _trace_turn's broadcast, not
+        # moderation, and moderate_input would otherwise hit the (unconfigured
+        # in tests) AI classifier and add its own admin_activity message.
+        patch(
+            "apps.core.safety.guardrails.moderate_input",
+            AsyncMock(return_value=ModerationResult(blocked=False)),
+        ),
+        patch("apps.core.safety.guardrails.get_kill_switch") as mock_ks,
         patch.object(mind, "_reason", fake_reason),
         patch.object(mind, "_load_history", AsyncMock(return_value=[])),
         patch.object(mind, "_load_state", AsyncMock(return_value={})),
@@ -179,6 +189,7 @@ async def test_handle_broadcasts_turn_to_admin_activity_channel():
         patch.object(mind, "_evolve_state", AsyncMock()),
         patch.object(mind, "_maybe_reflect", AsyncMock()),
     ):
+        mock_ks.return_value.is_active = AsyncMock(return_value=False)
         resp = await mind.handle("hi", "chat-1", email="watcher@example.com")
 
     assert resp.text == "hello there"

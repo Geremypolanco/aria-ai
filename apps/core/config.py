@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # owner's own chat is a realistic way to trigger it). Off by default; an
     # operator must deliberately opt in per-deployment.
     ALLOW_SYSTEM_COMMANDS: bool = False
+    # Toggles the 4-layer safety pipeline (apps/core/safety/guardrails.py) —
+    # input moderation, constitutional plan review, deterministic code/content
+    # firewall, kill switch. Default ON. This exists so the owner can disable
+    # the pipeline for local debugging without deleting code; it is NOT a
+    # legitimate way to bypass ethics/legality review in production.
+    GUARDRAILS_ENABLED: bool = True
 
     # ── NOTIFICATIONS ─────────────────────────────────────
     TELEGRAM_TOKEN: str = ""
