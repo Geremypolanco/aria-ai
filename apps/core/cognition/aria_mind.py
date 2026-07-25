@@ -190,7 +190,14 @@ AVAILABLE TOOLS (you execute them, not the user):
 - create_flash_sale   → creates a time-limited sale on named products with AI urgency copy. Args: {{"name": "...", "products": [{{"id": "...", "title": "...", "price": 0}}], "discount_pct": 0.2, "duration_hours": 24}}
 - create_product_bundle → bundles 2+ products with AI-generated name/description/CTA at a discount. Args: {{"products": [{{"id": "...", "title": "...", "price": 0}}], "bundle_type": "complementary|quantity|starter|premium", "discount_pct": 0.15}}
 - recommend_products  → context-aware product recommendations (collaborative/content/trending) from a catalog, for cart/product/homepage/post-purchase placements. Args: {{"user_id": "...", "context": "cart|product|homepage|post_purchase", "catalog": [{{"id": "...", "title": "...", "price": 0, "category": "...", "tags": []}}], "current_product_id": "...", "limit": 5}}
-- shopify_revenue_dashboard → snapshot of cart recovery, flash sale, bundle, and recommendation performance in one call. Args: {{}}
+- shopify_revenue_dashboard → snapshot of cart recovery, flash sale, bundle, recommendation, SEO, and funnel performance in one call. Args: {{}}
+- optimize_product_seo → AI rewrites a product's title/description/meta tags for organic search, with a disclosed heuristic seo_score and estimated traffic boost. Args: {{"product_id": "...", "product_name": "...", "current_title": "...", "current_description": "...", "category": "..."}}
+- audit_seo_keywords  → commercial/comparison/long-tail keyword ideas for a product niche. Args: {{"niche": "..."}}
+- create_upsell_offer → AI-generated post-purchase upsell offer (headline, reason, urgency trigger) between an original and upsell product. Args: {{"original_product": "...", "original_price": 0, "upsell_product": "...", "upsell_price": 0}}
+- optimize_shopify_checkout → identifies checkout friction points and specific copy/UX fixes for a product. Args: {{"product_name": "...", "pain_points": ["..."]}}
+- create_post_purchase_flow → 3-email post-purchase sequence (thank-you+upsell, review request, referral) to raise LTV. Args: {{"product_name": "...", "category": "..."}}
+- shopify_store_status → whether a real Shopify store is connected (SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN) and cache counts; masked domain, no secrets. Args: {{}}
+- shopify_live_analytics → REAL revenue/orders/AOV/top-products from the connected Shopify store's Admin API for the trailing N days — not an estimate. Only works if shopify_store_status shows configured. Args: {{"days": 30}}
 - discover_leads    → finds B2B leads in a niche via real web search, padded with clearly-labeled illustrative examples when live results run short (never presents synthetic leads as real). Args: {{"niche": "...", "count": 10, "location": "US"}}
 - generate_sales_proposal → drafts a personalized outreach proposal (subject, hook, pain point, solution, social proof, CTA) for a named company. Args: {{"company_name": "...", "niche": "...", "pain_points": ["..."], "services_needed": ["..."], "estimated_value_usd": 0}}
 - add_linkedin_prospect → adds a prospect to the LinkedIn outreach pipeline. Args: {{"name": "...", "title": "...", "company": "...", "industry": "...", "profile_url": "..."}}
@@ -250,7 +257,8 @@ REASONING RULES:
 15. For revenue projections over time, or to see the effect of fixing one specific growth lever before committing to it → use forecast_revenue or simulate_growth_lever. When the user asks "what's holding growth back" → find_growth_bottleneck, then growth_removal_plan for the concrete steps.
 16. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
 17. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
-18. For an existing Shopify store's revenue optimization (not creating new products — that's run_business_agent with agent="ecommerce") → recover_abandoned_cart for cart abandoners, create_flash_sale or create_product_bundle to move underperforming or complementary inventory, recommend_products for on-site placements, and shopify_revenue_dashboard for a quick health check across all of them.
+18. For an existing Shopify store's revenue optimization (not creating new products — that's run_business_agent with agent="ecommerce") → recover_abandoned_cart for cart abandoners, create_flash_sale or create_product_bundle to move underperforming or complementary inventory, recommend_products for on-site placements, optimize_product_seo/audit_seo_keywords for organic traffic, create_upsell_offer/optimize_shopify_checkout/create_post_purchase_flow for the rest of the funnel, and shopify_revenue_dashboard for a quick health check across all of them.
+18a. shopify_store_status tells you whether a real Shopify Admin API connection exists (SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN). If it's configured, prefer shopify_live_analytics for actual revenue/orders/top-products over the estimated figures in shopify_revenue_dashboard when the user asks "how is my store actually doing" — the dashboard's numbers are ARIA's own tracked activity (cart recoveries attempted, sales created), not store-wide truth. If shopify_store_status shows not configured, say so plainly rather than presenting dashboard estimates as real sales data.
 19. For B2B lead generation → discover_leads first, then generate_sales_proposal for a specific one worth pursuing. Always be explicit about which leads came from a real web search vs. the illustrative examples used to pad a short result — never present a synthetic example as a real, contactable business. For LinkedIn specifically → add_linkedin_prospect, score_linkedin_prospect to prioritize, then generate_linkedin_connection_request (single note) or generate_linkedin_outreach_sequence (full 4-message sequence) once you know the fit is good. Check linkedin_outreach_pipeline before suggesting who to follow up with next.
 20. create_landing_page generates copy with placeholder social-proof numbers ("2,000+ customers", "47 spots remaining") — flag these as templates to replace with real figures before publishing, the same rule as persuasion copy. Use generate_landing_headlines to A/B test the headline specifically. Before recommending a price → analyze_pricing (real competitor data beats an AI estimate — ask for it if the user has it) or build_pricing_strategy for a brand-new product line; use suggest_dynamic_price only for an already-analyzed product reacting to inventory/demand.
 21. For freelance platform work → create_fiverr_gig or evaluate_upwork_job first (Upwork jobs need a fit score before writing a proposal — don't skip straight to write_upwork_proposal). Fiverr package prices and Upwork bid suggestions are starting points based on general market patterns, not researched-for-this-gig numbers — say so if the user might treat them as precise. optimize_fiverr_title and optimize_upwork_profile are standalone touch-ups, not full gig/job flows.
@@ -395,7 +403,14 @@ _HELP_TEXT = """\
 - `start a flash sale on [products]` — time-limited sale + urgency copy
 - `bundle these products together` — discounted bundle with AI copy
 - `recommend products for [context]` — cart/product/homepage/post-purchase picks
-- `how's my store's revenue engine doing?` — cart recovery, sales, bundles, recs at a glance
+- `optimize this product for SEO: [title, description]` — AI-rewritten title/meta/description
+- `find SEO keywords for [niche]` — commercial/comparison/long-tail keyword ideas
+- `create an upsell offer from [product] to [product]` — post-purchase upsell copy
+- `optimize checkout for [product]` — friction points + fixes
+- `build a post-purchase flow for [product]` — thank-you/review/referral sequence
+- `is my store actually connected?` — real vs. estimated data check
+- `what's my real Shopify revenue?` — live Admin API numbers (needs a connected store)
+- `how's my store's revenue engine doing?` — cart recovery, sales, bundles, recs, SEO, funnels at a glance
 
 **Lead gen & LinkedIn outreach**
 - `find leads in [niche]` — real web search, clearly labeled illustrative examples if it comes up short
@@ -427,6 +442,11 @@ _HELP_TEXT = """\
 - `what segment is [client] in?` — VIP/high-value/standard/at-risk/churned
 - `what offer should I give [client]?` — personalized recommendation
 - `how's my client base doing?` — totals, segments, LTV, who needs attention
+
+**Social publishing** (owner-only)
+- `what social accounts are connected?` — connected platforms + session age
+- `is my [platform] session still active?` — quick health check
+- `post to [platform]: [text]` — always previews first; posts only after you confirm the token
 
 **Management**
 - `/goals` — list active goals
@@ -2585,9 +2605,11 @@ class AriaMind:
 
             elif tool == "shopify_revenue_dashboard":
                 from apps.shopify.bundles.bundle_generator import get_bundle_generator
+                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
                 from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
                 from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
                 from apps.shopify.revenue.product_recommender import get_product_recommender
+                from apps.shopify.seo.product_seo import get_product_seo_optimizer
 
                 cart_engine = get_cart_recovery_engine()
                 await cart_engine._load()
@@ -2597,11 +2619,17 @@ class AriaMind:
                 await bundle_engine._load()
                 rec_engine = get_product_recommender()
                 await rec_engine._load()
+                seo_engine = get_product_seo_optimizer()
+                await seo_engine._load()
+                funnel_engine = get_shopify_funnel_engine()
+                await funnel_engine._load()
 
                 cart_stats = cart_engine.recovery_stats()
                 sale_stats = sale_engine.sales_analytics()
                 bundle_stats = bundle_engine.bundle_stats()
                 rec_stats = rec_engine.recommendation_stats()
+                seo_stats = seo_engine.seo_stats()
+                funnel_stats = funnel_engine.funnel_stats()
                 return (
                     f"**Shopify revenue dashboard**\n"
                     f"Cart recovery: {cart_stats['recovered']}/{cart_stats['total_abandoned']} recovered "
@@ -2611,8 +2639,145 @@ class AriaMind:
                     f"Bundles: {bundle_stats['total_bundles']} created, "
                     f"avg {bundle_stats['avg_savings_pct']:.0f}% savings\n"
                     f"Recommendations: {rec_stats['users_tracked']} users tracked, "
-                    f"{rec_stats['total_recommendations']} interactions"
+                    f"{rec_stats['total_recommendations']} interactions\n"
+                    f"SEO: {seo_stats['total_optimized']} products optimized, "
+                    f"avg score {seo_stats['avg_seo_score']:.0%}\n"
+                    f"Funnels: {funnel_stats['total_funnels']} built, "
+                    f"{funnel_stats['total_upsells']} upsell offers"
                 ), {}
+
+            elif tool == "optimize_product_seo":
+                product_name = args.get("product_name", "")
+                current_title = args.get("current_title", "")
+                if not product_name or not current_title:
+                    return "I need at least the product name and its current title to optimize.", {}
+                from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
+                seo = await get_product_seo_optimizer().optimize_product(
+                    args.get("product_id", "") or product_name,
+                    product_name,
+                    current_title,
+                    args.get("current_description", ""),
+                    args.get("category", "general"),
+                )
+                return (
+                    f"**SEO-optimized: {product_name}** (score {seo.seo_score:.0%}, "
+                    f"est. +{seo.estimated_traffic_boost_pct:.0f}% traffic)\n"
+                    f"Title: {seo.optimized_title}\n"
+                    f"Meta description: {seo.meta_description}\n"
+                    f"Target keywords: {', '.join(seo.target_keywords[:5])}\n\n"
+                    f"{seo.optimized_description}"
+                ), {}
+
+            elif tool == "audit_seo_keywords":
+                niche = args.get("niche", "")
+                if not niche:
+                    return "What niche/product category should I find keywords for?", {}
+                from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
+                result = await get_product_seo_optimizer().audit_keywords(niche)
+                return (
+                    f"**SEO keywords for '{niche}'**\n"
+                    f"Commercial intent: {', '.join(result['commercial_keywords'])}\n"
+                    f"Comparison intent: {', '.join(result['comparison_keywords'])}\n"
+                    f"Long-tail: {', '.join(result['long_tail'])}"
+                ), {}
+
+            elif tool == "create_upsell_offer":
+                original_product = args.get("original_product", "")
+                upsell_product = args.get("upsell_product", "")
+                if not original_product or not upsell_product:
+                    return "I need both the original product and the upsell product.", {}
+                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+
+                offer = await get_shopify_funnel_engine().create_upsell_flow(
+                    original_product,
+                    float(args.get("original_price", 0)),
+                    upsell_product,
+                    float(args.get("upsell_price", 0)),
+                )
+                return (
+                    f"**Upsell offer** (est. {offer.acceptance_rate_pct:.0f}% acceptance)\n"
+                    f"{offer.headline}\n{offer.reason}\n"
+                    f"Urgency: {offer.urgency_trigger}"
+                ), {}
+
+            elif tool == "optimize_shopify_checkout":
+                product_name = args.get("product_name", "")
+                if not product_name:
+                    return "Which product's checkout should I optimize?", {}
+                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+
+                result = await get_shopify_funnel_engine().optimize_checkout(
+                    product_name, args.get("pain_points", []) or []
+                )
+                lines = [
+                    f"**Checkout optimization: {product_name}** "
+                    f"(est. +{result['expected_cvr_lift_pct']:.0f}% completion)",
+                    "Friction points: " + ", ".join(result["friction_points"]),
+                    "Fixes:\n" + "\n".join(f"  • {f}" for f in result["fixes"]),
+                ]
+                return "\n".join(lines), {}
+
+            elif tool == "create_post_purchase_flow":
+                product_name = args.get("product_name", "")
+                if not product_name:
+                    return "Which product is this post-purchase flow for?", {}
+                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+
+                funnel = await get_shopify_funnel_engine().create_post_purchase_flow(
+                    product_name, args.get("category", "general")
+                )
+                lines = [f"**Post-purchase flow: {product_name}** ({funnel.headline})"]
+                for e in funnel.stages:
+                    lines.append(f"  +{e['delay']} — {e['type']}: {e['subject']}")
+                return "\n".join(lines), {}
+
+            elif tool == "shopify_store_status":
+                from apps.shopify.api_client import get_shopify_api_client
+
+                status = get_shopify_api_client().client_status()
+                if not status["configured"]:
+                    return (
+                        "No Shopify store connected — set SHOPIFY_SHOP_DOMAIN and "
+                        "SHOPIFY_ACCESS_TOKEN to enable real revenue/order data. Until then, "
+                        "shopify_revenue_dashboard only reflects ARIA's own tracked activity, "
+                        "not actual store sales.",
+                        {},
+                    )
+                return (
+                    f"**Shopify store connected**: {status['domain']} (API {status['api_version']})\n"
+                    f"Cached: {status['cached_products']} products, {status['cached_orders']} orders"
+                ), {}
+
+            elif tool == "shopify_live_analytics":
+                from apps.shopify.api_client import get_shopify_api_client
+
+                client = get_shopify_api_client()
+                if not client.is_configured:
+                    return (
+                        "No Shopify store connected — check shopify_store_status. "
+                        "I can't pull real revenue without SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN.",
+                        {},
+                    )
+                days = int(args.get("days", 30))
+                analytics = await client.get_revenue_analytics(days)
+                if analytics.orders_count == 0:
+                    return f"No orders found in the last {days} days.", {}
+                lines = [
+                    f"**Real Shopify revenue — last {days} days**",
+                    f"${analytics.total_revenue:,.2f} across {analytics.orders_count} orders "
+                    f"(avg ${analytics.avg_order_value:,.2f})",
+                ]
+                if analytics.top_products:
+                    lines.append(
+                        "Top products:\n"
+                        + "\n".join(
+                            f"  • {p['title']} — ${p['revenue']:,.2f}"
+                            for p in analytics.top_products[:5]
+                        )
+                    )
+                return "\n".join(lines), {}
 
             # ── LEAD DISCOVERY & PROPOSALS ─────────────────────────────────────
             elif tool == "discover_leads":
