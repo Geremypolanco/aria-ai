@@ -409,7 +409,7 @@ CONSTITUTIONAL_REVIEW_TOOLS = frozenset(
 
 
 async def review_tool_call(
-    tool: str, tool_args: dict, user_text: str = "", email: str = ""
+    tool: str, tool_args: dict, user_text: str = "", email: str = "", chat_id: str = ""
 ) -> str | None:
     """Single entrypoint every tool-executing caller should use for Layer 2.
     Returns a decline message if the call should be blocked (either because
@@ -420,7 +420,15 @@ async def review_tool_call(
     None immediately without an LLM call. Respects GUARDRAILS_ENABLED
     (apps.core.config.settings) as the debugging escape hatch it's meant to
     be — when disabled, this always returns None (no review happens at all,
-    matching every other layer's behavior under the same flag)."""
+    matching every other layer's behavior under the same flag).
+
+    An unsafe verdict here is a judgment call (is this amount/vendor/scale
+    authorized?), not one of Layer 1's categorical prohibitions — so instead
+    of declining permanently, it's queued for the owner via Mission Control's
+    HITL hub, who can approve (runs for real), deny (stays blocked), or
+    approve with modified args. chat_id is optional because WorkflowEngine.run()
+    (the other caller) has no conversation to follow up in — the "I'll let you
+    know here" line is only appended when there is one."""
     if tool not in CONSTITUTIONAL_REVIEW_TOOLS:
         return None
     try:
@@ -433,9 +441,25 @@ async def review_tool_call(
 
     verdict = await evaluate_plan(tool, tool_args, user_text, email=email)
     if not verdict.safe:
-        return (
-            f"I'm not going to do that ({tool}) — {verdict.reason or 'it failed a safety review'}."
+        from apps.core.safety.hitl_queue import get_hitl_queue
+
+        hitl_req = await get_hitl_queue().enqueue(
+            chat_id=chat_id,
+            email=email,
+            user_text=user_text,
+            tool=tool,
+            tool_args=tool_args,
+            risk_score=verdict.risk_score,
+            risk_reason=verdict.reason,
         )
+        pending = (
+            f"That needs my owner's approval before I can do it "
+            f"(safety review: {verdict.reason or 'flagged for review'}). "
+            f"I've queued it for a decision — request `{hitl_req.request_id}`."
+        )
+        if chat_id:
+            pending += " I'll let you know here once it's been reviewed."
+        return pending
     return None
 
 
