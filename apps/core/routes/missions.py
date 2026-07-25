@@ -65,10 +65,9 @@ async def mission_status(task_id: str, user: dict = Depends(require_user)):
     # Owners see any task; others only their own (BOLA guard).
     email = (user.get("email") or "").strip().lower()
     if status.get("user_email") and status["user_email"] != email:
-        from apps.core.config import settings
+        from apps.core import auth
 
-        owner = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
-        if email != owner:
+        if not auth.is_owner_email(email):
             return JSONResponse({"error": "forbidden"}, status_code=403)
     return {
         "task_id": task_id,
@@ -96,10 +95,7 @@ async def logs_ws(websocket: WebSocket, task_id: str):
     email = (user.get("email") or "").strip().lower()
     status = await get_queue().get_status(task_id)
     if status and status.get("user_email") and status["user_email"] != email:
-        from apps.core.config import settings
-
-        owner = (getattr(settings, "OWNER_EMAIL", "") or "").strip().lower()
-        if email != owner:
+        if not auth.is_owner_email(email):
             await websocket.close(code=4403)  # forbidden
             return
 

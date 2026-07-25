@@ -187,7 +187,11 @@ class CodeSafetyResult:
 
 # ── Layer 1: input moderation ────────────────────────────────────────────
 def _keyword_screen(text: str) -> ModerationResult | None:
-    lowered = text.lower()
+    # Collapse whitespace runs (spaces, tabs, newlines) to a single space
+    # before matching: a multi-word phrase like "write a virus" is trivially
+    # defeated by "write   a virus" or "write\na virus" under plain substring
+    # matching, with no obfuscation intent required to slip past it.
+    lowered = re.sub(r"\s+", " ", text.lower())
     hits: list[str] = []
     for category, phrases in PROHIBITED_CATEGORIES.items():
         for phrase in phrases:
