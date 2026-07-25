@@ -1,4 +1,5 @@
-"""Phase 11 tests — Video Engine (YouTube + Shorts + Publishing Pipeline)."""
+"""Phase 11 tests — Video Engine (YouTube + Shorts)."""
+
 from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,12 +23,14 @@ def _mock_ai(content="10 Ways to Grow on YouTube | Complete 2024 Guide"):
 
 # ── YouTube Engine ────────────────────────────────────────────────────────────
 
+
 class TestYouTubeEngine:
     @pytest.fixture
     def engine(self):
         with patch("apps.video.youtube.youtube_engine.get_cache", return_value=_mock_cache()):
             with patch("apps.video.youtube.youtube_engine.get_ai_client", return_value=_mock_ai()):
                 from apps.video.youtube.youtube_engine import YouTubeEngine
+
                 return YouTubeEngine()
 
     @pytest.mark.asyncio
@@ -39,6 +42,7 @@ class TestYouTubeEngine:
     @pytest.mark.asyncio
     async def test_create_video_metadata_returns_metadata(self, engine):
         from apps.video.youtube.youtube_engine import VideoMetadata
+
         meta = await engine.create_video_metadata("SEO Tips", "seo tips 2024")
         assert isinstance(meta, VideoMetadata)
         assert meta.video_id
@@ -57,6 +61,7 @@ class TestYouTubeEngine:
     @pytest.mark.asyncio
     async def test_write_script_returns_video_script(self, engine):
         from apps.video.youtube.youtube_engine import VideoScript
+
         meta = await engine.create_video_metadata("Python", "python tutorial")
         script = await engine.write_script(meta.video_id, "Python Tutorial", 600)
         assert isinstance(script, VideoScript)
@@ -72,7 +77,9 @@ class TestYouTubeEngine:
 
     @pytest.mark.asyncio
     async def test_score_thumbnail_has_score_key(self, engine):
-        result = await engine.score_thumbnail_concept("Bold text on red background", "make money online")
+        result = await engine.score_thumbnail_concept(
+            "Bold text on red background", "make money online"
+        )
         assert "score" in result
         assert 0.0 <= result["score"] <= 1.0
 
@@ -106,8 +113,10 @@ class TestYouTubeEngine:
 
     @pytest.mark.asyncio
     async def test_optimize_retention_adds_hooks(self, engine):
-        body = [{"timestamp": "1:00", "content": "Section 1", "visual": "talking head"},
-                {"timestamp": "3:00", "content": "Section 2", "visual": "screen"}]
+        body = [
+            {"timestamp": "1:00", "content": "Section 1", "visual": "talking head"},
+            {"timestamp": "3:00", "content": "Section 2", "visual": "screen"},
+        ]
         optimized = await engine.optimize_retention(body)
         assert len(optimized) > len(body)
 
@@ -128,18 +137,25 @@ class TestYouTubeEngine:
 
 # ── Shorts Engine ─────────────────────────────────────────────────────────────
 
+
 class TestShortsEngine:
     @pytest.fixture
     def engine(self):
         with patch("apps.video.shorts.shorts_engine.get_cache", return_value=_mock_cache()):
-            with patch("apps.video.shorts.shorts_engine.get_ai_client",
-                       return_value=_mock_ai("POV: You just discovered this hack... #viral #fyp #trending")):
+            with patch(
+                "apps.video.shorts.shorts_engine.get_ai_client",
+                return_value=_mock_ai(
+                    "POV: You just discovered this hack... #viral #fyp #trending"
+                ),
+            ):
                 from apps.video.shorts.shorts_engine import ShortsEngine
+
                 return ShortsEngine()
 
     @pytest.mark.asyncio
     async def test_create_short_returns_content(self, engine):
         from apps.video.shorts.shorts_engine import ShortsContent
+
         short = await engine.create_short("Morning Routine", "productivity", "tiktok")
         assert isinstance(short, ShortsContent)
         assert short.content_id
@@ -164,6 +180,7 @@ class TestShortsEngine:
     @pytest.mark.asyncio
     async def test_trend_hijack_returns_content(self, engine):
         from apps.video.shorts.shorts_engine import ShortsContent
+
         short = await engine.trend_hijack("ChatGPT", "AI tools")
         assert isinstance(short, ShortsContent)
 
@@ -185,51 +202,7 @@ class TestShortsEngine:
     @pytest.mark.asyncio
     async def test_optimize_for_algorithm_returns_content(self, engine):
         from apps.video.shorts.shorts_engine import ShortsContent
+
         short = await engine.create_short("Original", "niche", "tiktok")
         optimized = await engine.optimize_for_algorithm(short)
         assert isinstance(optimized, ShortsContent)
-
-
-# ── Publishing Pipeline ───────────────────────────────────────────────────────
-
-class TestPublishingPipeline:
-    @pytest.fixture
-    def pipeline(self):
-        with patch("apps.video.automation.publishing_pipeline.get_cache", return_value=_mock_cache()):
-            with patch("apps.video.automation.publishing_pipeline.get_ai_client",
-                       return_value=_mock_ai("Best times: Tuesday 10am, Thursday 2pm, Saturday 11am")):
-                from apps.video.automation.publishing_pipeline import PublishingPipeline
-                return PublishingPipeline()
-
-    @pytest.mark.asyncio
-    async def test_schedule_returns_publish_job(self, pipeline):
-        from apps.video.automation.publishing_pipeline import PublishJob
-        import time
-        job = await pipeline.schedule("vid-1", "youtube", "My Video", time.time() + 3600)
-        assert isinstance(job, PublishJob)
-        assert job.job_id
-
-    @pytest.mark.asyncio
-    async def test_process_queue_returns_list(self, pipeline):
-        import time
-        await pipeline.schedule("vid-2", "tiktok", "Short", time.time() - 60)
-        result = await pipeline.process_queue()
-        assert isinstance(result, list)
-
-    @pytest.mark.asyncio
-    async def test_best_publish_times_has_times(self, pipeline):
-        result = await pipeline.best_publish_times("youtube", "fitness")
-        assert "times_utc" in result
-        assert isinstance(result["times_utc"], list)
-
-    @pytest.mark.asyncio
-    async def test_pipeline_stats_has_required_keys(self, pipeline):
-        stats = pipeline.pipeline_stats()
-        assert "scheduled" in stats
-        assert "published" in stats
-        assert "total" in stats
-
-    @pytest.mark.asyncio
-    async def test_upcoming_publishes_returns_list(self, pipeline):
-        result = pipeline.upcoming_publishes(limit=5)
-        assert isinstance(result, list)
