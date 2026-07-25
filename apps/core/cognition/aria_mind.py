@@ -217,6 +217,9 @@ AVAILABLE TOOLS (you execute them, not the user):
 - segment_client      → recomputes a client's segment (vip/high_value/standard/at_risk/churned) from spend and recency. Args: {{"profile_id": "..."}}
 - personalize_client_offer → recommends a specific product + offer for a known client based on their history and segment. Args: {{"profile_id": "...", "available_products": ["..."]}}
 - client_memory_dashboard → total clients/interactions, segment breakdown, total LTV, and who's VIP or at risk. Args: {{}}
+- list_social_sessions → OWNER ONLY. Lists which social platforms have an active session imported (via the separate Telegram /sesion flow, not this tool). Args: {{}}
+- check_social_session → OWNER ONLY. Verifies a platform's session is still valid before posting. Args: {{"platform": "twitter|linkedin|instagram|..."}}
+- post_to_social     → OWNER ONLY. Posts to a live social platform using the owner's real imported session — this is public and effectively irreversible, so the first call ALWAYS returns a preview with a confirm_token instead of posting; only call again with that exact platform+text plus confirm_token to actually publish. Args: {{"platform": "twitter|linkedin", "text": "...", "confirm_token": "..."}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -268,6 +271,7 @@ REASONING RULES:
 36. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
 37. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
 38. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+39. post_to_social is owner-only and always previews before publishing — never claim you've posted something after the first call (it only returns a confirm_token, nothing has gone out yet). Show the exact preview text to the owner and wait for them to actually confirm they want it posted before calling post_to_social again with that token; don't invent a confirmation the owner didn't give. This is different from generating draft social copy for the user to post themselves (no gating needed) — the gate is specifically for ARIA publishing through the owner's own logged-in session.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -1034,6 +1038,15 @@ class AriaMind:
     # session), but still capable of real-world side effects (submitting
     # forms, following links) that a free-tier account must not be able to
     # trigger unsupervised.
+    #
+    # The social_session tools are the one exception to "credential-free":
+    # they use the owner's own exported browser-session cookies (real,
+    # logged-in Twitter/LinkedIn/Instagram/etc sessions, not scoped API
+    # tokens) to post through unofficial, reverse-engineered endpoints. That
+    # carries real account-ban/ToS risk on the owner's own accounts and
+    # produces an immediately public, effectively irreversible post — a
+    # materially bigger blast radius than anything else in this set, so it
+    # must never be reachable by a non-owner account either.
     _OWNER_ONLY_TOOLS = frozenset(
         {
             "github_write",
@@ -1042,6 +1055,9 @@ class AriaMind:
             "github_self",
             "execute_code",
             "computer_use",
+            "list_social_sessions",
+            "check_social_session",
+            "post_to_social",
         }
     )
 
@@ -3052,6 +3068,89 @@ class AriaMind:
                 if at_risk:
                     lines.append("At risk / churned: " + ", ".join(p["name"] for p in at_risk[:10]))
                 return "\n\n".join(lines), {}
+
+            # ── SOCIAL SESSIONS (owner-only — see _OWNER_ONLY_TOOLS) ─────────
+            elif tool == "list_social_sessions":
+                from apps.core.tools.social_session import get_social_session_manager
+
+                sessions = await get_social_session_manager().list_active_sessions()
+                if not sessions:
+                    return (
+                        "No social sessions imported yet. Sessions are imported via the "
+                        "Telegram /sesion flow, not through chat.",
+                        {},
+                    )
+                lines = ["**Active social sessions:**"]
+                for s in sessions:
+                    lines.append(
+                        f"  {s['emoji']} {s['display_name']} — {s['cookies_count']} cookies, "
+                        f"imported {s['age_days']}d ago"
+                    )
+                return "\n".join(lines), {}
+
+            elif tool == "check_social_session":
+                platform = args.get("platform", "")
+                if not platform:
+                    return "I need a platform to check the session for.", {}
+                from apps.core.tools.social_session import get_social_session_manager
+
+                result = await get_social_session_manager().test_session(platform)
+                if result.get("success"):
+                    return f"**{platform}: session active**", {}
+                return f"**{platform}: {result.get('error', 'session not working')}**", {}
+
+            elif tool == "post_to_social":
+                platform = args.get("platform", "")
+                text = args.get("text", "")
+                confirm_token = args.get("confirm_token", "")
+                if not platform or not text:
+                    return "I need a platform and the text to post.", {}
+
+                # Forced preview step, enforced in code rather than trusted to
+                # the model's own prompt-following: this is an immediately
+                # public, effectively irreversible action using the owner's
+                # real logged-in session, not draft content generation. A
+                # single tool call can never produce a valid confirm_token —
+                # one is only minted by a prior preview call and stored
+                # server-side, so the model cannot skip straight to posting
+                # by simply passing confirmed=true on the first attempt.
+                cache = self._cache_client()
+                pending_key = None
+                if confirm_token and cache:
+                    pending_key = f"aria:pending_social_post:{confirm_token}"
+                    pending = await cache.get(pending_key)
+                    if (
+                        isinstance(pending, dict)
+                        and pending.get("platform") == platform
+                        and pending.get("text") == text
+                    ):
+                        await cache.delete(pending_key)
+                        from apps.core.tools.social_session import get_social_session_manager
+
+                        result = await get_social_session_manager().post_to_platform(platform, text)
+                        if result.get("success"):
+                            url = result.get("url") or result.get("post_id", "")
+                            return f"**Posted to {platform}.**" + (f" {url}" if url else ""), {}
+                        return (
+                            f"**Post to {platform} failed:** {result.get('error', 'unknown error')}",
+                            {},
+                        )
+
+                import secrets
+
+                token = secrets.token_hex(8)
+                if cache:
+                    await cache.set(
+                        f"aria:pending_social_post:{token}",
+                        {"platform": platform, "text": text},
+                        ttl_seconds=600,
+                    )
+                return (
+                    f"**Preview — not yet posted to {platform}:**\n{text}\n\n"
+                    f"Ask me to post this exact text again to confirm — "
+                    f"confirm_token: {token} (expires in 10 minutes).",
+                    {},
+                )
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":
