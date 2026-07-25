@@ -2567,6 +2567,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": elapsed,
             "media_type": media_type,
             "media_base64": media_b64,
+            "awaiting_input": resp.awaiting_input,
         }
     except Exception as e:
         logger.error(f"Chat (aria_mind) error: {e}")
@@ -3124,7 +3125,13 @@ async def websocket_chat(ws: WebSocket):
             await _record_ai_cost(email, plan, user_text, reply_text)
             if email and reply_text:
                 asyncio.create_task(_remember_turn(email, user_text, reply_text))
-            await ws.send_json({"reply": reply_text, "tool": resp.tool_used})
+            await ws.send_json(
+                {
+                    "reply": reply_text,
+                    "tool": resp.tool_used,
+                    "awaiting_input": resp.awaiting_input,
+                }
+            )
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:

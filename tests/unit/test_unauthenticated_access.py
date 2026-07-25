@@ -42,9 +42,7 @@ def test_content_operate_allows_owner(monkeypatch):
     monkeypatch.setattr(main_module, "_rate_ok", fake_rate_ok)
     fake_operator = AsyncMock()
     fake_operator.run_once = AsyncMock(return_value={"success": True})
-    with patch(
-        "apps.core.tools.content_operator.get_content_operator", return_value=fake_operator
-    ):
+    with patch("apps.core.tools.content_operator.get_content_operator", return_value=fake_operator):
         r = client.post("/api/v1/content/operate", json={"product": "Widget"})
     assert r.status_code == 200
     assert r.json()["success"] is True
@@ -68,6 +66,7 @@ def test_ws_chat_accepts_authenticated_and_replies(monkeypatch):
         text = "hi there"
         caption = ""
         tool_used = "chat"
+        awaiting_input = False
 
     fake_mind = AsyncMock()
     fake_mind.handle = AsyncMock(return_value=_Resp())

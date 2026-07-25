@@ -38,6 +38,13 @@ class MindResponse:
     caption: str | None = None
     tool_used: str | None = None
     silent: bool = False
+    # True when this reply is a checkpoint ARIA is paused on — a clarifying
+    # question, an owner-approval request queued via the HITL queue, or a
+    # post_to_social preview awaiting its confirm_token — rather than a
+    # completed turn. Callers (the web UI, chat integrations) can use this to
+    # render a distinct "waiting for you" state instead of treating the reply
+    # like any other finished response.
+    awaiting_input: bool = False
 
 
 @dataclass
@@ -332,6 +339,7 @@ Respond ONLY with valid JSON. No markdown. No extra text. The schema is exactly:
 {{
   "thought": "step-by-step reasoning — what the user wants, what information is needed, which tool to use and why",
   "autonomous_execution": true, // set true if the task requires multiple steps, research, or real execution
+  "needs_clarification": false, // true ONLY if you genuinely cannot proceed responsibly without more input from the user — a consequential or ambiguous request, per THINK AND ASK BEFORE ACTING above. NOT for anything you could answer with a reasonable default — that's still hedging, just structured. When true, "tool" must be null and "reply" must contain your ONE best clarifying question.
   "tool": "tool_name or null if it's direct conversation",
   "tool_args": {{"key": "value"}} or null,
   "reply": "my response IN THE SAME LANGUAGE as the user — can be empty if the tool's result will be the response. If I respond directly, make it complete and useful.",
@@ -891,8 +899,25 @@ class AriaMind:
                 self._load_learned(),
             )
 
+            # If the previous turn paused to ask a clarifying question, this
+            # turn is that answer, not a fresh request — fold the original
+            # request + question into what the planner sees so it has the
+            # full picture instead of just a short, contextless reply. Pop
+            # (not peek) so a resolved round never lingers into a future,
+            # unrelated turn.
+            awaiting = state.pop("awaiting_clarification", None)
+            reasoning_text = text
+            if isinstance(awaiting, dict) and awaiting.get("question"):
+                reasoning_text = (
+                    f"Original request: {awaiting.get('original_text', text)}\n"
+                    f"I asked: {awaiting['question']}\n"
+                    f"User's answer: {text}"
+                )
+
             # Build prompt and reason
-            plan = await self._reason(text, history, state, goals, learned, user_context or "")
+            plan = await self._reason(
+                reasoning_text, history, state, goals, learned, user_context or ""
+            )
             if not plan:
                 return MindResponse(text="I couldn't process that. Please try again.")
 
@@ -900,6 +925,31 @@ class AriaMind:
             tool_args = plan.get("tool_args") or {}
             reply = (plan.get("reply") or "").strip()
             has_tool = bool(tool and tool not in ("null", "none", None))
+
+            # HITL CHECKPOINT: the planner judged this request too ambiguous
+            # or consequential to proceed on safely — pause and ask, instead
+            # of guessing (see THINK AND ASK BEFORE ACTING in SYSTEM_TEMPLATE).
+            # Never fires alongside a concrete tool call: needs_clarification
+            # means execution didn't happen this turn.
+            if plan.get("needs_clarification") and not has_tool:
+                question = reply or "Could you share a bit more detail so I can do this right?"
+                state["awaiting_clarification"] = {
+                    "question": question,
+                    "original_text": reasoning_text,
+                }
+                await self._store_interaction(chat_id, text, question, None)
+                await self._evolve_state(chat_id, state, text, goals)
+                asyncio.create_task(self._maybe_reflect(chat_id))
+                await self._trace_turn(
+                    "clarification",
+                    text,
+                    question,
+                    turn_started,
+                    True,
+                    chat_id=chat_id,
+                    email=email,
+                )
+                return MindResponse(text=question, awaiting_input=True)
 
             # AUTONOMY (agent-style) — ONLY when the plan didn't pick a concrete
             # tool. This way, research/creation gets routed to its reliable tool
@@ -953,7 +1003,7 @@ class AriaMind:
                 )
                 if decline:
                     await self._store_interaction(chat_id, text, decline, tool)
-                    return MindResponse(text=decline)
+                    return MindResponse(text=decline, awaiting_input=True)
                 obs, media, executed_args = await self._execute_with_retry(
                     tool, tool_args, email=email
                 )
@@ -990,6 +1040,7 @@ class AriaMind:
                     text=final_text if is_doc else (None if media else final_text),
                     caption=final_text,
                     tool_used=tool,
+                    awaiting_input=self._looks_like_pending_confirmation(obs),
                     **media,
                 )
 
@@ -1163,6 +1214,16 @@ class AriaMind:
         if not self._looks_like_failure(obs):
             return False
         return "reserved for" not in (obs or "").lower()
+
+    def _looks_like_pending_confirmation(self, obs: str) -> bool:
+        """True when a tool's raw observation is itself a checkpoint awaiting
+        a follow-up confirmation — e.g. post_to_social's forced preview step,
+        which mints a confirm_token and waits for the owner to repeat the
+        request before anything actually goes out. Checked against `obs`
+        (the tool's literal output), not the LLM-synthesized final_text,
+        since synthesis can freely reword text and isn't guaranteed to
+        preserve the exact marker this checks for."""
+        return "confirm_token:" in (obs or "").lower()
 
     async def _execute_with_retry(
         self, tool: str, args: dict, max_retries: int = 3, email: str = ""

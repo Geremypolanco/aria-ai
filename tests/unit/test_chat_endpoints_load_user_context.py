@@ -29,6 +29,7 @@ class _Resp:
     caption = ""
     tool_used = "chat"
     image_bytes = None
+    awaiting_input = False
 
 
 def test_ws_chat_loads_user_context_scoped_to_caller_email(monkeypatch):
