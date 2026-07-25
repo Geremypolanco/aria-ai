@@ -28,7 +28,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -155,34 +154,17 @@ class WorkflowResult:
 # ── PROMPTS ───────────────────────────────────────────────────────────────
 
 
-def _detect_lang(text: str) -> str:
-    """Best-effort 'en'/'es' from the goal, so we can FORCE the output language
-    instead of hoping the model follows a soft instruction (ARIA's whole prompt
-    scaffold is Spanish, which otherwise drags English goals into Spanish)."""
-    t = (text or "").lower()
-    es = len(re.findall(r"[ñáéíóú¿¡]", t)) + len(
-        re.findall(
-            r"\b(el|la|los|las|un|una|para|con|que|de|del|y|escribe|dame|hazme|"
-            r"contenido|semana|publicaci[oó]n|posts?|imagen)\b",
-            t,
-        )
-    )
-    en = len(
-        re.findall(
-            r"\b(the|a|an|and|your|you|with|that|this|for|write|give|make|me|"
-            r"content|week|research|posts?|image)\b",
-            t,
-        )
-    )
-    return "es" if es > en else "en"
-
-
-def _lang_directive(lang: str) -> str:
+def _lang_directive(goal: str) -> str:
+    """Forces the output into the exact language of `goal` instead of hoping
+    the model follows a soft instruction (the planner/synthesis prompts below
+    are English, which would otherwise drag a non-English goal into English).
+    Doesn't pre-classify into a fixed language set — the goal text is right
+    there for the model to read and match, so this works for any language,
+    not just the English/Spanish pair the old regex-based version covered."""
     return (
-        "IMPORTANT: Write your ENTIRE response in English, no matter what language "
-        "these instructions are in. "
-        if lang == "en"
-        else "IMPORTANTE: Escribe TODA tu respuesta en español. "
+        "IMPORTANT: Write your ENTIRE response in the exact same language as "
+        "this goal, whatever language that is — identify it yourself from the "
+        f"text below and match it precisely. Goal: {goal[:200]!r}. "
     )
 
 
@@ -287,7 +269,7 @@ class DynamicWorkflow:
         # (planner + synthesizer). Reset at the start of each run().
         self._plan_tokens = 0
         self._synth_tokens = 0
-        self._out_lang = "en"  # set per-run from the goal in run()/run_events()
+        self._goal_text = ""  # set per-run from the goal in run()/run_events()
 
     # ── MAIN ORCHESTRATION ────────────────────────────────────────────────
 
@@ -302,7 +284,7 @@ class DynamicWorkflow:
 
         self._plan_tokens = 0
         self._synth_tokens = 0
-        self._out_lang = _detect_lang(goal)
+        self._goal_text = goal
 
         # Clarify before executing: if key context is missing, ask instead of guessing.
         if self._clarify:
@@ -366,7 +348,7 @@ class DynamicWorkflow:
 
         self._plan_tokens = 0
         self._synth_tokens = 0
-        self._out_lang = _detect_lang(goal)
+        self._goal_text = goal
 
         try:
             yield {"type": "start", "goal": goal}
@@ -508,7 +490,7 @@ class DynamicWorkflow:
     # ── PHASE 2: EXECUTE SUBAGENT ─────────────────────────────────────────
 
     async def _execute(self, task: SubTask) -> SubTaskResult:
-        system = _lang_directive(self._out_lang) + (
+        system = _lang_directive(self._goal_text) + (
             "You are a specialized ARIA subagent. You execute ONE concrete task with "
             "rigor and return the finished, ready-to-use DELIVERABLE (the actual text/copy, "
             "not a description or a plan), with no preamble or apologies."
@@ -639,7 +621,7 @@ class DynamicWorkflow:
         parts = "\n\n".join(f"### {r.task.title}\n{r.output[:2500]}" for r in usable)
         try:
             resp = await self._client.complete(
-                system=_lang_directive(self._out_lang) + _SYNTH_SYSTEM,
+                system=_lang_directive(self._goal_text) + _SYNTH_SYSTEM,
                 user=_SYNTH_USER.format(goal=goal, parts=parts),
                 model=AIModel.STRATEGY,
                 max_tokens=2200,

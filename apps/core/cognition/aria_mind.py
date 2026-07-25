@@ -92,7 +92,7 @@ HOW YOU OPERATE:
 3. Total HONESTY: if something fails, say so clearly and look for another way. Your credibility is your most valuable asset.
 4. You help {owner} and their users create, publish, and grow.
 Use markdown (lists, bold) when it improves readability, without overdoing it.
-LANGUAGE: ALWAYS reply in the same language as the user — English if they wrote in English, Spanish if they wrote in Spanish. Never switch language on your own.
+LANGUAGE: ALWAYS reply in the exact same language the user wrote in — whatever language that is (English, Spanish, French, German, Portuguese, Japanese, Arabic, any language at all). Detect it from their message itself. Never switch language on your own, and never default to English or Spanish just because those are common — match the user.
 
 CURRENT STATE:
 Current focus: {focus}
@@ -258,7 +258,7 @@ from apps.core.governance import OPERATING_BOUNDARIES_PROMPT as _OPERATING_BOUND
 SYSTEM_TEMPLATE = SYSTEM_TEMPLATE + "\n\n" + _OPERATING_BOUNDARIES
 
 SYNTHESIS_SYSTEM = """\
-You are ARIA. You just used a tool and now you're telling the user what you found or did, IN THE SAME LANGUAGE they wrote to you in (English if they wrote in English, Spanish if they wrote in Spanish).
+You are ARIA. You just used a tool and now you're telling the user what you found or did, IN THE EXACT SAME LANGUAGE they wrote to you in — whatever that language is. Detect it from their message; don't default to English or Spanish.
 
 Talk like a real person explaining something to someone they care about — warm, clear, direct — not like a corporate report:
 - Get straight to what the person wanted to know. No filler or preambles like "I'm pleased to present the results".
@@ -522,57 +522,59 @@ class AriaMind:
         return prompt or t
 
     @staticmethod
-    def _detect_lang(text: str) -> str:
-        """Best-effort language of the user's message: 'es' or 'en' (default 'en')."""
-        import re
-
-        t = (text or "").lower()
-        if re.search(r"[ñ¿¡áéíóúü]", t):
-            return "es"
-        es_markers = {
-            "que",
-            "qué",
-            "cómo",
-            "como",
-            "para",
-            "con",
-            "una",
-            "uno",
-            "esto",
-            "eso",
-            "ayuda",
-            "ayudar",
-            "puedes",
-            "quiero",
-            "hazme",
-            "dame",
-            "necesito",
-            "gracias",
-            "hola",
-            "genera",
-            "crea",
-            "crear",
-            "dibuja",
-            "imagen",
-            "español",
-            "cuál",
-            "cuánto",
-            "por",
-            "favor",
-            "noticias",
-            "ingresos",
-            "dinero",
-        }
-        words = set(re.findall(r"[a-záéíóúñ]+", t))
-        return "es" if words & es_markers else "en"
+    def _lang_directive(text: str) -> str:
+        """Forces the reply into the exact language of `text` instead of hoping
+        the model follows a soft system-prompt instruction. Doesn't pre-classify
+        into a fixed set of languages (the old version only recognized Spanish
+        vs. English) — the message itself is right there for the model to read
+        and match, so this works for any language."""
+        return (
+            "\n\n[IMPORTANT: Reply in the exact same language as the message "
+            "above, whatever language that is. Identify it yourself from the "
+            "text and match it precisely — do not default to English or "
+            "Spanish unless that's genuinely what the message is written in.]"
+        )
 
     @staticmethod
-    def _lang_directive(lang: str) -> str:
-        return (
-            "\n\n[IMPORTANT: reply ONLY in Spanish.]"
-            if lang == "es"
-            else "\n\n[IMPORTANT: reply ONLY in English.]"
-        )
+    def _looks_english(text: str) -> bool:
+        """Cheap, no-network heuristic used only to skip a translation call for
+        the common case. Any non-ASCII letter (accented Latin, Cyrillic, CJK,
+        Arabic, Hebrew, Devanagari, ...) is treated as a strong signal the text
+        isn't English — which covers most of the world's languages. Casual,
+        unaccented non-English text (e.g. "Ich brauche ein Bild" or Spanish
+        typed without accents) can still slip through as a false "English" —
+        a known, minor limitation, not a claim of perfect language ID."""
+        return all(ord(c) < 128 for c in text)
+
+    async def _localize_short_text(self, reference_text: str, english_version: str) -> str:
+        """Translates a short fixed English string into whatever language
+        `reference_text` is written in, via a single cheap FAST-model call.
+        Falls back to the English original on any failure (no provider
+        configured, network error, empty response, ...) so this can never
+        turn a working caption into a broken one."""
+        ai = self._ai_client()
+        if not ai:
+            return english_version
+        try:
+            from apps.core.tools.ai_client import AIModel
+
+            resp = await ai.complete(
+                system=(
+                    "Translate the given sentence into the same language as the "
+                    "reference message. Reply with ONLY the translated sentence — "
+                    "no quotes, no explanation, no original text."
+                ),
+                user=f"Reference message: {reference_text[:200]}\nSentence to translate: {english_version}",
+                model=AIModel.FAST,
+                max_tokens=100,
+                temperature=0.0,
+                agent_name="aria_caption_localize",
+            )
+            if resp and resp.success and resp.content and resp.content.strip():
+                return resp.content.strip()
+        except Exception as e:
+            logger.warning("[AriaMind] caption localization failed: %s", e)
+        return english_version
 
     # ── MAIN ENTRY POINT ─────────────────────────────────────────────────────
 
@@ -606,36 +608,16 @@ class AriaMind:
                 obs, media = await self._execute_with_retry(
                     "generate_image", {"prompt": img_prompt}
                 )
-                # Caption mirrors the user's language. Match WHOLE words (and Spanish
-                # accents/punctuation) so English words like "illustration" don't
-                # trip the Spanish branch via a substring like "ilustr".
-                words = set(re.findall(r"[a-záéíóúñü]+", text.lower()))
-                is_es = bool(re.search(r"[ñ¿¡áéíóú]", text)) or bool(
-                    words
-                    & {
-                        "imagen",
-                        "genera",
-                        "crea",
-                        "créame",
-                        "dibuja",
-                        "dibújame",
-                        "foto",
-                        "diseña",
-                        "haz",
-                        "hazme",
-                        "dame",
-                        "quiero",
-                        "muéstrame",
-                    }
-                )
-                # NOTE: intentionally bilingual — this caption is returned directly to
-                # the user (no LLM synthesis pass), so it must match their detected
-                # language rather than always being in English.
-                default_caption = (
-                    "Aquí está la imagen que creé para ti."
-                    if is_es
-                    else "Here's the image I created for you."
-                )
+                # This caption is returned directly to the user with no LLM synthesis
+                # pass in between (that's the whole point of this fast-path), and it's
+                # what's actually shown on every successful generation — media being
+                # present means `obs` (the tool's own English status line) is skipped
+                # in favor of this caption. Skip the extra network round-trip for the
+                # common case (an English request); otherwise ask the FAST model for a
+                # one-line translation so this isn't locked to just English/Spanish.
+                default_caption = "Here's the image I created for you."
+                if media and not self._looks_english(text):
+                    default_caption = await self._localize_short_text(text, default_caption)
                 caption = obs if (obs and not media) else default_caption
                 with suppress(Exception):
                     await self._record_exec(
@@ -799,13 +781,12 @@ class AriaMind:
             history=history_text,
         )
 
-        lang = self._detect_lang(text)
         user_input = text
         if kb_context:
             user_input = f"{kb_context}\n\n---\nUser message: {text}"
         if user_context:
             user_input = f"{user_context}\n\n{user_input}"
-        user_input += self._lang_directive(lang)
+        user_input += self._lang_directive(text)
 
         result = await ai.complete_json(
             system=system,
@@ -826,7 +807,7 @@ class AriaMind:
                 "You are ARIA. Talk like a real person, not a corporate bot — warm, "
                 "direct, no filler. Reply in the SAME language as the user, max 2 sentences."
             ),
-            user=text + self._lang_directive(self._detect_lang(text)),
+            user=text + self._lang_directive(text),
             model=AIModel.FAST,
             max_tokens=300,
             temperature=0.5,
@@ -2629,7 +2610,7 @@ class AriaMind:
             user=(
                 f"The user asked: {user_input[:400]}\n"
                 f"I used the '{tool}' tool and got:\n{observation[:2000]}"
-                f"{self._lang_directive(self._detect_lang(user_input))}"
+                f"{self._lang_directive(user_input)}"
             ),
             model=AIModel.STRATEGY,
             max_tokens=800,
@@ -2659,7 +2640,7 @@ class AriaMind:
                 "completely. Use markdown when it helps. If you'd need live internet data you "
                 "don't have here, say so plainly and suggest what to search for."
             ),
-            user=text + self._lang_directive(self._detect_lang(text)),
+            user=text + self._lang_directive(text),
             model=AIModel.STRATEGY,
             max_tokens=800,
             temperature=0.4,
