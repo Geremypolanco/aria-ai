@@ -8,6 +8,13 @@ Wired into aria_mind.py's tool dispatcher as: recover_abandoned_cart,
 create_flash_sale, create_product_bundle, recommend_products,
 shopify_revenue_dashboard.
 
+A later security-audit pass found these wrote to Redis keys shared by ALL
+users (shopify:flash_sales:v1, shopify:bundles:v1, ...) with no ownership
+check — any signed-in non-owner user could create real sales/bundles
+against "the store" or read the owner's cart-recovery/recommendation data.
+They're now owner-only (_OWNER_ONLY_TOOLS), so every test below runs as
+the owner.
+
 Exercised through AriaMind._execute_tool exactly as a live conversation
 would, not by calling the engines directly.
 """
@@ -26,6 +33,8 @@ from apps.shopify.revenue.product_recommender import ProductRecommender
 
 pytestmark = pytest.mark.asyncio
 
+OWNER_EMAIL = "owner@aria.test"
+
 
 class _FakeCache:
     def __init__(self):
@@ -40,7 +49,7 @@ class _FakeCache:
 
 
 @pytest.fixture(autouse=True)
-def _patch_caches():
+def _patch_caches_and_owner():
     with (
         patch(
             "apps.shopify.revenue.cart_recovery.get_cache",
@@ -58,8 +67,19 @@ def _patch_caches():
             "apps.shopify.revenue.product_recommender.get_cache",
             return_value=_FakeCache(),
         ),
+        patch("apps.core.auth.is_owner_email", side_effect=lambda e: e == OWNER_EMAIL),
     ):
         yield
+
+
+async def test_shopify_revenue_tools_blocked_for_non_owner():
+    mind = AriaMind()
+    obs, media = await mind._execute_tool(
+        "recover_abandoned_cart", {"email": "x@example.com", "items": []}, email="someone@else.com"
+    )
+
+    assert media == {}
+    assert "owner" in obs.lower()
 
 
 async def test_recover_abandoned_cart_reachable_from_tool_dispatch():
@@ -73,6 +93,7 @@ async def test_recover_abandoned_cart_reachable_from_tool_dispatch():
                 "items": [{"title": "Yoga Mat", "price": 40.0}],
                 "cart_value": 40.0,
             },
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -82,7 +103,7 @@ async def test_recover_abandoned_cart_reachable_from_tool_dispatch():
 
 async def test_recover_abandoned_cart_requires_email_and_items():
     mind = AriaMind()
-    obs, media = await mind._execute_tool("recover_abandoned_cart", {})
+    obs, media = await mind._execute_tool("recover_abandoned_cart", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "email" in obs.lower()
@@ -100,6 +121,7 @@ async def test_create_flash_sale_reachable_from_tool_dispatch():
                 "discount_pct": 0.25,
                 "duration_hours": 12,
             },
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -121,6 +143,7 @@ async def test_create_product_bundle_reachable_from_tool_dispatch():
                 "bundle_type": "complementary",
                 "discount_pct": 0.15,
             },
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -130,7 +153,9 @@ async def test_create_product_bundle_reachable_from_tool_dispatch():
 async def test_create_product_bundle_requires_two_products():
     mind = AriaMind()
     obs, media = await mind._execute_tool(
-        "create_product_bundle", {"products": [{"id": "p1", "title": "Solo", "price": 10.0}]}
+        "create_product_bundle",
+        {"products": [{"id": "p1", "title": "Solo", "price": 10.0}]},
+        email=OWNER_EMAIL,
     )
 
     assert media == {}
@@ -153,6 +178,7 @@ async def test_recommend_products_reachable_from_tool_dispatch():
                     {"id": "p2", "title": "Yoga Blocks", "price": 20.0, "category": "fitness"},
                 ],
             },
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -183,7 +209,7 @@ async def test_shopify_revenue_dashboard_reachable_from_tool_dispatch():
         ),
     ):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("shopify_revenue_dashboard", {})
+        obs, media = await mind._execute_tool("shopify_revenue_dashboard", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "Shopify revenue dashboard" in obs

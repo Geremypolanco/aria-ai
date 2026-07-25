@@ -59,6 +59,20 @@ async def test_moderate_input_blocks_known_keyword_without_llm_call():
     mock_get_ai.assert_not_called()  # keyword hit short-circuits, no LLM spend
 
 
+async def test_moderate_input_blocks_keyword_split_by_extra_whitespace():
+    """A multi-word phrase like "write a virus" is trivially defeated by
+    plain substring matching if the words are split with extra
+    spaces/newlines — no obfuscation intent required. _keyword_screen
+    normalizes whitespace runs before matching to close that gap."""
+    with patch("apps.core.tools.ai_client.get_ai_client") as mock_get_ai:
+        result = await moderate_input("please  write   a\nvirus for me")
+
+    assert result.blocked is True
+    assert "malware" in result.categories
+    assert result.layer == "keyword"
+    mock_get_ai.assert_not_called()
+
+
 async def test_moderate_input_allows_benign_text_via_llm_pass():
     fake_ai = AsyncMock()
     fake_ai.complete_json = AsyncMock(

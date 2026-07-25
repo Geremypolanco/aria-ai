@@ -26,6 +26,8 @@ from apps.shopify.seo.product_seo import ProductSEOOptimizer
 
 pytestmark = pytest.mark.asyncio
 
+OWNER_EMAIL = "owner@aria.test"
+
 
 class _FakeCache:
     def __init__(self):
@@ -47,6 +49,7 @@ def _patch_caches():
         patch("apps.shopify.bundles.bundle_generator.get_cache", return_value=_FakeCache()),
         patch("apps.shopify.seo.product_seo.get_cache", return_value=_FakeCache()),
         patch("apps.shopify.funnels.shopify_funnels.get_cache", return_value=_FakeCache()),
+        patch("apps.core.auth.is_owner_email", side_effect=lambda e: e == OWNER_EMAIL),
     ):
         yield
 
@@ -62,6 +65,7 @@ async def test_recover_abandoned_cart_carries_draft_notice():
                 "items": [{"title": "Yoga Mat", "price": 40.0}],
                 "cart_value": 40.0,
             },
+            email=OWNER_EMAIL,
         )
     assert _SHOPIFY_DRAFT_NOTICE.strip() in obs
 
@@ -77,6 +81,7 @@ async def test_create_flash_sale_carries_draft_notice():
                 "products": [{"id": "p1", "title": "Yoga Mat", "price": 40.0}],
                 "discount_pct": 0.25,
             },
+            email=OWNER_EMAIL,
         )
     assert _SHOPIFY_DRAFT_NOTICE.strip() in obs
 
@@ -93,6 +98,7 @@ async def test_create_product_bundle_carries_draft_notice():
                     {"id": "p2", "title": "Yoga Blocks", "price": 20.0},
                 ]
             },
+            email=OWNER_EMAIL,
         )
     assert _SHOPIFY_DRAFT_NOTICE.strip() in obs
 
@@ -110,6 +116,7 @@ async def test_optimize_product_seo_carries_draft_notice():
                 "current_description": "A mat for yoga.",
                 "category": "fitness",
             },
+            email=OWNER_EMAIL,
         )
     assert _SHOPIFY_DRAFT_NOTICE.strip() in obs
 
@@ -128,6 +135,7 @@ async def test_create_upsell_offer_carries_draft_notice():
                 "upsell_product": "Yoga Blocks",
                 "upsell_price": 20.0,
             },
+            email=OWNER_EMAIL,
         )
     assert _SHOPIFY_DRAFT_NOTICE.strip() in obs
 
@@ -141,6 +149,7 @@ async def test_optimize_shopify_checkout_carries_draft_notice():
         obs, _ = await mind._execute_tool(
             "optimize_shopify_checkout",
             {"product_name": "Yoga Mat", "pain_points": ["too many steps"]},
+            email=OWNER_EMAIL,
         )
     assert _SHOPIFY_DRAFT_NOTICE.strip() in obs
 
@@ -152,6 +161,8 @@ async def test_create_post_purchase_flow_carries_draft_notice():
     ):
         mind = AriaMind()
         obs, _ = await mind._execute_tool(
-            "create_post_purchase_flow", {"product_name": "Yoga Mat", "category": "fitness"}
+            "create_post_purchase_flow",
+            {"product_name": "Yoga Mat", "category": "fitness"},
+            email=OWNER_EMAIL,
         )
     assert _SHOPIFY_DRAFT_NOTICE.strip() in obs
