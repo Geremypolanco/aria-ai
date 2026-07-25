@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -302,7 +301,11 @@ Talk like a real person explaining something to someone they care about — warm
 - For web searches: keep what matters, include concrete data, and ALWAYS include the link (URL) for each source you mention — in markdown format [title](url) — when the tool's result includes URLs. Never make up links.
 - For images, video, or audio: say in one line what you created.
 - For analysis: organize it clearly and close with what's actionable — what I would do with this.
-- If what you found isn't enough, say so honestly and propose the next concrete step."""
+- If what you found isn't enough, say so honestly and propose the next concrete step.
+- If the tool's result was a failure or error, NEVER quote or paraphrase the raw error — no
+  exception text, stack traces, status codes, provider/API names, or internal tool names. Just
+  tell the user, briefly and warmly, that something went wrong and you'll try again (or try a
+  different approach). Never expose internal implementation details to the user."""
 
 _HELP_TEXT = """\
 ## ARIA — Available capabilities
@@ -692,7 +695,19 @@ class AriaMind:
                 default_caption = "Here's the image I created for you."
                 if media and not self._looks_english(text):
                     default_caption = await self._localize_short_text(text, default_caption)
-                caption = obs if (obs and not media) else default_caption
+                # obs is raw tool output — on failure it can be an exception message or
+                # provider error payload, so it must never reach the user verbatim.
+                if media:
+                    caption = default_caption
+                elif obs and self._looks_like_failure(obs):
+                    failure_caption = "Something went wrong generating the image. I'll try again."
+                    if not self._looks_english(text):
+                        failure_caption = await self._localize_short_text(text, failure_caption)
+                    caption = failure_caption
+                elif obs:
+                    caption = obs
+                else:
+                    caption = default_caption
                 with suppress(Exception):
                     await self._record_exec(
                         "generate_image", {"prompt": img_prompt}, obs, bool(media)
@@ -2511,7 +2526,7 @@ class AriaMind:
                         {},
                     )
                 lines = [f"**Recommendations ({result.strategy}, {context}):**"]
-                for title, score in zip(result.recommended_titles, result.scores):
+                for title, score in zip(result.recommended_titles, result.scores, strict=False):
                     lines.append(f"  • {title or '(untitled)'} — match {score:.0%}")
                 return "\n".join(lines), {}
 
@@ -3275,9 +3290,22 @@ class AriaMind:
         if not observation or len(observation) < 10:
             return "Done."
 
+        # Never let a raw failure observation (exception text, provider error
+        # payloads, internal tool names) reach the user verbatim — that can
+        # happen below whenever there's no LLM available to rephrase it, or
+        # the rephrasing call itself fails. Fall back to a generic, honest
+        # "something went wrong, retrying" message matched to the user's
+        # language instead (skipping the translation round-trip for English).
+        is_failure = self._looks_like_failure(observation)
+        generic_failure_reply = "Something went wrong on my end. I'll try again."
+        if is_failure and not self._looks_english(user_input):
+            generic_failure_reply = await self._localize_short_text(
+                user_input, generic_failure_reply
+            )
+
         ai = self._ai_client()
         if not ai:
-            return observation[:400]
+            return generic_failure_reply if is_failure else observation[:400]
 
         from apps.core.tools.ai_client import AIModel
 
@@ -3296,7 +3324,7 @@ class AriaMind:
         )
         if resp and resp.success and resp.content:
             return resp.content.strip()
-        return observation[:600]
+        return generic_failure_reply if is_failure else observation[:600]
 
     async def _fallback_reply(self, text: str) -> str:
         """Generates a direct, useful reply when the plan didn't include one."""
