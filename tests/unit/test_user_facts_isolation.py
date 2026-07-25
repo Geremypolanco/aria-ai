@@ -16,6 +16,7 @@ SYNCHRONOUS client; .execute() is a plain call, not a coroutine).
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -182,6 +183,33 @@ async def test_list_all_scopes_query_to_user_id():
     assert len(results) == 1
     fake_db.table.return_value.select.return_value.eq.assert_called_with(
         "user_id", "user-a@example.com"
+    )
+
+
+async def test_list_all_runs_the_blocking_supabase_call_off_the_event_loop():
+    """Regression: q.execute() is synchronous (supabase-py), so calling it
+    directly inside this async method would block the whole event loop for
+    the duration of the HTTP round-trip — a real problem now that
+    Mission Control's memory inspector calls list_all() inside an
+    asyncio.gather() alongside other concurrent work."""
+    fake_db = MagicMock()
+    fake_query = fake_db.table.return_value.select.return_value.eq.return_value
+    fake_query.order.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[{"id": "mem-1", "user_id": "user-a@example.com"}]
+    )
+
+    store = UserFactStore()
+    with (
+        _configured_settings(),
+        patch("apps.core.memory.supabase_client.get_db", return_value=fake_db),
+        patch("asyncio.to_thread", wraps=asyncio.to_thread) as fake_to_thread,
+    ):
+        results = await store.list_all("user-a@example.com")
+
+    assert len(results) == 1
+    fake_to_thread.assert_awaited_once()
+    assert (
+        fake_to_thread.call_args[0][0] == fake_query.order.return_value.limit.return_value.execute
     )
 
 

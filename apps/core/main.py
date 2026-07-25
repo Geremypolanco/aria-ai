@@ -1151,6 +1151,51 @@ async def admin_api_mission_control_telemetry(request: Request):
     }
 
 
+@app.get("/admin/api/mission-control/memory/{email}")
+async def admin_api_mission_control_memory(request: Request, email: str):
+    """Read-only working-memory inspector for Mission Control's Memory
+    Mutation Console — every real source ARIA actually draws from for this
+    user, assembled in one place, with no editing yet (that's a follow-up):
+
+      - thread.history / thread.state: this chat thread only (aria_mind.py's
+        K_HISTORY/K_STATE, 7d/30d TTL).
+      - episodic: cross-thread recall across this user's other conversations
+        (episodic_memory.py, 180d TTL, Redis-primary).
+      - facts: durable curated facts/preferences with no TTL, no cap
+        (user_facts.py, Supabase — empty if Supabase isn't configured).
+      - global.goals / global.learned: NOT per-user — a single shared store
+        across every user (aria_mind.py's K_GOALS/K_LEARNED) — included
+        because they still shape this user's replies, but labeled so they
+        aren't mistaken for this user's own memory.
+    """
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    email = email.strip().lower()
+    from apps.core.cognition.aria_mind import get_aria_mind
+    from apps.core.cognition.episodic_memory import get_episodic_memory
+    from apps.core.memory.user_facts import get_user_facts
+
+    cid = _conversation_id({"email": email})
+    mind = get_aria_mind()
+    history, state, goals, learned, episodes, facts = await asyncio.gather(
+        mind._load_history(cid),
+        mind._load_state(cid),
+        mind._load_goals(),
+        mind._load_learned(),
+        get_episodic_memory().get_recent(email, n=20),
+        get_user_facts().list_all(email, limit=50),
+    )
+    return {
+        "email": email,
+        "conversation_id": cid,
+        "thread": {"history": history, "state": state},
+        "episodic": episodes,
+        "facts": facts,
+        "global": {"goals": goals, "learned": learned},
+        "note": "global.goals and global.learned are shared across every user, not scoped to this email.",
+    }
+
+
 @app.get("/api/v1/connectors/health")
 async def connectors_health():
     """Connector health for the preventive banner. Refreshes lazily if stale
