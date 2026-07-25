@@ -133,8 +133,17 @@ class WorkflowEngine:
             "steps_preview": [s.description or s.tool for s in steps],
         }
 
-    async def run(self, workflow_id: str) -> dict[str, Any]:
-        """Runs a workflow step by step. Each step's output feeds the next."""
+    async def run(self, workflow_id: str, email: str = "") -> dict[str, Any]:
+        """Runs a workflow step by step. Each step's output feeds the next.
+
+        `email` is the identity of whoever triggered this run — it must be
+        threaded through to _execute_tool (for owner-only tool gating) and
+        to Guardrails Layer 2 (guardrails.review_tool_call), the same
+        constitutional review AriaMind.handle() applies to consequential
+        tools on the normal chat path. Without this, a workflow step could
+        run execute_code/record_cashflow_entry/etc. with an effectively
+        anonymous identity and zero safety review — exactly the gap that
+        made this parameter necessary."""
         await self._ensure_loaded()
         wf = self._workflows.get(workflow_id)
         if not wf:
@@ -156,9 +165,33 @@ class WorkflowEngine:
                 )
 
             try:
+                from apps.core.safety import guardrails
+
+                decline = await guardrails.review_tool_call(
+                    step.tool, enriched_args, step.description, email=email
+                )
+                if decline:
+                    step.result = decline
+                    results.append(
+                        {
+                            "step": i + 1,
+                            "tool": step.tool,
+                            "desc": step.description,
+                            "success": False,
+                            "error": decline,
+                        }
+                    )
+                    logger.warning(
+                        "[Workflow:%s] Step %d blocked by Guardrails: %s",
+                        workflow_id,
+                        i + 1,
+                        decline,
+                    )
+                    continue
+
                 from apps.core.cognition.aria_mind import get_aria_mind
 
-                obs, _ = await get_aria_mind()._execute_tool(step.tool, enriched_args)
+                obs, _ = await get_aria_mind()._execute_tool(step.tool, enriched_args, email=email)
                 step.result = obs[:1500]
                 prev_output = step.result
                 results.append(

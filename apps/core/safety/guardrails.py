@@ -376,6 +376,65 @@ async def evaluate_plan(
         )
 
 
+# Tools consequential enough (code execution, browser/OS control, live
+# publishing, real money movement) to warrant Layer 2's extra LLM call
+# before running — running a constitutional review on every one of ~150
+# tools (including plain content generation, already covered by Layer 1's
+# input moderation) would add real latency/cost to every benign
+# interaction for no safety benefit. Shared between AriaMind.handle() (the
+# normal chat path) and WorkflowEngine.run() (multi-step automations) —
+# defined here, not as a private AriaMind class attribute, specifically so
+# every caller that can execute a tool goes through the same gate rather
+# than each needing its own copy that can drift out of sync.
+CONSTITUTIONAL_REVIEW_TOOLS = frozenset(
+    {
+        "execute_code",
+        "computer_use",
+        "post_to_social",
+        "github_write",
+        "github_pr",
+        "github_issues",
+        "record_cashflow_entry",
+        "track_roi",
+        "update_roi_returns",
+        "create_flash_sale",
+        "create_product_bundle",
+        "shopify_live_analytics",
+    }
+)
+
+
+async def review_tool_call(
+    tool: str, tool_args: dict, user_text: str = "", email: str = ""
+) -> str | None:
+    """Single entrypoint every tool-executing caller should use for Layer 2.
+    Returns a decline message if the call should be blocked (either because
+    it's an unsafe plan, or GUARDRAILS_ENABLED is off and... no — see below),
+    or None if it's clear to proceed.
+
+    Only reviews tools in CONSTITUTIONAL_REVIEW_TOOLS; anything else returns
+    None immediately without an LLM call. Respects GUARDRAILS_ENABLED
+    (apps.core.config.settings) as the debugging escape hatch it's meant to
+    be — when disabled, this always returns None (no review happens at all,
+    matching every other layer's behavior under the same flag)."""
+    if tool not in CONSTITUTIONAL_REVIEW_TOOLS:
+        return None
+    try:
+        from apps.core.config import settings
+
+        if not getattr(settings, "GUARDRAILS_ENABLED", True):
+            return None
+    except Exception:  # noqa: BLE001
+        pass
+
+    verdict = await evaluate_plan(tool, tool_args, user_text, email=email)
+    if not verdict.safe:
+        return (
+            f"I'm not going to do that ({tool}) — {verdict.reason or 'it failed a safety review'}."
+        )
+    return None
+
+
 # ── Layer 3: deterministic firewall ──────────────────────────────────────
 def check_code_safety(code: str) -> CodeSafetyResult:
     """Regex + (if installed) `bandit` static analysis. Deterministic on

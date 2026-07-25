@@ -45,6 +45,8 @@ from apps.learning.optimization.reinforcement_optimizer import ReinforcementOpti
 
 pytestmark = pytest.mark.asyncio
 
+OWNER_EMAIL = "owner@aria.test"
+
 
 class _FakeCache:
     def __init__(self):
@@ -70,6 +72,7 @@ def _patch_caches():
         ),
         patch("apps.economics.roi_tracker.get_cache", return_value=_FakeCache()),
         patch("apps.business.finance.cashflow_engine.get_cache", return_value=_FakeCache()),
+        patch("apps.core.auth.is_owner_email", side_effect=lambda e: e == OWNER_EMAIL),
     ):
         yield
 
@@ -233,19 +236,39 @@ async def test_reinforcement_report_empty_state():
     assert "no growth actions logged" in obs.lower()
 
 
+async def test_roi_and_cashflow_tools_blocked_for_non_owner():
+    """A security-audit pass found these persist to a single Redis key
+    shared by every user (economics:roi:v1, business:cashflow:v1) — any
+    signed-in non-owner user could corrupt the owner's real financial
+    ledger. They're now owner-only."""
+    mind = AriaMind()
+    obs, media = await mind._execute_tool(
+        "record_cashflow_entry",
+        {"type": "income", "amount": 999999, "category": "sales"},
+        email="someone@else.com",
+    )
+
+    assert media == {}
+    assert "owner" in obs.lower()
+
+
 # ── ROITracker ──────────────────────────────────────────────────────────
 async def test_track_roi_and_update_returns_flow():
     engine = ROITracker()
     with patch("apps.economics.roi_tracker.get_roi_tracker", return_value=engine):
         mind = AriaMind()
         track_obs, _ = await mind._execute_tool(
-            "track_roi", {"name": "Spring campaign", "category": "campaign", "investment_usd": 100}
+            "track_roi",
+            {"name": "Spring campaign", "category": "campaign", "investment_usd": 100},
+            email=OWNER_EMAIL,
         )
         assert "Spring campaign" in track_obs
         record_id = track_obs.split("record_id `")[1].split("`")[0]
 
         update_obs, media = await mind._execute_tool(
-            "update_roi_returns", {"record_id": record_id, "returns_usd": 250}
+            "update_roi_returns",
+            {"record_id": record_id, "returns_usd": 250},
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -257,7 +280,9 @@ async def test_update_roi_returns_unknown_record():
     with patch("apps.economics.roi_tracker.get_roi_tracker", return_value=engine):
         mind = AriaMind()
         obs, media = await mind._execute_tool(
-            "update_roi_returns", {"record_id": "does-not-exist", "returns_usd": 10}
+            "update_roi_returns",
+            {"record_id": "does-not-exist", "returns_usd": 10},
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -268,7 +293,7 @@ async def test_roi_summary_empty_state():
     engine = ROITracker()
     with patch("apps.economics.roi_tracker.get_roi_tracker", return_value=engine):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("roi_summary", {})
+        obs, media = await mind._execute_tool("roi_summary", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "no roi records yet" in obs.lower()
@@ -282,6 +307,7 @@ async def test_record_cashflow_entry_reachable_from_tool_dispatch():
         obs, media = await mind._execute_tool(
             "record_cashflow_entry",
             {"type": "income", "amount": 500, "category": "sales"},
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -291,7 +317,9 @@ async def test_record_cashflow_entry_reachable_from_tool_dispatch():
 async def test_record_cashflow_entry_requires_valid_type():
     mind = AriaMind()
     obs, media = await mind._execute_tool(
-        "record_cashflow_entry", {"type": "bogus", "amount": 10, "category": "x"}
+        "record_cashflow_entry",
+        {"type": "bogus", "amount": 10, "category": "x"},
+        email=OWNER_EMAIL,
     )
 
     assert media == {}
@@ -303,12 +331,16 @@ async def test_cashflow_summary_reflects_recorded_entries():
     with patch("apps.business.finance.cashflow_engine.get_cashflow_engine", return_value=engine):
         mind = AriaMind()
         await mind._execute_tool(
-            "record_cashflow_entry", {"type": "income", "amount": 1000, "category": "sales"}
+            "record_cashflow_entry",
+            {"type": "income", "amount": 1000, "category": "sales"},
+            email=OWNER_EMAIL,
         )
         await mind._execute_tool(
-            "record_cashflow_entry", {"type": "expense", "amount": 300, "category": "ads"}
+            "record_cashflow_entry",
+            {"type": "expense", "amount": 300, "category": "ads"},
+            email=OWNER_EMAIL,
         )
-        obs, media = await mind._execute_tool("cashflow_summary", {})
+        obs, media = await mind._execute_tool("cashflow_summary", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "$700.00" in obs
@@ -318,7 +350,9 @@ async def test_forecast_cashflow_reachable_from_tool_dispatch():
     engine = CashflowEngine()
     with patch("apps.business.finance.cashflow_engine.get_cashflow_engine", return_value=engine):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("forecast_cashflow", {"months_ahead": 2})
+        obs, media = await mind._execute_tool(
+            "forecast_cashflow", {"months_ahead": 2}, email=OWNER_EMAIL
+        )
 
     assert media == {}
     assert "Cashflow forecast" in obs

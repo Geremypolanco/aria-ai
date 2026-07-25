@@ -919,20 +919,16 @@ class AriaMind:
             # Execute the tool if there is one
             if has_tool:
                 # ── SAFETY LAYER 2: constitutional plan review ──────────
-                # Only for consequential tools (see _CONSTITUTIONAL_REVIEW_TOOLS)
-                # — reviews the SPECIFIC tool+args the planner picked, not the
-                # raw text (Layer 1 already covers that). Fails closed.
-                if (
-                    getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True)
-                    and tool in self._CONSTITUTIONAL_REVIEW_TOOLS
-                ):
-                    from apps.core.safety import guardrails
+                # Shared with WorkflowEngine.run() (apps/core/tools/workflow_engine.py)
+                # via guardrails.review_tool_call — see CONSTITUTIONAL_REVIEW_TOOLS
+                # in guardrails.py for why this only applies to consequential
+                # tools, not all ~150. Fails closed.
+                from apps.core.safety import guardrails
 
-                    verdict = await guardrails.evaluate_plan(tool, tool_args, text, email=email)
-                    if not verdict.safe:
-                        decline = f"I'm not going to do that ({tool}) — {verdict.reason or 'it failed a safety review'}."
-                        await self._store_interaction(chat_id, text, decline, tool)
-                        return MindResponse(text=decline)
+                decline = await guardrails.review_tool_call(tool, tool_args, text, email=email)
+                if decline:
+                    await self._store_interaction(chat_id, text, decline, tool)
+                    return MindResponse(text=decline)
                 obs, media = await self._execute_with_retry(tool, tool_args, email=email)
                 final_text = await self._synthesize(text, tool, obs)
                 # bool(media or obs) was always True (obs is a non-empty string even on
@@ -1221,29 +1217,39 @@ class AriaMind:
             "list_social_sessions",
             "check_social_session",
             "post_to_social",
-        }
-    )
-
-    # Tools consequential enough (code execution, browser/OS control, live
-    # publishing, real money movement) to warrant Guardrails Layer 2's extra
-    # LLM call before running — running a constitutional review on every one
-    # of ~150 tools (including plain content generation, already covered by
-    # Layer 1's input moderation) would add real latency/cost to every
-    # benign interaction for no safety benefit.
-    _CONSTITUTIONAL_REVIEW_TOOLS = frozenset(
-        {
-            "execute_code",
-            "computer_use",
-            "post_to_social",
-            "github_write",
-            "github_pr",
-            "github_issues",
-            "record_cashflow_entry",
-            "track_roi",
-            "update_roi_returns",
+            # ── "The business's" singular real state ────────────────────
+            # Every one of these modules persists to ONE global Redis key
+            # (not scoped per-user — e.g. business:cashflow:v1,
+            # economics:roi:v1, shopify:flash_sales:v1), and
+            # shopify_live_analytics/shopify_store_status read from the
+            # owner's own real Shopify Admin API credentials
+            # (SHOPIFY_ACCESS_TOKEN). A non-owner authenticated user reaching
+            # any of these could corrupt the owner's real financial ledger
+            # or read the owner's real store's private revenue data through
+            # the owner's own API token — a data-integrity/exposure issue,
+            # not just a permissions nicety. Content/growth tools wired the
+            # same session (blog, LinkedIn, Twitter, internal linking,
+            # reinforcement learning) are deliberately NOT included here:
+            # they don't touch money or credentials, so open access to them
+            # is a lower-severity, legitimate multi-user utility tradeoff.
+            "recover_abandoned_cart",
             "create_flash_sale",
             "create_product_bundle",
+            "recommend_products",
+            "shopify_revenue_dashboard",
+            "optimize_product_seo",
+            "audit_seo_keywords",
+            "create_upsell_offer",
+            "optimize_shopify_checkout",
+            "create_post_purchase_flow",
+            "shopify_store_status",
             "shopify_live_analytics",
+            "track_roi",
+            "update_roi_returns",
+            "roi_summary",
+            "record_cashflow_entry",
+            "cashflow_summary",
+            "forecast_cashflow",
         }
     )
 
@@ -1610,17 +1616,41 @@ class AriaMind:
                 content = args.get("content", "")
                 tags = args.get("tags", [])
                 platforms = args.get("platforms", ["devto"])
+
+                # ── SAFETY LAYER 3: content firewall ─────────────────────
+                # Checks the AI-generated article itself, not the request
+                # that produced it — a phishing-shaped article can come from
+                # an innocuously-worded prompt, so Layer 1 (which only
+                # screens the raw chat message) can't be relied on here.
+                from apps.core.config import settings as _guardrail_settings
+                from apps.core.safety import guardrails
+
+                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+                    safety = guardrails.check_content_safety(f"{title}\n{content}")
+                    if not safety.safe:
+                        with suppress(Exception):
+                            await guardrails.record_audit_event(
+                                "content_blocked",
+                                {"email": email, "tool": tool, "findings": safety.findings},
+                            )
+                        return (
+                            "I'm not going to publish that — it matched a blocked pattern: "
+                            f"{'; '.join(safety.findings)}.",
+                            {},
+                        )
+
                 from apps.core.tools.publishing_tools import PublishingTools
 
                 pt = PublishingTools()
+                article = {"title": title, "body": content, "body_html": content, "tags": tags}
                 results = {}
                 for plat in platforms:
                     if plat == "devto":
-                        results["devto"] = await pt.publish_to_devto(title, content, tags)
+                        results["devto"] = await pt.publish_devto(article)
                     elif plat == "medium":
-                        results["medium"] = await pt.publish_to_medium(title, content, tags)
+                        results["medium"] = await pt.publish_medium(article)
                     elif plat == "hashnode":
-                        results["hashnode"] = await pt.publish_to_hashnode(title, content, tags)
+                        results["hashnode"] = await pt.publish_hashnode(article)
                 published = [p for p, r in results.items() if r.get("success")]
                 if published:
                     return f"Article published on: {', '.join(published)}", {}
@@ -1632,6 +1662,28 @@ class AriaMind:
                 subject = args.get("subject", "")
                 body = args.get("body", "")
                 to = args.get("to", "")
+
+                # ── SAFETY LAYER 3: content firewall ─────────────────────
+                # An email sent to a real recipient is unrecallable the
+                # instant it's out — checked here, not just via Layer 1 on
+                # the request text, for the same reason as publish_article.
+                from apps.core.config import settings as _guardrail_settings
+                from apps.core.safety import guardrails
+
+                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+                    safety = guardrails.check_content_safety(f"{subject}\n{body}")
+                    if not safety.safe:
+                        with suppress(Exception):
+                            await guardrails.record_audit_event(
+                                "content_blocked",
+                                {"email": email, "tool": tool, "findings": safety.findings},
+                            )
+                        return (
+                            "I'm not going to send that — it matched a blocked pattern: "
+                            f"{'; '.join(safety.findings)}.",
+                            {},
+                        )
+
                 from apps.core.tools.publishing_tools import PublishingTools
 
                 r = await PublishingTools().send_newsletter(subject, body, to_override=to)
@@ -3104,6 +3156,31 @@ class AriaMind:
                 page = await get_landing_page_engine().create_page(
                     product, offer, target_audience, price
                 )
+
+                # ── SAFETY LAYER 3: content firewall ─────────────────────
+                # This tool returns copy for the user to publish themselves
+                # (not hosted by ARIA), same category as post_to_social's
+                # own preview step — but a credential-harvesting page is
+                # exactly the shape this check exists to catch before
+                # anyone copies it onto a real live domain.
+                from apps.core.config import settings as _guardrail_settings
+                from apps.core.safety import guardrails
+
+                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+                    page_text = f"{page.headline}\n{page.hero_copy}\n{page.cta_primary}"
+                    safety = guardrails.check_content_safety(page_text)
+                    if not safety.safe:
+                        with suppress(Exception):
+                            await guardrails.record_audit_event(
+                                "content_blocked",
+                                {"email": email, "tool": tool, "findings": safety.findings},
+                            )
+                        return (
+                            "I'm not going to generate that page — it matched a blocked "
+                            f"pattern: {'; '.join(safety.findings)}.",
+                            {},
+                        )
+
                 bullets = "\n".join(f"  • {b}" for b in page.bullet_points)
                 return (
                     f"**{page.headline}** (id: `{page.page_id}`, est. CVR {page.estimated_cvr_pct:.1f}%)\n"
@@ -3971,6 +4048,28 @@ class AriaMind:
                 if not platform or not text:
                     return "I need a platform and the text to post.", {}
 
+                # ── SAFETY LAYER 3: content firewall ─────────────────────
+                # Checked before the preview is even generated: a phishing/
+                # credential-harvesting post must never reach the preview
+                # step, since a user could confirm it verbatim without
+                # re-reading closely.
+                from apps.core.config import settings as _guardrail_settings
+                from apps.core.safety import guardrails
+
+                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+                    safety = guardrails.check_content_safety(text)
+                    if not safety.safe:
+                        with suppress(Exception):
+                            await guardrails.record_audit_event(
+                                "content_blocked",
+                                {"email": email, "tool": tool, "findings": safety.findings},
+                            )
+                        return (
+                            "I'm not going to post that — it matched a blocked "
+                            f"pattern: {'; '.join(safety.findings)}.",
+                            {},
+                        )
+
                 # Forced preview step, enforced in code rather than trusted to
                 # the model's own prompt-following: this is an immediately
                 # public, effectively irreversible action using the owner's
@@ -4060,7 +4159,7 @@ class AriaMind:
                 wid = args.get("workflow_id", "")
                 from apps.core.tools.workflow_engine import get_workflow_engine
 
-                r = await get_workflow_engine().run(wid)
+                r = await get_workflow_engine().run(wid, email=email)
                 if "results" in r:
                     steps_summary = "; ".join(
                         f"step{s['step']}={'OK' if s['success'] else 'FAIL'}"

@@ -36,6 +36,8 @@ from apps.shopify.seo.product_seo import ProductSEOOptimizer
 
 pytestmark = pytest.mark.asyncio
 
+OWNER_EMAIL = "owner@aria.test"
+
 
 class _FakeCache:
     def __init__(self):
@@ -54,8 +56,21 @@ def _patch_caches():
     with (
         patch("apps.shopify.seo.product_seo.get_cache", return_value=_FakeCache()),
         patch("apps.shopify.funnels.shopify_funnels.get_cache", return_value=_FakeCache()),
+        patch("apps.core.auth.is_owner_email", side_effect=lambda e: e == OWNER_EMAIL),
     ):
         yield
+
+
+async def test_shopify_seo_funnel_tools_blocked_for_non_owner():
+    mind = AriaMind()
+    obs, media = await mind._execute_tool(
+        "optimize_product_seo",
+        {"product_name": "Yoga Mat", "current_title": "Yoga Mat"},
+        email="someone@else.com",
+    )
+
+    assert media == {}
+    assert "owner" in obs.lower()
 
 
 # ── ProductSEOOptimizer ──────────────────────────────────────────────
@@ -72,6 +87,7 @@ async def test_optimize_product_seo_reachable_from_tool_dispatch():
                 "current_description": "A mat for yoga.",
                 "category": "fitness",
             },
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -81,7 +97,7 @@ async def test_optimize_product_seo_reachable_from_tool_dispatch():
 
 async def test_optimize_product_seo_requires_name_and_title():
     mind = AriaMind()
-    obs, media = await mind._execute_tool("optimize_product_seo", {})
+    obs, media = await mind._execute_tool("optimize_product_seo", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "title" in obs.lower()
@@ -91,7 +107,9 @@ async def test_audit_seo_keywords_reachable_from_tool_dispatch():
     engine = ProductSEOOptimizer()
     with patch("apps.shopify.seo.product_seo.get_product_seo_optimizer", return_value=engine):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("audit_seo_keywords", {"niche": "yoga mats"})
+        obs, media = await mind._execute_tool(
+            "audit_seo_keywords", {"niche": "yoga mats"}, email=OWNER_EMAIL
+        )
 
     assert media == {}
     assert "yoga mats" in obs
@@ -100,7 +118,7 @@ async def test_audit_seo_keywords_reachable_from_tool_dispatch():
 
 async def test_audit_seo_keywords_requires_niche():
     mind = AriaMind()
-    obs, media = await mind._execute_tool("audit_seo_keywords", {})
+    obs, media = await mind._execute_tool("audit_seo_keywords", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "niche" in obs.lower()
@@ -121,6 +139,7 @@ async def test_create_upsell_offer_reachable_from_tool_dispatch():
                 "upsell_product": "Yoga Blocks",
                 "upsell_price": 20.0,
             },
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -129,7 +148,9 @@ async def test_create_upsell_offer_reachable_from_tool_dispatch():
 
 async def test_create_upsell_offer_requires_both_products():
     mind = AriaMind()
-    obs, media = await mind._execute_tool("create_upsell_offer", {"original_product": "Yoga Mat"})
+    obs, media = await mind._execute_tool(
+        "create_upsell_offer", {"original_product": "Yoga Mat"}, email=OWNER_EMAIL
+    )
 
     assert media == {}
     assert "upsell product" in obs.lower()
@@ -144,6 +165,7 @@ async def test_optimize_shopify_checkout_reachable_from_tool_dispatch():
         obs, media = await mind._execute_tool(
             "optimize_shopify_checkout",
             {"product_name": "Yoga Mat", "pain_points": ["too many steps"]},
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -158,7 +180,9 @@ async def test_create_post_purchase_flow_reachable_from_tool_dispatch():
     ):
         mind = AriaMind()
         obs, media = await mind._execute_tool(
-            "create_post_purchase_flow", {"product_name": "Yoga Mat", "category": "fitness"}
+            "create_post_purchase_flow",
+            {"product_name": "Yoga Mat", "category": "fitness"},
+            email=OWNER_EMAIL,
         )
 
     assert media == {}
@@ -175,7 +199,7 @@ async def test_shopify_store_status_not_configured():
     client._token = ""
     with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("shopify_store_status", {})
+        obs, media = await mind._execute_tool("shopify_store_status", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "no shopify store connected" in obs.lower()
@@ -189,7 +213,7 @@ async def test_shopify_store_status_configured():
     client._token = "shpat_faketoken"
     with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("shopify_store_status", {})
+        obs, media = await mind._execute_tool("shopify_store_status", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "Shopify store connected" in obs
@@ -205,7 +229,7 @@ async def test_shopify_live_analytics_requires_configured_store():
     client._token = ""
     with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("shopify_live_analytics", {})
+        obs, media = await mind._execute_tool("shopify_live_analytics", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "no shopify store connected" in obs.lower()
@@ -230,7 +254,9 @@ async def test_shopify_live_analytics_reachable_when_configured():
     )
     with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("shopify_live_analytics", {"days": 30})
+        obs, media = await mind._execute_tool(
+            "shopify_live_analytics", {"days": 30}, email=OWNER_EMAIL
+        )
 
     assert media == {}
     assert "Real Shopify revenue" in obs
@@ -273,7 +299,7 @@ async def test_shopify_revenue_dashboard_includes_seo_and_funnel_stats():
         ),
     ):
         mind = AriaMind()
-        obs, media = await mind._execute_tool("shopify_revenue_dashboard", {})
+        obs, media = await mind._execute_tool("shopify_revenue_dashboard", {}, email=OWNER_EMAIL)
 
     assert media == {}
     assert "SEO:" in obs
