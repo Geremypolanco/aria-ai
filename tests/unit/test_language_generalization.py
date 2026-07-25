@@ -34,6 +34,14 @@ def test_aria_mind_lang_directive_names_no_specific_language():
     assert "exact same language" in directive
 
 
+def test_aria_mind_lang_directive_forbids_narrating_the_instruction():
+    """Regression: a weaker/faster model was observed narrating this
+    instruction verbatim ("Identifico el idioma como español...") instead of
+    silently applying it, producing a non-answer instead of a real reply."""
+    directive = AriaMind._lang_directive("Cuáles son las top 10 mejores AIs?")
+    assert "do not mention" in directive.lower()
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [
@@ -158,3 +166,10 @@ def test_workflow_lang_directive_embeds_arbitrary_goal_language():
     directive = workflow_lang_directive("Erstelle einen Marketingplan für mein Café")
     assert "Erstelle einen Marketingplan" in directive
     assert "exact same language" in directive
+
+
+def test_workflow_lang_directive_forbids_narrating_the_instruction():
+    """Same regression as aria_mind's sibling directive — this is an
+    independently-implemented copy with the same original phrasing bug."""
+    directive = workflow_lang_directive("Erstelle einen Marketingplan für mein Café")
+    assert "never mention" in directive.lower()

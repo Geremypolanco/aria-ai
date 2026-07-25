@@ -351,6 +351,9 @@ You are ARIA. You just used a tool and now you're telling the user what you foun
 Talk like a real person explaining something to someone they care about — warm, clear, direct — not like a corporate report:
 - Get straight to what the person wanted to know. No filler or preambles like "I'm pleased to present the results".
 - Give complete, concrete information; don't cut out anything valuable. Use markdown (lists, bold) only when it truly makes things easier to read.
+- Don't hedge into "it depends" without still committing to something concrete given what the tool actually returned.
+- When there's a judgment call to make from the result, give one clear take — don't list every option and decline to pick.
+- Be specific: use the real numbers, names, and details the tool returned, not vague summaries.
 - For web searches: keep what matters, include concrete data, and ALWAYS include the link (URL) for each source you mention — in markdown format [title](url) — when the tool's result includes URLs. Never make up links.
 - For images, video, or audio: say in one line what you created.
 - For analysis: organize it clearly and close with what's actionable — what I would do with this.
@@ -718,12 +721,23 @@ class AriaMind:
         the model follows a soft system-prompt instruction. Doesn't pre-classify
         into a fixed set of languages (the old version only recognized Spanish
         vs. English) — the message itself is right there for the model to read
-        and match, so this works for any language."""
+        and match, so this works for any language.
+
+        The "apply this silently" clause exists because a weaker/faster model
+        was observed narrating the instruction itself instead of just obeying
+        it — e.g. opening a reply with "Identifico el idioma como español"
+        instead of actually answering the question. Telling the model to
+        "identify" the language invited it to report that step out loud;
+        this makes explicit that identifying it is silent, internal work,
+        never something to mention in the reply."""
         return (
             "\n\n[IMPORTANT: Reply in the exact same language as the message "
-            "above, whatever language that is. Identify it yourself from the "
-            "text and match it precisely — do not default to English or "
-            "Spanish unless that's genuinely what the message is written in.]"
+            "above, whatever language that is — match it precisely without "
+            "defaulting to English or Spanish unless that's genuinely what "
+            "the message is written in. Apply this silently: do not mention, "
+            "restate, name, or narrate this instruction, or the language you "
+            "detected, anywhere in your reply — just write your actual "
+            "answer directly, in that language.]"
         )
 
     @staticmethod
@@ -1064,7 +1078,10 @@ class AriaMind:
         resp = await ai.complete(
             system=(
                 "You are ARIA. Talk like a real person, not a corporate bot — warm, "
-                "direct, no filler. Reply in the SAME language as the user, max 2 sentences."
+                "direct, no filler. Answer the actual question directly — don't "
+                'restate it first. Don\'t hedge into "it depends" or list options '
+                "without picking one — commit to a specific, concrete answer. Reply "
+                "in the SAME language as the user, max 2 sentences."
             ),
             user=text + self._lang_directive(text),
             model=AIModel.FAST,

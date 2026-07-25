@@ -16,14 +16,22 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
-from apps.core.tools.ai_client import AIProvider, AriaAIClient
+from apps.core.tools.ai_client import AIModel, AIProvider, AIResponse, AriaAIClient
 
 
 @pytest.fixture
 def client():
     return AriaAIClient()
+
+
+def _ai_response(content: str, *, success: bool = True, error: str | None = None) -> AIResponse:
+    return AIResponse(
+        content=content, provider=AIProvider.ANTHROPIC, model="fake", success=success, error=error
+    )
 
 
 def test_extract_json_safe_handles_top_level_array(client):
@@ -130,7 +138,13 @@ async def test_call_anthropic_skips_non_text_blocks(client, monkeypatch):
 def _all_keys_present(monkeypatch):
     # hf_key is a read-only computed property over HF_TOKEN/HF_API_KEY/
     # HUGGING_FACE_TOKEN (see apps/core/config.py) — patch the underlying field.
-    for name in ("HF_TOKEN", "GROQ_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+    for name in (
+        "HF_TOKEN",
+        "GROQ_API_KEY",
+        "GOOGLE_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+    ):
         monkeypatch.setattr(f"apps.core.tools.ai_client.settings.{name}", "fake-key", raising=False)
 
 
@@ -178,3 +192,81 @@ def test_hf_unhealthy_reprioritization_does_not_apply_in_quality_mode(client, mo
     # Cost-first mode should still react to the HF outage as before.
     cost_order = client._get_available_providers(prefer_quality=False)
     assert cost_order[0] == AIProvider.GROQ
+
+
+# ── complete_json() JSON-repair retry ────────────────────────────────────
+# json_mode is prompt-only enforcement (see _extract_json_safe above), not a
+# real provider schema, so a model can still return unparseable output.
+# complete_json() used to give up silently on any parse failure; it now
+# makes exactly one repair call before giving up, and logs on final failure.
+
+
+@pytest.mark.asyncio
+async def test_complete_json_repairs_malformed_json_on_first_parse_failure(client, monkeypatch):
+    calls = []
+
+    async def fake_complete(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _ai_response("{not valid json")
+        return _ai_response('{"valid": true}')
+
+    monkeypatch.setattr(client, "complete", fake_complete)
+
+    result = await client.complete_json(system="sys", user="usr", agent_name="my_agent")
+
+    assert result == {"valid": True}
+    assert len(calls) == 2
+    assert calls[1]["agent_name"] == "my_agent_json_repair"
+    assert calls[1]["model"] == AIModel.FAST
+
+
+@pytest.mark.asyncio
+async def test_complete_json_returns_empty_dict_and_logs_when_repair_also_fails(
+    client, monkeypatch, caplog
+):
+    async def fake_complete(**kwargs):
+        return _ai_response("still not valid json")
+
+    monkeypatch.setattr(client, "complete", fake_complete)
+
+    with caplog.at_level("WARNING"):
+        result = await client.complete_json(system="sys", user="usr", agent_name="my_agent")
+
+    assert result == {}
+    assert any("malformed JSON even after repair" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_complete_json_does_not_retry_when_all_providers_fail(client, monkeypatch, caplog):
+    fake_complete = AsyncMock(
+        return_value=_ai_response("", success=False, error="All providers failed")
+    )
+    monkeypatch.setattr(client, "complete", fake_complete)
+
+    with caplog.at_level("WARNING"):
+        result = await client.complete_json(system="sys", user="usr", agent_name="my_agent")
+
+    assert result == {}
+    fake_complete.assert_awaited_once()
+    assert any("all providers failed" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_complete_json_repair_call_uses_fast_model_regardless_of_original_model(
+    client, monkeypatch
+):
+    calls = []
+
+    async def fake_complete(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _ai_response("{broken")
+        return _ai_response('{"ok": 1}')
+
+    monkeypatch.setattr(client, "complete", fake_complete)
+
+    await client.complete_json(system="sys", user="usr", model=AIModel.STRATEGY)
+
+    assert calls[0]["model"] == AIModel.STRATEGY
+    assert calls[1]["model"] == AIModel.FAST

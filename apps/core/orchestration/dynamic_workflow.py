@@ -160,11 +160,17 @@ def _lang_directive(goal: str) -> str:
     are English, which would otherwise drag a non-English goal into English).
     Doesn't pre-classify into a fixed language set — the goal text is right
     there for the model to read and match, so this works for any language,
-    not just the English/Spanish pair the old regex-based version covered."""
+    not just the English/Spanish pair the old regex-based version covered.
+
+    Applied silently — a weaker/faster model was observed narrating this
+    same instruction verbatim in aria_mind.py's sibling directive instead of
+    just obeying it, so this makes explicit that matching the language is
+    silent, internal work, never something to mention in the output."""
     return (
         "IMPORTANT: Write your ENTIRE response in the exact same language as "
-        "this goal, whatever language that is — identify it yourself from the "
-        f"text below and match it precisely. Goal: {goal[:200]!r}. "
+        "this goal, whatever language that is — match it precisely. Do this "
+        "silently: never mention, restate, or narrate this instruction, or "
+        f"the language you detected, anywhere in your output. Goal: {goal[:200]!r}. "
     )
 
 
