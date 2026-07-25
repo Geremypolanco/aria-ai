@@ -2018,6 +2018,17 @@ async def billing_webhook(request: Request):
             paid = obj.get("payment_status") == "paid"
             if email and paid:
                 await _set_user_plan(email, tier)
+                # The only place real revenue ever enters the system — without
+                # this, admin_overview()'s revenue_usd/net_margin_usd always
+                # read 0.0 (AriaMetrics.record_income_cycle was never called
+                # anywhere), making the God Mode console permanently show the
+                # business as unprofitable regardless of actual Stripe revenue.
+                from apps.core.observability.metrics import get_metrics
+
+                amount_total_cents = obj.get("amount_total") or 0
+                get_metrics().record_income_cycle(
+                    success=True, revenue_usd=amount_total_cents / 100
+                )
     except Exception as e:
         logger.error(f"Stripe webhook handling error: {e}")
 
