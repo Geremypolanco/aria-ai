@@ -191,6 +191,13 @@ AVAILABLE TOOLS (you execute them, not the user):
 - create_product_bundle → bundles 2+ products with AI-generated name/description/CTA at a discount. Args: {{"products": [{{"id": "...", "title": "...", "price": 0}}], "bundle_type": "complementary|quantity|starter|premium", "discount_pct": 0.15}}
 - recommend_products  → context-aware product recommendations (collaborative/content/trending) from a catalog, for cart/product/homepage/post-purchase placements. Args: {{"user_id": "...", "context": "cart|product|homepage|post_purchase", "catalog": [{{"id": "...", "title": "...", "price": 0, "category": "...", "tags": []}}], "current_product_id": "...", "limit": 5}}
 - shopify_revenue_dashboard → snapshot of cart recovery, flash sale, bundle, and recommendation performance in one call. Args: {{}}
+- discover_leads    → finds B2B leads in a niche via real web search, padded with clearly-labeled illustrative examples when live results run short (never presents synthetic leads as real). Args: {{"niche": "...", "count": 10, "location": "US"}}
+- generate_sales_proposal → drafts a personalized outreach proposal (subject, hook, pain point, solution, social proof, CTA) for a named company. Args: {{"company_name": "...", "niche": "...", "pain_points": ["..."], "services_needed": ["..."], "estimated_value_usd": 0}}
+- add_linkedin_prospect → adds a prospect to the LinkedIn outreach pipeline. Args: {{"name": "...", "title": "...", "company": "...", "industry": "...", "profile_url": "..."}}
+- score_linkedin_prospect → AI-scores a LinkedIn prospect's relevance (0-1) and likely pain point against a service you're offering. Args: {{"prospect_id": "...", "service_offered": "..."}}
+- generate_linkedin_connection_request → a single personalized connection note under 300 characters. Args: {{"prospect_id": "...", "service": "..."}}
+- generate_linkedin_outreach_sequence → a 4-message sequence (connection → intro → 2 follow-ups) for a scored prospect. Args: {{"prospect_id": "...", "service": "..."}}
+- linkedin_outreach_pipeline → pipeline analytics (connection/reply rates) plus the highest-scoring prospects not yet contacted. Args: {{"min_score": 0.7}}
 - run_crew         → a team of agents collaborating sequentially on a complex mission. Args: {{"mission": "...", "crew": "research_crew|content_crew|dev_crew|sales_crew|launch_crew|venture_crew"}}
 - create_workflow  → creates a multi-step automation from a natural description. Args: {{"name": "...", "description": "what each step should do"}}
 - run_workflow     → runs a saved workflow. Args: {{"workflow_id": "..."}}
@@ -222,22 +229,23 @@ REASONING RULES:
 16. When the user gives you real customer/user behavior data (page views, cart adds, purchases, refunds, etc.) → use analyze_user_behavior to get intent/churn/LTV signals and a next-best-action, not a generic guess. For persona-level audience work (who to target and how) → generate_audience_personas, then match_content_to_persona before finalizing copy meant for a specific persona.
 17. Before recommending real ad spend → create_ad_audience + estimate_ad_cac to check the math is profitable (CAC well under product price) before proposing a campaign. For retargeting specifically, use create_retargeting_campaign (or cart_abandonment_sequence for cart abandoners), log real results with record_retargeting_metrics as they come in, and check retargeting_performance before recommending scaling a campaign up.
 18. For an existing Shopify store's revenue optimization (not creating new products — that's run_business_agent with agent="ecommerce") → recover_abandoned_cart for cart abandoners, create_flash_sale or create_product_bundle to move underperforming or complementary inventory, recommend_products for on-site placements, and shopify_revenue_dashboard for a quick health check across all of them.
-19. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
-20. For recurring automations → use create_workflow + run_workflow.
-21. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
-22. If you're unsure what the user wants → interpret the most useful intent and execute it.
-23. Never make up data, prices, statistics, or facts. Search if you don't know.
-24. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
-25. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
-26. If the user asks to search for repos or projects on GitHub → use github_search.
-27. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
-28. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
-29. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
-30. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
-31. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
-32. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
-33. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
-34. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
+19. For B2B lead generation → discover_leads first, then generate_sales_proposal for a specific one worth pursuing. Always be explicit about which leads came from a real web search vs. the illustrative examples used to pad a short result — never present a synthetic example as a real, contactable business. For LinkedIn specifically → add_linkedin_prospect, score_linkedin_prospect to prioritize, then generate_linkedin_connection_request (single note) or generate_linkedin_outreach_sequence (full 4-message sequence) once you know the fit is good. Check linkedin_outreach_pipeline before suggesting who to follow up with next.
+20. For complex, multi-disciplinary projects → use run_crew for specialized agent collaboration.
+21. For recurring automations → use create_workflow + run_workflow.
+22. For critical decisions or maximum-importance questions → use think_verified for maximum quality.
+23. If you're unsure what the user wants → interpret the most useful intent and execute it.
+24. Never make up data, prices, statistics, or facts. Search if you don't know.
+25. If the user asks to view/read/explore code on GitHub → use github_view. For MY OWN code → github_self with sub="structure" or sub="read".
+26. If the user asks to create files, branches, PRs, or issues on GitHub → use github_write, github_pr, github_issues.
+27. If the user asks to search for repos or projects on GitHub → use github_search.
+28. If the user asks to generate revenue, launch a business, or monetize a specific niche → use launch_niche with the correct niche_key.
+29. If the user asks to see what niches are available or which are most profitable → use list_niches or income_dashboard.
+30. If the user asks ARIA to work autonomously to generate money without intervention → use auto_income.
+31. For decisions about which niche to prioritize → use analyze_decision with the criteria: market, competition, time_to_revenue.
+32. If the user asks to see the status of the income loop or wants to know what ARIA is doing in the background → use income_loop_status.
+33. If the user asks to run a specific income strategy right now → use run_income_cycle with the strategy.
+34. ARIA has a 24/7 loop already running in the background. There's no need to launch it manually unless the user explicitly asks for it.
+35. computer_use is a last resort for pages/apps browse_page and interact_browser genuinely cannot handle (visual layouts with no stable selectors, canvas-based UIs, drag interactions) — try the cheaper structured browser tools first. It only works for the owner; for anyone else, explain that this action is owner-only rather than attempting a workaround.
 
 LEARNED RULES (from self-reflection on my own interactions):
 {learned}
@@ -356,6 +364,14 @@ _HELP_TEXT = """\
 - `bundle these products together` — discounted bundle with AI copy
 - `recommend products for [context]` — cart/product/homepage/post-purchase picks
 - `how's my store's revenue engine doing?` — cart recovery, sales, bundles, recs at a glance
+
+**Lead gen & LinkedIn outreach**
+- `find leads in [niche]` — real web search, clearly labeled illustrative examples if it comes up short
+- `write a proposal for [company]` — personalized outreach brief
+- `add [name] at [company] as a LinkedIn prospect` — track them in the pipeline
+- `score this prospect for [service]` — relevance + likely pain point
+- `write a connection request / outreach sequence for [prospect]` — ready-to-send copy
+- `how's my LinkedIn pipeline doing?` — rates + top prospects to follow up with
 
 **Management**
 - `/goals` — list active goals
@@ -2484,6 +2500,147 @@ class AriaMind:
                     f"Recommendations: {rec_stats['users_tracked']} users tracked, "
                     f"{rec_stats['total_recommendations']} interactions"
                 ), {}
+
+            # ── LEAD DISCOVERY & PROPOSALS ─────────────────────────────────────
+            elif tool == "discover_leads":
+                niche = args.get("niche", "")
+                count = int(args.get("count", 10))
+                location = args.get("location", "US")
+                if not niche:
+                    return "I need a niche to search for leads in.", {}
+                from apps.acquisition.scraper.lead_scraper import get_lead_scraper
+
+                batch = await get_lead_scraper().scrape_leads(niche, count, location)
+                if not batch.raw_leads:
+                    return f"No leads found for '{niche}'.", {}
+                lines = [
+                    f"**{batch.leads_qualified}/{batch.leads_found} qualified leads for '{niche}'** "
+                    f"({', '.join(batch.sources_checked)})"
+                ]
+                for lead in batch.raw_leads:
+                    tag = "web search" if lead["source"] == "duckduckgo" else "illustrative example"
+                    signals = ", ".join(lead["signals"][:3]) or "no signals detected"
+                    lines.append(f"  • {lead['company_name']} [{tag}] — {signals}")
+                return "\n".join(lines), {}
+
+            elif tool == "generate_sales_proposal":
+                company_name = args.get("company_name", "")
+                niche = args.get("niche", "")
+                pain_points = args.get("pain_points", []) or []
+                services_needed = args.get("services_needed", []) or []
+                estimated_value_usd = float(args.get("estimated_value_usd", 0))
+                if not company_name:
+                    return "I need the company name to write a proposal for.", {}
+                from apps.acquisition.leads.lead_engine import Lead, get_lead_engine
+
+                lead = Lead(
+                    company_name=company_name,
+                    niche=niche,
+                    pain_points=pain_points,
+                    services_needed=services_needed,
+                    estimated_value_usd=estimated_value_usd,
+                )
+                brief = await get_lead_engine().generate_proposal_brief(lead)
+                return (
+                    f"**Proposal brief for {company_name}**\n"
+                    f"Subject: {brief.subject_line}\n"
+                    f"Opening: {brief.opening_hook}\n"
+                    f"Pain identified: {brief.pain_identified}\n"
+                    f"Solution: {brief.solution_summary}\n"
+                    f"Social proof: {brief.social_proof}\n"
+                    f"CTA: {brief.cta}"
+                ), {}
+
+            # ── LINKEDIN OUTREACH ────────────────────────────────────────────
+            elif tool == "add_linkedin_prospect":
+                name = args.get("name", "")
+                title = args.get("title", "")
+                company = args.get("company", "")
+                industry = args.get("industry", "")
+                profile_url = args.get("profile_url", "")
+                if not name or not company:
+                    return "I need at least a name and company to add this prospect.", {}
+                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+                prospect = await get_linkedin_outreach().add_prospect(
+                    name, title, company, industry, profile_url
+                )
+                return (
+                    f"**Added prospect '{prospect.name}'** (id: `{prospect.prospect_id}`)\n"
+                    f"{prospect.title} at {prospect.company} ({prospect.industry})"
+                ), {}
+
+            elif tool == "score_linkedin_prospect":
+                prospect_id = args.get("prospect_id", "")
+                service_offered = args.get("service_offered", "")
+                if not prospect_id or not service_offered:
+                    return (
+                        "I need a prospect_id and what service you're offering to score this prospect.",
+                        {},
+                    )
+                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+                prospect = await get_linkedin_outreach().score_prospect(
+                    prospect_id, service_offered
+                )
+                return (
+                    f"**{prospect.name}: {prospect.relevance_score:.0%} relevance**\n"
+                    f"Likely pain point: {prospect.pain_point_hypothesis}"
+                ), {}
+
+            elif tool == "generate_linkedin_connection_request":
+                prospect_id = args.get("prospect_id", "")
+                service = args.get("service", "")
+                if not prospect_id or not service:
+                    return "I need a prospect_id and the service being offered.", {}
+                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+                msg = await get_linkedin_outreach().generate_connection_request(
+                    prospect_id, service
+                )
+                return f"**Connection request** ({len(msg.body)} chars):\n{msg.body}", {}
+
+            elif tool == "generate_linkedin_outreach_sequence":
+                prospect_id = args.get("prospect_id", "")
+                service = args.get("service", "")
+                if not prospect_id or not service:
+                    return "I need a prospect_id and the service being offered.", {}
+                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+                messages = await get_linkedin_outreach().generate_outreach_sequence(
+                    prospect_id, service
+                )
+                lines = ["**4-message LinkedIn outreach sequence:**"]
+                for m in messages:
+                    lines.append(f"  {m.message_type} — {m.subject}\n    {m.body}")
+                return "\n".join(lines), {}
+
+            elif tool == "linkedin_outreach_pipeline":
+                min_score = float(args.get("min_score", 0.7))
+                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+                outreach = get_linkedin_outreach()
+                await outreach._load()
+                analytics = outreach.outreach_analytics()
+                hot = outreach.hot_prospects(min_score)
+                if analytics["total_prospects"] == 0:
+                    return "No LinkedIn prospects yet. Use add_linkedin_prospect first.", {}
+                lines = [
+                    f"**LinkedIn pipeline** ({analytics['total_prospects']} prospects)\n"
+                    f"Avg relevance: {analytics['avg_relevance_score']:.0%} · "
+                    f"Connection rate: {analytics['connection_rate_pct']:.0f}% · "
+                    f"Reply rate: {analytics['reply_rate_pct']:.0f}%",
+                    (
+                        f"Hot prospects (≥{min_score:.0%}):\n"
+                        + "\n".join(
+                            f"  • {p['name']} at {p['company']} — {p['relevance_score']:.0%}"
+                            for p in hot
+                        )
+                        if hot
+                        else f"No prospects above {min_score:.0%} relevance yet."
+                    ),
+                ]
+                return "\n\n".join(lines), {}
 
             # ── MULTI-AGENT CREW ────────────────────────────────────────────
             elif tool == "run_crew":
