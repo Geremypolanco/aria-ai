@@ -339,7 +339,7 @@ Respond ONLY with valid JSON. No markdown. No extra text. The schema is exactly:
 {{
   "thought": "step-by-step reasoning — what the user wants, what information is needed, which tool to use and why",
   "autonomous_execution": true, // set true if the task requires multiple steps, research, or real execution
-  "needs_clarification": false, // true ONLY if you genuinely cannot proceed responsibly without more input from the user — a consequential or ambiguous request, per THINK AND ASK BEFORE ACTING above. NOT for anything you could answer with a reasonable default — that's still hedging, just structured. When true, "tool" must be null and "reply" must contain your ONE best clarifying question.
+  "needs_clarification": false, // true ONLY if you genuinely cannot proceed responsibly without more input from the user — a consequential or ambiguous request, per THINK AND ASK BEFORE ACTING above. NOT for anything you could answer with a reasonable default — that's still hedging, just structured. When true, "tool" must be null and "reply" must contain your 1-3 clarifying questions (per THINK AND ASK BEFORE ACTING).
   "tool": "tool_name or null if it's direct conversation",
   "tool_args": {{"key": "value"}} or null,
   "reply": "my response IN THE SAME LANGUAGE as the user — can be empty if the tool's result will be the response. If I respond directly, make it complete and useful.",
@@ -976,6 +976,13 @@ class AriaMind:
                     )
                     agent_result = await agent.run(text)
                     if agent_result.get("success"):
+                        # Must persist here too: `state` may have had
+                        # awaiting_clarification popped off above, and this
+                        # return skips every other place that would normally
+                        # save it (see CodeRabbit, PR #133) — otherwise a
+                        # resolved clarification round reappears on the next,
+                        # unrelated turn.
+                        await self._evolve_state(chat_id, state, text, goals)
                         return MindResponse(text=agent_result["output"])
                     logger.warning(
                         "[AriaMind] autonomous run failed, using normal flow: %s",
@@ -1003,6 +1010,10 @@ class AriaMind:
                 )
                 if decline:
                     await self._store_interaction(chat_id, text, decline, tool)
+                    # Same reason as the autonomous_execution return above —
+                    # this early return must persist state too, or a popped
+                    # awaiting_clarification never actually clears in Redis.
+                    await self._evolve_state(chat_id, state, text, goals)
                     return MindResponse(text=decline, awaiting_input=True)
                 obs, media, executed_args = await self._execute_with_retry(
                     tool, tool_args, email=email

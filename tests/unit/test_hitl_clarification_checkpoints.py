@@ -27,6 +27,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from apps.core.cognition.aria_mind import SYSTEM_TEMPLATE, AriaMind, MindResponse
+from apps.core.safety.guardrails import ModerationResult, PlanVerdict
 
 
 def _enter_common_stubs(stack: ExitStack, mind: AriaMind, fake_reason, load_state=None):
@@ -158,6 +159,87 @@ async def test_handle_clears_awaiting_clarification_once_resolved():
 
         await mind.handle("twitter", "chat-1")
 
+    assert "awaiting_clarification" not in saved_state
+
+
+@pytest.mark.asyncio
+async def test_handle_clears_awaiting_clarification_on_autonomous_execution_success():
+    """Regression (CodeRabbit, PR #133): the autonomous_execution success
+    return is an early exit that bypasses every other place state gets
+    persisted — a popped awaiting_clarification must still make it to Redis
+    here, or the resolved question reappears on the next, unrelated turn."""
+    prior_state = {
+        "awaiting_clarification": {"question": "Which platform?", "original_text": "post this"}
+    }
+
+    async def fake_reason(*a, **k):
+        return {"tool": None, "tool_args": {}, "reply": "", "autonomous_execution": True}
+
+    mind = AriaMind()
+    saved_state = {}
+
+    async def fake_evolve_state(chat_id, state, text, goals):
+        saved_state.update(state)
+
+    fake_agent = AsyncMock()
+    fake_agent.run = AsyncMock(return_value={"success": True, "output": "Done autonomously."})
+
+    with ExitStack() as stack:
+        _enter_common_stubs(stack, mind, fake_reason, load_state=prior_state)
+        stack.enter_context(patch.object(mind, "_evolve_state", fake_evolve_state))
+        stack.enter_context(
+            patch("apps.core.cognition.aria_agent.AriaAgent", return_value=fake_agent)
+        )
+
+        resp = await mind.handle("go do it autonomously", "chat-1")
+
+    assert resp.text == "Done autonomously."
+    assert "awaiting_clarification" not in saved_state
+
+
+@pytest.mark.asyncio
+async def test_handle_clears_awaiting_clarification_on_guardrail_decline():
+    """Regression (CodeRabbit, PR #133): same leak as the autonomous-success
+    path, for Layer 2's constitutional-review decline early return."""
+    prior_state = {
+        "awaiting_clarification": {"question": "Which platform?", "original_text": "post this"}
+    }
+
+    async def fake_reason(*a, **k):
+        return {"tool": "execute_code", "tool_args": {"code": "print('hi')"}, "reply": ""}
+
+    mind = AriaMind()
+    saved_state = {}
+
+    async def fake_evolve_state(chat_id, state, text, goals):
+        saved_state.update(state)
+
+    unsafe = PlanVerdict(safe=False, risk_score=0.9, reason="needs owner approval")
+    clean_moderation = ModerationResult(blocked=False, layer="llm")
+
+    with ExitStack() as stack:
+        mock_ks = stack.enter_context(patch("apps.core.safety.guardrails.get_kill_switch"))
+        stack.enter_context(
+            patch(
+                "apps.core.safety.guardrails.moderate_input",
+                AsyncMock(return_value=clean_moderation),
+            )
+        )
+        stack.enter_context(
+            patch("apps.core.safety.guardrails.evaluate_plan", AsyncMock(return_value=unsafe))
+        )
+        stack.enter_context(patch.object(mind, "_reason", fake_reason))
+        stack.enter_context(patch.object(mind, "_load_history", AsyncMock(return_value=[])))
+        stack.enter_context(patch.object(mind, "_load_state", AsyncMock(return_value=prior_state)))
+        stack.enter_context(patch.object(mind, "_load_goals", AsyncMock(return_value=[])))
+        stack.enter_context(patch.object(mind, "_load_learned", AsyncMock(return_value=[])))
+        stack.enter_context(patch.object(mind, "_store_interaction", AsyncMock()))
+        stack.enter_context(patch.object(mind, "_evolve_state", fake_evolve_state))
+        mock_ks.return_value.is_active = AsyncMock(return_value=False)
+
+        resp = await mind.handle("post this", "chat-1", email="owner@example.com")
+
+    assert resp.awaiting_input is True
     assert "awaiting_clarification" not in saved_state
 
 
