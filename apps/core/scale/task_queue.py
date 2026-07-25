@@ -24,6 +24,8 @@ logger = logging.getLogger("aria.task_queue")
 
 PENDING_KEY = "aria:mq:pending"
 STATUS_KEY = "aria:mq:status:{tid}"
+RECENT_KEY = "aria:mq:recent"  # capped list of task ids, newest first — admin index
+RECENT_CAP = 200
 RESULT_TTL = 60 * 60 * 24  # keep results 24h
 
 VALID_STATES = ("queued", "processing", "completed", "failed")
@@ -68,6 +70,7 @@ from collections import deque  # noqa: E402
 
 _mem_pending: deque[str] = deque()
 _mem_status: dict[str, dict] = {}
+_mem_recent: deque[str] = deque(maxlen=RECENT_CAP)
 
 
 class MissionQueue:
@@ -86,9 +89,12 @@ class MissionQueue:
         if r is not None:
             await r.set(STATUS_KEY.format(tid=tid), json.dumps(status), ex=RESULT_TTL)
             await r.lpush(PENDING_KEY, tid)
+            await r.lpush(RECENT_KEY, tid)
+            await r.ltrim(RECENT_KEY, 0, RECENT_CAP - 1)
         else:
             _mem_status[tid] = status
             _mem_pending.appendleft(tid)
+            _mem_recent.appendleft(tid)
         logger.info("[queue] enqueued %s (user=%s)", tid, user_email or "-")
         return tid
 
@@ -135,6 +141,25 @@ class MissionQueue:
         if r is not None:
             return int(await r.llen(PENDING_KEY))
         return len(_mem_pending)
+
+    async def list_recent(self, limit: int = 50) -> list[dict]:
+        """Most recently enqueued missions (any state), newest first.
+
+        task_ids are otherwise unenumerable (get_status requires already
+        knowing the id — RECENT_KEY is the only index of "what ran"), so this
+        is what an admin/observability view needs to discover activity
+        instead of polling by id."""
+        r = await _get_redis()
+        if r is not None:
+            ids = await r.lrange(RECENT_KEY, 0, max(0, limit - 1))
+        else:
+            ids = list(_mem_recent)[:limit]
+        results: list[dict] = []
+        for tid in ids:
+            status = await self.get_status(tid)
+            if status:
+                results.append(status)
+        return results
 
 
 _queue: MissionQueue | None = None

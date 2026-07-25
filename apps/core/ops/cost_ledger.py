@@ -135,6 +135,8 @@ class CostLedger:
 
     async def is_frozen(self, email: str, *, now: datetime | None = None) -> bool:
         email = (email or "").strip().lower()
+        if self._is_owner(email):
+            return False
         if email in self._frozen:
             return True
         # Not seen by this process — check the shared store (covers a restart
@@ -149,6 +151,22 @@ class CostLedger:
             logger.debug("[cost] is_frozen cache check failed for %s: %s", email, exc)
         return False
 
+    @staticmethod
+    def _is_owner(email: str) -> bool:
+        """The owner's own account must never be throttled by a burn cap
+        designed to protect margin on *other* users' accounts — "unrestricted
+        access" has to mean that literally, not just at the tool-permission
+        layer. Checked directly against apps.core.auth (the single source of
+        truth for owner identity) rather than duplicating the email set here."""
+        if not email:
+            return False
+        try:
+            from apps.core import auth
+
+            return auth.is_owner_email(email)
+        except Exception:  # noqa: BLE001 — never let this check itself freeze anyone
+            return False
+
     def frozen_users(self) -> list[str]:
         """Users frozen *on this process* — informational (admin console),
         not authoritative across instances the way is_frozen() is."""
@@ -157,6 +175,8 @@ class CostLedger:
     async def evaluate(self, email: str, plan: str, *, now: datetime | None = None) -> bool:
         """Freeze the user if they're a paid plan over the threshold. Returns
         True if the user is (now) frozen."""
+        if self._is_owner((email or "").strip().lower()):
+            return False
         if (plan or "").lower() in ("pro", "business") and self.over_threshold(
             email, plan, now=now
         ):

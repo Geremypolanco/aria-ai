@@ -43,6 +43,21 @@ async def test_throttle_at_70_percent_for_paid():
     assert "pro@x.com" in led.frozen_users()
 
 
+async def test_owner_account_never_frozen_by_burn_cap(monkeypatch):
+    """'Unrestricted access' has to mean the owner's own account can never be
+    throttled by the margin-protection cap, not just that the tool-permission
+    layer waves owner-only tools through."""
+    from apps.core import auth
+
+    monkeypatch.setattr(auth, "owner_emails", lambda: {"owner@x.com"})
+    led = CostLedger()
+    # Burn way past the business budget.
+    led.record("owner@x.com", "claude-opus-4-8", 0, 2_000_000)  # $50 of $28 budget
+    assert led.over_threshold("owner@x.com", "business") is True
+    assert await led.evaluate("owner@x.com", "business") is False
+    assert await led.is_frozen("owner@x.com") is False
+
+
 async def test_under_threshold_not_frozen():
     led = CostLedger()
     led.record("pro@x.com", "claude-opus-4-8", 0, 40_000)  # $1.00 of $8 budget

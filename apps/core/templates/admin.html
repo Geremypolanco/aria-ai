@@ -84,6 +84,36 @@
     </div>
   </section>
 
+  <!-- live activity: every user's intent, in real time -->
+  <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50 p-5">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-600">Live activity <span id="liveDot" class="ml-1 inline-block h-2 w-2 rounded-full bg-zinc-300"></span></h2>
+      <span class="mono text-[11px] text-zinc-400">every user, every turn, live</span>
+    </div>
+    <div id="activityFeed" class="mono max-h-80 space-y-1.5 overflow-y-auto text-[12px]"></div>
+    <div id="activityEmpty" class="py-4 text-center text-xs text-zinc-500">Waiting for activity…</div>
+  </section>
+
+  <!-- active projects + recent missions -->
+  <section class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-600">Active R&amp;D projects</h2>
+        <span class="mono text-[11px] text-zinc-400">apps/core/intelligence</span>
+      </div>
+      <div id="projectsList" class="space-y-2 text-sm"></div>
+      <div id="projectsEmpty" class="hidden py-4 text-center text-xs text-zinc-500">No active projects.</div>
+    </div>
+    <div class="rounded-2xl border border-zinc-200 bg-white/50 p-5">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-sm font-bold uppercase tracking-widest text-zinc-600">Recent missions</h2>
+        <span class="mono text-[11px] text-zinc-400">async job queue</span>
+      </div>
+      <div id="missionsList" class="space-y-2 text-sm"></div>
+      <div id="missionsEmpty" class="hidden py-4 text-center text-xs text-zinc-500">No missions yet.</div>
+    </div>
+  </section>
+
   <!-- traffic funnel -->
   <section class="mt-6 rounded-2xl border border-zinc-200 bg-white/50 p-5">
     <div class="mb-3 flex items-center justify-between">
@@ -132,6 +162,17 @@
 <form id="impForm" method="POST" action="/admin/impersonate" class="hidden">
   <input type="hidden" name="email" id="impEmail" />
 </form>
+
+<!-- user chat-history drawer -->
+<div id="historyOverlay" class="fixed inset-0 z-50 hidden bg-black/40" onclick="closeHistory(event)">
+  <div class="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto bg-white p-5 shadow-2xl" onclick="event.stopPropagation()">
+    <div class="mb-4 flex items-center justify-between">
+      <h3 class="text-sm font-bold uppercase tracking-widest text-zinc-600">Chat history · <span id="historyEmail" class="text-emerald-600"></span></h3>
+      <button onclick="closeHistory()" class="rounded-lg border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100">✕</button>
+    </div>
+    <div id="historyBody" class="space-y-3 text-sm"></div>
+  </div>
+</div>
 
 <script>
 let PANIC = false;
@@ -197,7 +238,7 @@ function render(d){
       + '<td class="px-5 py-3 text-zinc-600">'+esc(u.name||'—')+'</td>'
       + '<td class="px-5 py-3 text-zinc-500">'+esc(u.provider||'—')+'</td>'
       + '<td class="px-5 py-3">'+(isFrozen?'<span class="rounded bg-red-500/15 px-2 py-0.5 text-[11px] text-red-300">frozen</span>':'<span class="rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300">active</span>')+'</td>'
-      + '<td class="px-5 py-3 text-right"><button onclick="impersonate(\''+esc(u.email)+'\')" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[12px] font-semibold text-emerald-600 hover:bg-emerald-500/20">Impersonate</button></td>'
+      + '<td class="px-5 py-3 text-right"><button onclick="openHistory(\''+esc(u.email)+'\')" class="mr-2 rounded-lg border border-zinc-300 px-3 py-1 text-[12px] font-semibold text-zinc-600 hover:bg-zinc-100">History</button><button onclick="impersonate(\''+esc(u.email)+'\')" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[12px] font-semibold text-emerald-600 hover:bg-emerald-500/20">Impersonate</button></td>'
       + '</tr>';
   }).join('');
   document.getElementById('usersBody').innerHTML = rows;
@@ -209,6 +250,114 @@ function render(d){
 }
 
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')}
+
+// ── live activity feed (real-time user intent) ─────────────────────
+function renderActivityItem(item, opts){
+  opts = opts || {};
+  const el = document.createElement('div');
+  el.className = 'flex items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2'
+    + (opts.live ? ' ring-1 ring-emerald-400/50' : '');
+  const time = item.ts ? new Date(item.ts*1000).toLocaleTimeString() : '';
+  const ok = item.success !== false;
+  el.innerHTML = '<span class="shrink-0 text-zinc-400">'+esc(time)+'</span>'
+    + '<span class="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600">'+esc(item.task_type||'—')+'</span>'
+    + '<span class="min-w-0 flex-1 cursor-pointer truncate hover:text-emerald-600" title="'+esc(item.prompt||'')+'" onclick="openHistory(\''+esc(item.email||'')+'\')">'
+    + '<b>'+esc(item.email||'anon')+'</b>: '+esc((item.prompt||'').slice(0,90))+'</span>'
+    + '<span class="shrink-0 '+(ok?'text-emerald-500':'text-red-400')+'">'+(ok?'✓':'✕')+'</span>';
+  return el;
+}
+
+async function loadRecentActivity(){
+  try{
+    const r = await fetch('/admin/api/activity?limit=30', {credentials:'same-origin'});
+    if(!r.ok) return;
+    const d = await r.json();
+    const feed = document.getElementById('activityFeed');
+    feed.innerHTML = '';
+    (d.traces||[]).forEach(t => feed.appendChild(renderActivityItem(t)));
+    document.getElementById('activityEmpty').classList.toggle('hidden', (d.traces||[]).length>0);
+  }catch(e){ /* keep last state */ }
+}
+
+let _activityStream = null;
+function connectActivityStream(){
+  try{
+    _activityStream = new EventSource('/admin/api/activity/stream');
+    const dot = document.getElementById('liveDot');
+    _activityStream.onopen = () => { dot.className = 'ml-1 inline-block h-2 w-2 rounded-full bg-emerald-400'; };
+    _activityStream.onerror = () => { dot.className = 'ml-1 inline-block h-2 w-2 rounded-full bg-red-400'; };
+    _activityStream.onmessage = (ev) => {
+      let item;
+      try{ item = JSON.parse(ev.data); }catch(e){ return; }
+      const feed = document.getElementById('activityFeed');
+      feed.insertBefore(renderActivityItem(item, {live:true}), feed.firstChild);
+      document.getElementById('activityEmpty').classList.add('hidden');
+      while(feed.children.length > 50) feed.removeChild(feed.lastChild);
+    };
+  }catch(e){ /* SSE unsupported / blocked — feed just stays on the poll-backed backfill */ }
+}
+
+// ── active R&D projects + recent missions ───────────────────────────
+async function loadProjects(){
+  try{
+    const r = await fetch('/admin/api/projects', {credentials:'same-origin'});
+    if(!r.ok) return;
+    const d = await r.json();
+    const list = document.getElementById('projectsList');
+    list.innerHTML = (d.projects||[]).map(p =>
+      '<div class="rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2">'
+      + '<div class="flex items-center justify-between gap-2"><span class="truncate font-semibold">'+esc(p.title||p.name||p.id||'untitled')+'</span>'
+      + '<span class="mono shrink-0 text-[10px] text-zinc-500">'+esc(p.status||'')+'</span></div>'
+      + (p.summary ? '<div class="mt-1 text-xs text-zinc-500">'+esc(String(p.summary)).slice(0,140)+'</div>' : '')
+      + '</div>'
+    ).join('');
+    document.getElementById('projectsEmpty').classList.toggle('hidden', (d.projects||[]).length>0);
+  }catch(e){ /* keep last state */ }
+}
+
+async function loadMissions(){
+  try{
+    const r = await fetch('/admin/api/missions?limit=20', {credentials:'same-origin'});
+    if(!r.ok) return;
+    const d = await r.json();
+    const list = document.getElementById('missionsList');
+    const stateColor = s => s==='completed'?'text-emerald-600':s==='failed'?'text-red-500':s==='processing'?'text-amber-500':'text-zinc-500';
+    list.innerHTML = (d.missions||[]).map(m =>
+      '<div class="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2">'
+      + '<div class="min-w-0"><div class="mono cursor-pointer truncate text-[12px] hover:text-emerald-600" onclick="openHistory(\''+esc(m.user_email||'')+'\')">'+esc(m.user_email||'—')+'</div>'
+      + '<div class="mono text-[10px] text-zinc-400">'+esc(m.id||'')+'</div></div>'
+      + '<span class="mono shrink-0 text-[11px] font-semibold '+stateColor(m.state)+'">'+esc(m.state||'—')+'</span>'
+      + '</div>'
+    ).join('');
+    document.getElementById('missionsEmpty').classList.toggle('hidden', (d.missions||[]).length>0);
+  }catch(e){ /* keep last state */ }
+}
+
+// ── per-user chat-history drawer ─────────────────────────────────────
+async function openHistory(email){
+  if(!email) return;
+  document.getElementById('historyEmail').textContent = email;
+  document.getElementById('historyBody').innerHTML = '<div class="text-xs text-zinc-500">Loading…</div>';
+  document.getElementById('historyOverlay').classList.remove('hidden');
+  try{
+    const r = await fetch('/admin/api/users/'+encodeURIComponent(email)+'/history', {credentials:'same-origin'});
+    if(!r.ok){ document.getElementById('historyBody').innerHTML = '<div class="text-xs text-red-400">Failed to load.</div>'; return; }
+    const d = await r.json();
+    const hist = d.history||[];
+    document.getElementById('historyBody').innerHTML = hist.length ? hist.map(m =>
+      '<div class="rounded-lg border px-3 py-2 '+(m.role==='user'?'border-emerald-500/30 bg-emerald-500/5':'border-zinc-200 bg-zinc-50/60')+'">'
+      + '<div class="mono text-[10px] uppercase text-zinc-400">'+esc(m.role||'')+'</div>'
+      + '<div class="mt-1 whitespace-pre-wrap text-[13px]">'+esc(typeof m.content==='string'?m.content:JSON.stringify(m.content))+'</div>'
+      + '</div>'
+    ).join('') : '<div class="text-xs text-zinc-500">No history yet.</div>';
+  }catch(e){
+    document.getElementById('historyBody').innerHTML = '<div class="text-xs text-red-400">Failed to load.</div>';
+  }
+}
+
+function closeHistory(ev){
+  document.getElementById('historyOverlay').classList.add('hidden');
+}
 
 function impersonate(email){
   if(!confirm('Enter '+email+"'s dashboard for support? Your owner session will be restorable.")) return;
@@ -224,7 +373,13 @@ async function togglePanic(){
 }
 
 refresh();
+loadRecentActivity();
+connectActivityStream();
+loadProjects();
+loadMissions();
 setInterval(refresh, 20000);  // live-ish
+setInterval(loadProjects, 20000);
+setInterval(loadMissions, 20000);
 </script>
 </body>
 </html>

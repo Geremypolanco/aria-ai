@@ -904,6 +904,92 @@ async def admin_stop_impersonate(request: Request):
     return resp
 
 
+# ── Real-time observability (owner-only: "full, unrestricted access to
+# ARIA" + live visibility into user intent, projects, and activity) ────────
+def _owner_gate(request: Request) -> JSONResponse | None:
+    """Shared guard for the endpoints below. Strictly owner-only (not the
+    legacy admin-password `_is_admin`) — this surfaces live conversational
+    content and user activity, not just ops metrics."""
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "owner access required"}, status_code=403)
+    return None
+
+
+@app.get("/admin/api/activity")
+async def admin_api_activity(request: Request, limit: int = 50):
+    """Recent AI turns across every user (CognitionTracer) plus aggregate
+    stats — the "what is everyone doing right now" feed."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    from apps.evaluation.phoenix.tracer import get_cognition_tracer
+
+    tracer = get_cognition_tracer()
+    traces = await tracer.recent_traces(limit=max(1, min(limit, 200)))
+    stats = await tracer.analytics()
+    return {"traces": traces, "analytics": stats}
+
+
+@app.get("/admin/api/activity/stream")
+async def admin_api_activity_stream(request: Request):
+    """Server-Sent Events: every conversational turn, any user, live — fed by
+    aria_mind._trace_turn's log_bus.publish("admin_activity", ...) broadcast.
+    A plain GET (not a WebSocket) since it's one-directional and EventSource
+    reconnects on its own."""
+    if not _is_owner_user(request):
+        return JSONResponse({"error": "owner access required"}, status_code=403)
+
+    from apps.core.scale import log_bus
+
+    async def _gen():
+        async for envelope in log_bus.subscribe("admin_activity"):
+            try:
+                msg = json.loads(envelope).get("msg", envelope)
+            except Exception:  # noqa: BLE001
+                msg = envelope
+            yield f"data: {msg}\n\n"
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/admin/api/projects")
+async def admin_api_projects(request: Request):
+    """Every R&D project ARIA is tracking (apps/core/intelligence/rd_wing.py)."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    from apps.core.intelligence.rd_wing import get_rd_wing
+
+    return {"projects": get_rd_wing().list_projects()}
+
+
+@app.get("/admin/api/missions")
+async def admin_api_missions(request: Request, limit: int = 50):
+    """Recently enqueued missions (apps/core/scale/task_queue.py) — the async
+    producer/consumer job queue, any user."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    from apps.core.scale.task_queue import get_queue
+
+    return {"missions": await get_queue().list_recent(limit=max(1, min(limit, 200)))}
+
+
+@app.get("/admin/api/users/{email}/history")
+async def admin_api_user_history(request: Request, email: str):
+    """A specific user's full chat history, reconstructed via the same
+    deterministic conversation-id scheme the live chat endpoint uses
+    (`u:{email}`) — no separate per-user index needed."""
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    from apps.core.cognition.aria_mind import get_aria_mind
+
+    cid = _conversation_id({"email": email})
+    history = await get_aria_mind()._load_history(cid)
+    return {"email": email.strip().lower(), "conversation_id": cid, "history": history}
+
+
 @app.get("/api/v1/connectors/health")
 async def connectors_health():
     """Connector health for the preventive banner. Refreshes lazily if stale

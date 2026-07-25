@@ -718,7 +718,15 @@ class AriaMind:
                         "generate_image", {"prompt": img_prompt}, obs, bool(media)
                     )
                     await self._store_interaction(chat_id, text, caption, "generate_image")
-                await self._trace_turn("generate_image", text, caption, turn_started, bool(media))
+                await self._trace_turn(
+                    "generate_image",
+                    text,
+                    caption,
+                    turn_started,
+                    bool(media),
+                    chat_id=chat_id,
+                    email=email,
+                )
                 return MindResponse(
                     text=(None if media else caption),
                     caption=caption,
@@ -797,7 +805,15 @@ class AriaMind:
                 await self._store_interaction(chat_id, text, final_text, tool)
                 await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
-                await self._trace_turn(tool, text, final_text, turn_started, turn_success)
+                await self._trace_turn(
+                    tool,
+                    text,
+                    final_text,
+                    turn_started,
+                    turn_success,
+                    chat_id=chat_id,
+                    email=email,
+                )
                 # For documents, send text + doc; for A/V media, send caption only
                 is_doc = "document_bytes" in media
                 return MindResponse(
@@ -815,7 +831,13 @@ class AriaMind:
             await self._evolve_state(chat_id, state, text, goals)
             asyncio.create_task(self._maybe_reflect(chat_id))
             await self._trace_turn(
-                "conversation", text, reply, turn_started, not self._looks_like_failure(reply)
+                "conversation",
+                text,
+                reply,
+                turn_started,
+                not self._looks_like_failure(reply),
+                chat_id=chat_id,
+                email=email,
             )
             return MindResponse(text=reply)
 
@@ -3611,10 +3633,16 @@ class AriaMind:
         response: str,
         started_at: float,
         success: bool,
+        *,
+        chat_id: str = "",
+        email: str = "",
     ) -> None:
-        """Records this turn with CognitionTracer for the ai_performance_report
-        tool. Best-effort only — a tracing failure must never affect the
-        actual reply the user already received, so every error is swallowed."""
+        """Records this turn with CognitionTracer (for ai_performance_report
+        and the admin activity feed's history) and broadcasts it live to any
+        admin console currently watching. Both are best-effort — a tracing or
+        broadcast failure must never affect the actual reply the user already
+        received, so every error is swallowed independently of the other."""
+        latency_ms = (time.monotonic() - started_at) * 1000
         with suppress(Exception):
             from apps.evaluation.phoenix.tracer import get_cognition_tracer
 
@@ -3623,8 +3651,30 @@ class AriaMind:
                 task_type=task_type,
                 prompt=prompt,
                 response=response,
-                latency_ms=(time.monotonic() - started_at) * 1000,
+                latency_ms=latency_ms,
                 success=success,
+                metadata={"chat_id": chat_id, "email": email},
+            )
+        with suppress(Exception):
+            import json
+
+            from apps.core.scale import log_bus
+
+            await log_bus.publish(
+                "admin_activity",
+                json.dumps(
+                    {
+                        "ts": time.time(),
+                        "email": email,
+                        "chat_id": chat_id,
+                        "task_type": task_type,
+                        "prompt": prompt[:200],
+                        "response": response[:300],
+                        "success": success,
+                        "latency_ms": round(latency_ms, 1),
+                    },
+                    ensure_ascii=False,
+                ),
             )
 
     # ── SELF-REFLECTION ───────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ chat tools by nature:
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -146,6 +147,49 @@ async def test_handle_traces_text_only_turn():
     assert traces[0]["task_type"] == "conversation"
     assert traces[0]["response"] == "hello there"
     assert traces[0]["success"] is True
+
+
+async def test_handle_broadcasts_turn_to_admin_activity_channel():
+    """Every turn is also published live to the "admin_activity" log_bus
+    channel — the feed behind the admin console's real-time activity view
+    (GET /admin/api/activity/stream). This must fire alongside, not instead
+    of, CognitionTracer recording."""
+    tracer = CognitionTracer()
+    fake_cache = _FakeCache()
+
+    async def fake_reason(*a, **k):
+        return {"tool": None, "tool_args": {}, "reply": "hello there"}
+
+    mind = AriaMind()
+    published: list[tuple[str, str]] = []
+
+    async def fake_publish(channel, message, **kwargs):
+        published.append((channel, message))
+
+    with (
+        patch("apps.evaluation.phoenix.tracer.get_cache", return_value=fake_cache),
+        patch("apps.evaluation.phoenix.tracer.get_cognition_tracer", return_value=tracer),
+        patch("apps.core.scale.log_bus.publish", side_effect=fake_publish),
+        patch.object(mind, "_reason", fake_reason),
+        patch.object(mind, "_load_history", AsyncMock(return_value=[])),
+        patch.object(mind, "_load_state", AsyncMock(return_value={})),
+        patch.object(mind, "_load_goals", AsyncMock(return_value=[])),
+        patch.object(mind, "_load_learned", AsyncMock(return_value=[])),
+        patch.object(mind, "_store_interaction", AsyncMock()),
+        patch.object(mind, "_evolve_state", AsyncMock()),
+        patch.object(mind, "_maybe_reflect", AsyncMock()),
+    ):
+        resp = await mind.handle("hi", "chat-1", email="watcher@example.com")
+
+    assert resp.text == "hello there"
+    assert len(published) == 1
+    channel, message = published[0]
+    assert channel == "admin_activity"
+    payload = json.loads(message)
+    assert payload["email"] == "watcher@example.com"
+    assert payload["chat_id"] == "chat-1"
+    assert payload["response"].startswith("hello there")
+    assert payload["success"] is True
 
 
 async def test_handle_tracing_failure_never_breaks_the_reply():

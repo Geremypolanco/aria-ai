@@ -30,9 +30,11 @@ class TestMissionQueue:
 
         tq._mem_pending.clear()
         tq._mem_status.clear()
+        tq._mem_recent.clear()
         yield
         tq._mem_pending.clear()
         tq._mem_status.clear()
+        tq._mem_recent.clear()
 
     async def test_enqueue_returns_task_id_and_queues(self):
         from apps.core.scale.task_queue import get_queue
@@ -89,6 +91,24 @@ class TestMissionQueue:
         from apps.core.scale.task_queue import get_queue
 
         assert await get_queue().get_status("task_missing") is None
+
+    async def test_list_recent_returns_newest_first(self):
+        from apps.core.scale.task_queue import get_queue
+
+        q = get_queue()
+        t1 = await q.enqueue({"n": 1}, user_email="a@b.com")
+        t2 = await q.enqueue({"n": 2}, user_email="a@b.com")
+        recent = await q.list_recent(limit=10)
+        assert [r["id"] for r in recent] == [t2, t1]
+
+    async def test_list_recent_respects_limit(self):
+        from apps.core.scale.task_queue import get_queue
+
+        q = get_queue()
+        for i in range(5):
+            await q.enqueue({"n": i})
+        recent = await q.list_recent(limit=2)
+        assert len(recent) == 2
 
 
 # ── rate_limiter ──────────────────────────────────────────────────
@@ -218,9 +238,11 @@ class TestWorker:
 
         tq._mem_pending.clear()
         tq._mem_status.clear()
+        tq._mem_recent.clear()
         yield
         tq._mem_pending.clear()
         tq._mem_status.clear()
+        tq._mem_recent.clear()
 
     async def test_handle_task_success(self):
         from apps.core.scale.task_queue import MissionQueue
