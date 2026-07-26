@@ -4779,6 +4779,8 @@ class AriaMind:
 
     async def _record_exec(self, tool: str, args: dict, obs: str, success: bool) -> None:
         """Stores an execution record for future self-reflection."""
+        from apps.core.safety.redaction import redact_sensitive_args
+
         cache = self._cache_client()
         if not cache:
             return
@@ -4790,7 +4792,7 @@ class AriaMind:
                 "ts": datetime.now(UTC).isoformat(),
                 "tool": tool,
                 "success": success,
-                "in": str(args)[:100],
+                "in": str(redact_sensitive_args(args))[:100],
                 "out": obs[:150],
             }
         )
@@ -4820,7 +4822,16 @@ class AriaMind:
         showed the user's message and the final, already-synthesized reply,
         with no way to see what the tool was actually called with or what it
         actually returned before _synthesize() rewrote it. Empty for the
-        "conversation" task_type, which has neither."""
+        "conversation" task_type, which has neither.
+
+        tool_args is redacted once here (see apps/core/safety/redaction.py)
+        and the SAME sanitized dict is used for both the tracer and the
+        admin_activity broadcast below — redacting independently in two
+        places risks one of them drifting out of sync and leaking a secret
+        the other correctly caught."""
+        from apps.core.safety.redaction import redact_sensitive_args
+
+        safe_tool_args = redact_sensitive_args(tool_args)
         latency_ms = (time.monotonic() - started_at) * 1000
         with suppress(Exception):
             from apps.evaluation.phoenix.tracer import get_cognition_tracer
@@ -4833,7 +4844,7 @@ class AriaMind:
                 latency_ms=latency_ms,
                 success=success,
                 metadata={"chat_id": chat_id, "email": email},
-                tool_args=tool_args,
+                tool_args=safe_tool_args,
                 raw_observation=raw_observation,
             )
         with suppress(Exception):
@@ -4853,7 +4864,7 @@ class AriaMind:
                         "response": response[:300],
                         "success": success,
                         "latency_ms": round(latency_ms, 1),
-                        "tool_args": str(tool_args)[:300] if tool_args else None,
+                        "tool_args": str(safe_tool_args)[:300] if safe_tool_args else None,
                         "raw_observation": raw_observation[:300],
                     },
                     ensure_ascii=False,
