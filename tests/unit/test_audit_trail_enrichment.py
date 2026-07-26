@@ -149,6 +149,44 @@ async def test_trace_turn_redacts_sensitive_tool_args_before_tracing_and_broadca
 
 
 @pytest.mark.asyncio
+async def test_trace_turn_redacts_secrets_in_raw_observation_text():
+    """raw_observation is free text (e.g. an API error message that echoed
+    back a key), so it needs pattern-based redaction rather than tool_args'
+    key-name matching — same guarantee: both the tracer and the broadcast
+    must see the identical, already-sanitized text."""
+    mind = AriaMind()
+    fake_tracer = AsyncMock()
+    published = []
+
+    async def fake_publish(channel, message, **kwargs):
+        published.append(message)
+
+    with (
+        patch("apps.evaluation.phoenix.tracer.get_cognition_tracer", return_value=fake_tracer),
+        patch("apps.core.scale.log_bus.publish", side_effect=fake_publish),
+    ):
+        await mind._trace_turn(
+            "web_search",
+            "look up my api status",
+            "here's your status",
+            time.monotonic(),
+            True,
+            chat_id="chat-1",
+            email="owner@example.com",
+            tool_args={},
+            raw_observation="Error: Authorization: Bearer sk-abcDEF123456789012345 rejected",
+        )
+
+    kwargs = fake_tracer.record.call_args.kwargs
+    assert "sk-abcDEF123456789012345" not in kwargs["raw_observation"]
+    assert "[REDACTED]" in kwargs["raw_observation"]
+
+    payload = json.loads(published[0])
+    assert "sk-abcDEF123456789012345" not in payload["raw_observation"]
+    assert "[REDACTED]" in payload["raw_observation"]
+
+
+@pytest.mark.asyncio
 async def test_record_exec_also_redacts_sensitive_args_before_persisting():
     """Regression (CodeRabbit, PR #135): _trace_turn()'s redaction only
     protected the tracer/admin_activity broadcast — _record_exec() (used for
@@ -178,6 +216,37 @@ async def test_record_exec_also_redacts_sensitive_args_before_persisting():
     record = saved[mind.K_EXECS][0]
     assert "sk-real-secret" not in record["in"]
     assert "[REDACTED]" in record["in"]
+
+
+@pytest.mark.asyncio
+async def test_record_exec_also_redacts_secrets_in_the_observation_text():
+    """Regression (CodeRabbit, PR #136): _record_exec()'s "in" field (the
+    tool args) was redacted, but its "out" field (the raw observation) was
+    not — a secret embedded in a tool's own output (e.g. an error message
+    quoting its own auth header) still reached K_EXECS verbatim."""
+    mind = AriaMind()
+    saved = {}
+
+    fake_cache = MagicMock()
+    fake_cache.get = AsyncMock(return_value=None)
+
+    async def fake_set(key, value, ttl_seconds=None):
+        saved[key] = value
+        return True
+
+    fake_cache.set = AsyncMock(side_effect=fake_set)
+
+    with patch.object(mind, "_cache_client", return_value=fake_cache):
+        await mind._record_exec(
+            "web_search",
+            {"query": "api status"},
+            "Error: Authorization: Bearer sk-abcDEF123456789012345 rejected",
+            False,
+        )
+
+    record = saved[mind.K_EXECS][0]
+    assert "sk-abcDEF123456789012345" not in record["out"]
+    assert "[REDACTED]" in record["out"]
 
 
 @pytest.mark.asyncio
