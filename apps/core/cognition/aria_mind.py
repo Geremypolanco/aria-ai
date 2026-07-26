@@ -4824,14 +4824,15 @@ class AriaMind:
         actually returned before _synthesize() rewrote it. Empty for the
         "conversation" task_type, which has neither.
 
-        tool_args is redacted once here (see apps/core/safety/redaction.py)
-        and the SAME sanitized dict is used for both the tracer and the
-        admin_activity broadcast below — redacting independently in two
-        places risks one of them drifting out of sync and leaking a secret
-        the other correctly caught."""
-        from apps.core.safety.redaction import redact_sensitive_args
+        tool_args/raw_observation are each redacted once here (see
+        apps/core/safety/redaction.py) and the SAME sanitized values are used
+        for both the tracer and the admin_activity broadcast below —
+        redacting independently in two places risks one of them drifting
+        out of sync and leaking a secret the other correctly caught."""
+        from apps.core.safety.redaction import redact_sensitive_args, redact_sensitive_text
 
         safe_tool_args = redact_sensitive_args(tool_args)
+        safe_observation = redact_sensitive_text(raw_observation)
         latency_ms = (time.monotonic() - started_at) * 1000
         with suppress(Exception):
             from apps.evaluation.phoenix.tracer import get_cognition_tracer
@@ -4845,7 +4846,7 @@ class AriaMind:
                 success=success,
                 metadata={"chat_id": chat_id, "email": email},
                 tool_args=safe_tool_args,
-                raw_observation=raw_observation,
+                raw_observation=safe_observation,
             )
         with suppress(Exception):
             import json
@@ -4865,7 +4866,7 @@ class AriaMind:
                         "success": success,
                         "latency_ms": round(latency_ms, 1),
                         "tool_args": str(safe_tool_args)[:300] if safe_tool_args else None,
-                        "raw_observation": raw_observation[:300],
+                        "raw_observation": safe_observation[:300],
                     },
                     ensure_ascii=False,
                 ),

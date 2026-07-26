@@ -1,17 +1,18 @@
 """Feature test: apps/core/safety/redaction.py closes the gap CodeRabbit
 flagged on PR #131 — AITrace's tool_args/raw_observation fields were bounded
 for size but never checked for sensitivity, so a real secret passed as a
-tool argument (an API key, a password) would be persisted and broadcast to
+tool argument (an API key, a password) or embedded in a tool's raw output
+(a leaked token in an error message) would be persisted and broadcast to
 the admin_activity feed verbatim within that bound.
 
-Scoped to tool_args only (a dict, so keys are well-defined) — free-text
-raw_observation would need pattern-based scrubbing, a harder, separate
-problem intentionally left as open follow-up (see redaction.py's docstring).
+tool_args (a dict) is redacted by key name; raw_observation (free text) by
+a short list of high-confidence secret-format patterns — see redaction.py's
+module docstring for why each approach fits its input shape.
 """
 
 from __future__ import annotations
 
-from apps.core.safety.redaction import redact_sensitive_args
+from apps.core.safety.redaction import redact_sensitive_args, redact_sensitive_text
 
 
 def test_redacts_a_top_level_sensitive_key():
@@ -64,3 +65,47 @@ def test_does_not_mutate_the_input():
 def test_none_and_empty_pass_through_unchanged():
     assert redact_sensitive_args(None) is None
     assert redact_sensitive_args({}) == {}
+
+
+# ── redact_sensitive_text (free-text raw_observation) ────────────────────
+
+
+def test_redacts_a_bearer_header():
+    text = "Request failed: Authorization: Bearer sk-abcDEF123456789012345 was rejected"
+    result = redact_sensitive_text(text)
+    assert "sk-abcDEF123456789012345" not in result
+    assert "[REDACTED]" in result
+
+
+def test_redacts_a_jwt():
+    jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PYb4NJx-Ta8Q"
+    result = redact_sensitive_text(f"token: {jwt}")
+    assert jwt not in result
+    assert "[REDACTED]" in result
+
+
+def test_redacts_openai_style_api_key():
+    result = redact_sensitive_text("Error using key sk-proj-abcdefghijklmnopqrstuvwxyz1234567890")
+    assert "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890" not in result
+    assert "[REDACTED]" in result
+
+
+def test_redacts_a_github_token():
+    result = redact_sensitive_text("cloning with ghp_" + "a" * 36 + " failed: permission denied")
+    assert "ghp_" + "a" * 36 not in result
+    assert "[REDACTED]" in result
+
+
+def test_redacts_an_aws_access_key_id():
+    result = redact_sensitive_text("credentials rejected: AKIAABCDEFGHIJ1234K5")
+    assert "AKIAABCDEFGHIJ1234K5" not in result
+    assert "[REDACTED]" in result
+
+
+def test_leaves_ordinary_prose_completely_unchanged():
+    text = "1. Article A — https://example.com/a\n2. Article B — https://example.com/b"
+    assert redact_sensitive_text(text) == text
+
+
+def test_empty_text_passes_through_unchanged():
+    assert redact_sensitive_text("") == ""

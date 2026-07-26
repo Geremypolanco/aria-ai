@@ -1,5 +1,6 @@
 """
-redaction.py — centralized redaction policy for audit-trail tool_args.
+redaction.py — centralized redaction policy for audit-trail tool_args and
+raw_observation.
 
 CodeRabbit (PR #131) flagged that AITrace's tool_args/raw_observation fields
 (added to close a debugging gap — see tracer.py) are persisted and broadcast
@@ -9,24 +10,53 @@ through by the user, a password field on a login-automation tool) alongside
 the genuinely useful debugging context (a search query, a product name, a
 file path).
 
-This module redacts by KEY NAME, not by scanning values for secret-looking
-patterns: value-pattern matching (regex for "looks like an API key") is far
-more failure-prone in both directions — it misses secrets in unusual formats
-and mangles legitimate content that merely resembles one — where key-name
-matching is a well-understood, low-risk technique already used by most
-production logging frameworks (e.g. Sentry's default PII scrubbing) and
-covers the concrete, verifiable case CodeRabbit's finding centered on: a
-credential passed as a tool argument under a recognizable name.
+tool_args (a dict) is redacted by KEY NAME — value-pattern matching there
+would be far more failure-prone in both directions than the well-understood,
+low-risk technique most production logging frameworks already use for this
+(e.g. Sentry's default PII scrubbing).
 
-Deliberately scoped to tool_args (a dict, so keys are well-defined) — free-
-text raw_observation would need pattern-based scrubbing to redact anything,
-which is exactly the harder, more speculative problem this module avoids by
-design. That remains open follow-up work, tracked separately.
+raw_observation is free text with no keys to match on, so redact_sensitive_
+text() instead matches a short list of HIGH-CONFIDENCE secret formats —
+provider-specific prefixes (sk-, ghp_, xox[baprs]-, AKIA...) and structural
+patterns (a Bearer header, a JWT's three dot-separated segments) that almost
+never occur in ordinary prose. Deliberately NOT a general-purpose secret
+scanner: no generic high-entropy-string heuristic, which is exactly the
+speculative, false-positive-prone approach this module's tool_args redaction
+already rejected for the same reason. A tool observation that happens to
+embed a secret in some other, less recognizable format still gets through —
+this closes the common, verifiable cases, not every conceivable one.
 """
 
 from __future__ import annotations
 
+import re
+
 REDACTED = "[REDACTED]"
+
+# Ordered so more specific patterns (JWT, Bearer header) are tried before
+# anything that could coincidentally overlap with a broader one.
+_SECRET_TEXT_PATTERNS = (
+    re.compile(r"\bBearer\s+[A-Za-z0-9\-_.]{20,}"),  # Authorization: Bearer <token>
+    re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),  # JWT
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"),  # OpenAI/Anthropic-style API key
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}"),  # GitHub personal/OAuth/app token
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]+"),  # Slack token
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS access key ID
+    re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),  # Google API key
+    re.compile(r"\b[sr]k_(?:live|test)_[0-9A-Za-z]{16,}"),  # Stripe key
+)
+
+
+def redact_sensitive_text(text: str) -> str:
+    """Replaces any high-confidence secret-shaped substring in free text
+    with REDACTED. Safe to call on arbitrary text — returns it unchanged if
+    nothing matches."""
+    if not text:
+        return text
+    for pattern in _SECRET_TEXT_PATTERNS:
+        text = pattern.sub(REDACTED, text)
+    return text
+
 
 # Substrings matched case-insensitively against dict keys — a key containing
 # any of these anywhere in its name (e.g. "stripe_api_key", "auth_token",
