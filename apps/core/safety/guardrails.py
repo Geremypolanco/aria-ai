@@ -404,6 +404,18 @@ CONSTITUTIONAL_REVIEW_TOOLS = frozenset(
         "create_flash_sale",
         "create_product_bundle",
         "shopify_live_analytics",
+        # launch_niche/auto_income create a real, immediately-purchasable
+        # Gumroad product and publish public content (Medium/dev.to/Hashnode,
+        # a Zapier distribution webhook) autonomously — unlike the Shopify
+        # revenue-suite tools above, these call a live publish API, not just
+        # draft copy. send_email/publish_article are similarly public and
+        # unrecallable once sent; they only had content-safety filtering
+        # (blocks unsafe *content*), nothing judging whether the action
+        # itself should happen at all.
+        "launch_niche",
+        "auto_income",
+        "send_email",
+        "publish_article",
     }
 )
 
