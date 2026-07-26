@@ -9,6 +9,7 @@ a large tool_args payload (e.g. execute_code's code) can't bloat storage.
 
 from __future__ import annotations
 
+import json
 import time
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -107,6 +108,44 @@ async def test_trace_turn_passes_tool_args_and_observation_to_the_tracer():
     kwargs = fake_tracer.record.call_args.kwargs
     assert kwargs["tool_args"] == {"query": "latest news"}
     assert kwargs["raw_observation"] == "1. Article A\n2. Article B"
+
+
+@pytest.mark.asyncio
+async def test_trace_turn_redacts_sensitive_tool_args_before_tracing_and_broadcasting():
+    """Regression (CodeRabbit, PR #131 follow-up): tool_args used to reach
+    both the tracer and the admin_activity broadcast completely unredacted —
+    a real secret passed as a tool argument would be persisted/broadcast
+    verbatim. Both consumers must see the SAME sanitized dict."""
+    mind = AriaMind()
+    fake_tracer = AsyncMock()
+    published = []
+
+    async def fake_publish(channel, message, **kwargs):
+        published.append(message)
+
+    with (
+        patch("apps.evaluation.phoenix.tracer.get_cognition_tracer", return_value=fake_tracer),
+        patch("apps.core.scale.log_bus.publish", side_effect=fake_publish),
+    ):
+        await mind._trace_turn(
+            "check_social_session",
+            "check my session",
+            "session active",
+            time.monotonic(),
+            True,
+            chat_id="chat-1",
+            email="owner@example.com",
+            tool_args={"platform": "twitter", "api_key": "sk-real-secret"},
+            raw_observation="session active",
+        )
+
+    kwargs = fake_tracer.record.call_args.kwargs
+    assert kwargs["tool_args"] == {"platform": "twitter", "api_key": "[REDACTED]"}
+
+    assert len(published) == 1
+    payload = json.loads(published[0])
+    assert "sk-real-secret" not in payload["tool_args"]
+    assert "[REDACTED]" in payload["tool_args"]
 
 
 @pytest.mark.asyncio
