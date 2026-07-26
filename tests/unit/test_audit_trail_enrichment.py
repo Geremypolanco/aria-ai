@@ -219,6 +219,37 @@ async def test_record_exec_also_redacts_sensitive_args_before_persisting():
 
 
 @pytest.mark.asyncio
+async def test_record_exec_also_redacts_secrets_in_the_observation_text():
+    """Regression (CodeRabbit, PR #136): _record_exec()'s "in" field (the
+    tool args) was redacted, but its "out" field (the raw observation) was
+    not — a secret embedded in a tool's own output (e.g. an error message
+    quoting its own auth header) still reached K_EXECS verbatim."""
+    mind = AriaMind()
+    saved = {}
+
+    fake_cache = MagicMock()
+    fake_cache.get = AsyncMock(return_value=None)
+
+    async def fake_set(key, value, ttl_seconds=None):
+        saved[key] = value
+        return True
+
+    fake_cache.set = AsyncMock(side_effect=fake_set)
+
+    with patch.object(mind, "_cache_client", return_value=fake_cache):
+        await mind._record_exec(
+            "web_search",
+            {"query": "api status"},
+            "Error: Authorization: Bearer sk-abcDEF123456789012345 rejected",
+            False,
+        )
+
+    record = saved[mind.K_EXECS][0]
+    assert "sk-abcDEF123456789012345" not in record["out"]
+    assert "[REDACTED]" in record["out"]
+
+
+@pytest.mark.asyncio
 async def test_trace_turn_defaults_to_empty_for_conversation_turns():
     """The "conversation" task_type call site has neither — must not crash
     or send garbage when the caller omits them."""

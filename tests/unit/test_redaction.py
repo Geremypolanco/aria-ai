@@ -96,6 +96,27 @@ def test_redacts_a_github_token():
     assert "[REDACTED]" in result
 
 
+def test_redacts_a_github_fine_grained_pat():
+    """Regression (CodeRabbit, PR #136): fine-grained PATs use the
+    github_pat_ prefix, a completely different literal string from the
+    legacy ghp_/gho_/ghu_/ghs_/ghr_ tokens — not covered by that pattern."""
+    token = "github_pat_11ABCDEFG0abcdefghijklmnop_" + "a" * 20
+    result = redact_sensitive_text(f"push rejected using {token}")
+    assert token not in result
+    assert "[REDACTED]" in result
+
+
+def test_redacts_a_new_format_stateless_github_app_installation_token():
+    """Regression (CodeRabbit, PR #136): GitHub's 2026 stateless rollout for
+    ghs_ installation tokens embeds a JWT after the prefix, so the token can
+    contain dots — the legacy [A-Za-z0-9]{36,} character class stops at the
+    first dot and lets this format through."""
+    token = "ghs_APPID_" + "a" * 20 + "." + "b" * 20 + "." + "c" * 20
+    result = redact_sensitive_text(f"installation token {token} expired")
+    assert token not in result
+    assert "[REDACTED]" in result
+
+
 def test_redacts_an_aws_access_key_id():
     result = redact_sensitive_text("credentials rejected: AKIAABCDEFGHIJ1234K5")
     assert "AKIAABCDEFGHIJ1234K5" not in result

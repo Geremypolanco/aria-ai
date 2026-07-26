@@ -4779,7 +4779,7 @@ class AriaMind:
 
     async def _record_exec(self, tool: str, args: dict, obs: str, success: bool) -> None:
         """Stores an execution record for future self-reflection."""
-        from apps.core.safety.redaction import redact_sensitive_args
+        from apps.core.safety.redaction import redact_sensitive_args, redact_sensitive_text
 
         cache = self._cache_client()
         if not cache:
@@ -4793,7 +4793,7 @@ class AriaMind:
                 "tool": tool,
                 "success": success,
                 "in": str(redact_sensitive_args(args))[:100],
-                "out": obs[:150],
+                "out": redact_sensitive_text(obs)[:150],
             }
         )
         execs = execs[-self.MAX_EXECS :]

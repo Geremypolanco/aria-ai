@@ -39,7 +39,14 @@ _SECRET_TEXT_PATTERNS = (
     re.compile(r"\bBearer\s+[A-Za-z0-9\-_.]{20,}"),  # Authorization: Bearer <token>
     re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),  # JWT
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"),  # OpenAI/Anthropic-style API key
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}"),  # GitHub personal/OAuth/app token
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}"),  # legacy GitHub personal/OAuth/app token
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"),  # fine-grained personal access token
+    # GitHub App installation tokens (ghs_): GitHub's 2026 stateless rollout
+    # embeds a JWT after the prefix, so the token itself can contain dots —
+    # a plain [A-Za-z0-9]{36,} class (as used for the legacy formats above)
+    # stops at the first dot and lets the new format through. Matches
+    # GitHub's own recommended pattern for covering both formats.
+    re.compile(r"\bghs_[A-Za-z0-9._-]{36,}"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]+"),  # Slack token
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS access key ID
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),  # Google API key
