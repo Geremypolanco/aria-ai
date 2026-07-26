@@ -78,5 +78,9 @@ def _redact_value(key: str, value):
     if isinstance(value, dict):
         return redact_sensitive_args(value)
     if isinstance(value, list):
-        return [redact_sensitive_args(item) if isinstance(item, dict) else item for item in value]
+        # Recurse via _redact_value itself, not just for dict items — a
+        # list can nest another list (e.g. {"batches": [[{"api_key": ...}]]}),
+        # and a dict-only check here would let that inner list's dict through
+        # unredacted since it's never itself a dict at this level.
+        return [_redact_value("", item) for item in value]
     return value

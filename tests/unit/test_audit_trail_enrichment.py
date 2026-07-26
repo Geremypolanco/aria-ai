@@ -149,6 +149,38 @@ async def test_trace_turn_redacts_sensitive_tool_args_before_tracing_and_broadca
 
 
 @pytest.mark.asyncio
+async def test_record_exec_also_redacts_sensitive_args_before_persisting():
+    """Regression (CodeRabbit, PR #135): _trace_turn()'s redaction only
+    protected the tracer/admin_activity broadcast — _record_exec() (used for
+    self-reflection, a completely separate persistence path to K_EXECS) still
+    wrote raw args verbatim, so a credential could reach self-reflection even
+    after the other two paths were fixed."""
+    mind = AriaMind()
+    saved = {}
+
+    fake_cache = MagicMock()
+    fake_cache.get = AsyncMock(return_value=None)
+
+    async def fake_set(key, value, ttl_seconds=None):
+        saved[key] = value
+        return True
+
+    fake_cache.set = AsyncMock(side_effect=fake_set)
+
+    with patch.object(mind, "_cache_client", return_value=fake_cache):
+        await mind._record_exec(
+            "send_email",
+            {"to": "someone@example.com", "api_key": "sk-real-secret"},
+            "sent",
+            True,
+        )
+
+    record = saved[mind.K_EXECS][0]
+    assert "sk-real-secret" not in record["in"]
+    assert "[REDACTED]" in record["in"]
+
+
+@pytest.mark.asyncio
 async def test_trace_turn_defaults_to_empty_for_conversation_turns():
     """The "conversation" task_type call site has neither — must not crash
     or send garbage when the caller omits them."""

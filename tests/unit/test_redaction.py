@@ -38,6 +38,17 @@ def test_recurses_into_lists_of_dicts():
     assert result["accounts"][1] == {"name": "no secret here"}
 
 
+def test_recurses_into_nested_lists_of_lists():
+    """Regression (CodeRabbit, PR #135): {"batches": [[{"api_key": "..."}]]}
+    used to leak — the list branch only recursed into dict items directly
+    inside the list, so a list nested inside that list (itself not a dict)
+    passed through unchanged, and its inner dict's secret was never reached.
+    """
+    result = redact_sensitive_args({"batches": [[{"api_key": "secret"}, {"name": "ok"}]]})
+    assert result["batches"][0][0]["api_key"] == "[REDACTED]"
+    assert result["batches"][0][1] == {"name": "ok"}
+
+
 def test_leaves_non_sensitive_args_completely_unchanged():
     original = {"product_name": "Widget Pro", "category": "gadgets", "price": 19.99}
     result = redact_sensitive_args(original)
