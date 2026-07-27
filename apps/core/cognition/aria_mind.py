@@ -1424,14 +1424,25 @@ class AriaMind:
             "record_cashflow_entry",
             "cashflow_summary",
             "forecast_cashflow",
-            # run_income runs the same class of autonomous business cycle as
-            # auto_income/launch_niche (real missions, real spend, real
-            # publishing) via Orchestrator.run_cycle(); square_sell creates a
-            # real Square catalog item + payment link using the owner's own
-            # SQUARE_ACCESS_TOKEN. Both were missing here by omission, not
-            # design — their direct siblings are all owner-gated.
+            # run_income (Orchestrator.run_cycle) and auto_income/launch_niche
+            # (NicheRevenueEngine.autonomous_income_cycle)/start_income_loop/
+            # run_income_cycle/income_loop_status (IncomeLoop) are the same
+            # class of action: real, unattended business cycles that read/
+            # write ONE global Redis key set (aria:income:*, not scoped per
+            # user) and spend against the owner's own real GUMROAD_TOKEN.
+            # square_sell creates a real Square catalog item + payment link
+            # via the owner's own SQUARE_ACCESS_TOKEN. None of these were
+            # owner-gated — a CodeRabbit review on this same PR caught that
+            # auto_income/launch_niche were only constitutionally reviewed,
+            # not owner-gated, despite this comment previously (incorrectly)
+            # claiming otherwise.
             "run_income",
             "square_sell",
+            "launch_niche",
+            "auto_income",
+            "start_income_loop",
+            "run_income_cycle",
+            "income_loop_status",
         }
     )
 

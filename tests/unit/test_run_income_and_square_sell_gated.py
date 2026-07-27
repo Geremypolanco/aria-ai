@@ -1,21 +1,25 @@
 """Regression test: a codebase survey (continuing the pattern from PR #134's
-CONSTITUTIONAL_REVIEW_TOOLS audit) found two live-effect, money-moving tools
-that were missing from BOTH safety gates their direct siblings already have:
+CONSTITUTIONAL_REVIEW_TOOLS audit) found live-effect, money-moving tools
+missing from one or both safety gates their direct siblings already have:
 
   - run_income calls Orchestrator().run_cycle() — the exact same class of
     autonomous business cycle (real missions, real spend, real publishing)
-    that auto_income/launch_niche run, both of which are owner-gated AND
-    constitutionally reviewed.
+    that auto_income/launch_niche run.
   - square_sell creates a real Square catalog item + payment link via the
     owner's own SQUARE_ACCESS_TOKEN/SQUARE_LOCATION_ID — the same category
     of "owner's real credentials, real external side-effect" as
-    create_flash_sale (Shopify), which is also gated both ways.
+    create_flash_sale (Shopify), which is gated both ways.
 
-Neither name appeared in AriaMind._OWNER_ONLY_TOOLS nor in
-guardrails.CONSTITUTIONAL_REVIEW_TOOLS, meaning any signed-up non-owner user
-could trigger the owner's real autonomous income cycle, or create a real
-Square product/payment link, through ordinary chat — with none of the
-safety layers ever consulted. This was a gap by omission, not design.
+A CodeRabbit review on the PR introducing the above then caught a deeper,
+pre-existing gap: launch_niche/auto_income were only in
+CONSTITUTIONAL_REVIEW_TOOLS, never actually in _OWNER_ONLY_TOOLS (despite an
+aria_mind.py comment claiming otherwise) — and their IncomeLoop-based
+siblings (start_income_loop, run_income_cycle, income_loop_status) were
+ungated entirely. All of these read/write the same single, global
+aria:income:* Redis keys and the owner's own GUMROAD_TOKEN — not scoped per
+user — so any signed-up non-owner user could trigger the owner's real
+autonomous income cycle, or read the owner's real revenue counters, through
+ordinary chat. This was a gap by omission, not design.
 """
 
 from __future__ import annotations
@@ -27,11 +31,28 @@ import pytest
 from apps.core.cognition.aria_mind import AriaMind
 from apps.core.safety.guardrails import CONSTITUTIONAL_REVIEW_TOOLS, PlanVerdict, review_tool_call
 
-NEWLY_GATED_TOOLS = ["run_income", "square_sell"]
+# Every one of these must now be owner-only (some, like launch_niche/
+# auto_income, were already constitutionally reviewed but NOT owner-gated;
+# others, like income_loop_status, are owner-gated but read-only so were
+# never a review candidate).
+OWNER_GATED_TOOLS = [
+    "run_income",
+    "square_sell",
+    "launch_niche",
+    "auto_income",
+    "start_income_loop",
+    "run_income_cycle",
+    "income_loop_status",
+]
+
+# Subset that also needs Layer 2 constitutional review (excludes the
+# read-only income_loop_status, and excludes launch_niche/auto_income which
+# were already reviewed before this fix).
+NEWLY_REVIEWED_TOOLS = ["run_income", "square_sell", "start_income_loop", "run_income_cycle"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool", NEWLY_GATED_TOOLS)
+@pytest.mark.parametrize("tool", OWNER_GATED_TOOLS)
 async def test_tool_blocked_for_non_owner(tool):
     mind = AriaMind()
     obs, media = await mind._execute_tool(tool, {}, email="someone@else.com")
@@ -40,18 +61,18 @@ async def test_tool_blocked_for_non_owner(tool):
     assert "owner" in obs.lower()
 
 
-@pytest.mark.parametrize("tool", NEWLY_GATED_TOOLS)
+@pytest.mark.parametrize("tool", OWNER_GATED_TOOLS)
 def test_tool_is_in_the_owner_only_set(tool):
     assert tool in AriaMind._OWNER_ONLY_TOOLS
 
 
-@pytest.mark.parametrize("tool", NEWLY_GATED_TOOLS)
+@pytest.mark.parametrize("tool", NEWLY_REVIEWED_TOOLS)
 def test_tool_is_in_the_constitutional_review_set(tool):
     assert tool in CONSTITUTIONAL_REVIEW_TOOLS
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool", NEWLY_GATED_TOOLS)
+@pytest.mark.parametrize("tool", NEWLY_REVIEWED_TOOLS)
 async def test_review_tool_call_actually_evaluates_it(tool):
     """Set membership alone proves nothing if review_tool_call() doesn't
     actually call evaluate_plan() for it — exercise the real gate function."""
