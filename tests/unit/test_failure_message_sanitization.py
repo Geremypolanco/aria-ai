@@ -134,3 +134,26 @@ async def test_synthesize_redacts_before_handing_the_observation_to_the_llm():
     prompt_sent = fake_ai.complete.call_args.kwargs["user"]
     assert LEAKED_SECRET not in prompt_sent
     assert "[REDACTED]" in prompt_sent
+
+
+async def test_synthesize_redacts_a_leaked_secret_on_llm_failure():
+    """Third exit path: when the AI client exists but the completion call
+    itself fails or returns empty, _synthesize() falls back to the
+    observation directly — same redaction guarantee as the no-AI-client
+    and successful-LLM paths above."""
+    mind = AriaMind()
+    fake_ai = AsyncMock()
+    fake_ai.complete = AsyncMock(
+        return_value=AIResponse(
+            content="",
+            provider=AIProvider.ANTHROPIC,
+            model="strategy",
+            success=False,
+        )
+    )
+    obs = f"Status: connected using key {LEAKED_SECRET}"
+    with patch.object(mind, "_ai_client", return_value=fake_ai):
+        result = await mind._synthesize("check my api status", "check_status", obs)
+
+    assert LEAKED_SECRET not in result
+    assert "[REDACTED]" in result
