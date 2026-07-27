@@ -57,7 +57,7 @@ def test_secret_no_longer_reuses_admin_password_or_aria_api_key(monkeypatch, cap
         auth.settings, "ADMIN_PASSWORD", "totally-different-admin-secret", raising=False
     )
     monkeypatch.setattr(auth.settings, "ARIA_API_KEY", "totally-different-api-key", raising=False)
-    auth._warned_ephemeral = False
+    monkeypatch.setattr(auth, "_warned_ephemeral", False)
 
     import logging
 
