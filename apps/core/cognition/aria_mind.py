@@ -4615,9 +4615,24 @@ class AriaMind:
                 )
             return generic_failure_reply
 
+        # A tool's own SUCCESSFUL observation can still echo back a real
+        # credential (e.g. an API error message quoting its own auth header,
+        # a status check that includes a token) — unlike the failure path
+        # above, this text is meant to reach the user, so it can't just be
+        # replaced wholesale. Redact the narrow, high-confidence patterns
+        # (see apps/core/safety/redaction.py) once here, before any of the
+        # three paths below that can hand it to the user or the LLM —
+        # SYNTHESIS_SYSTEM tells the model to use the tool's real data
+        # verbatim, so an unredacted secret in the prompt could still come
+        # back out in the reply even though the model is never told to
+        # fabricate or hedge it.
+        from apps.core.safety.redaction import redact_sensitive_text
+
+        safe_observation = redact_sensitive_text(observation)
+
         ai = self._ai_client()
         if not ai:
-            return observation[:400]
+            return safe_observation[:400]
 
         from apps.core.tools.ai_client import AIModel
 
@@ -4625,7 +4640,7 @@ class AriaMind:
             system=SYNTHESIS_SYSTEM,
             user=(
                 f"The user asked: {user_input[:400]}\n"
-                f"I used the '{tool}' tool and got:\n{observation[:2000]}"
+                f"I used the '{tool}' tool and got:\n{safe_observation[:2000]}"
                 f"{self._lang_directive(user_input)}"
             ),
             model=AIModel.STRATEGY,
@@ -4636,7 +4651,7 @@ class AriaMind:
         )
         if resp and resp.success and resp.content:
             return resp.content.strip()
-        return observation[:600]
+        return safe_observation[:600]
 
     async def _fallback_reply(self, text: str) -> str:
         """Generates a direct, useful reply when the plan didn't include one."""
