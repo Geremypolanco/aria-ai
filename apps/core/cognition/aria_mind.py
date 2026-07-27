@@ -974,7 +974,7 @@ class AriaMind:
                         ),
                         is_owner=auth.is_owner_email(email),
                     )
-                    agent_result = await agent.run(text)
+                    agent_result = await agent.run(text, email=email)
                     if agent_result.get("success"):
                         # Must persist here too: `state` may have had
                         # awaiting_clarification popped off above, and this
@@ -984,6 +984,16 @@ class AriaMind:
                         # unrelated turn.
                         await self._evolve_state(chat_id, state, text, goals)
                         return MindResponse(text=agent_result["output"])
+                    if agent_result.get("guardrail_blocked"):
+                        # A genuine kill-switch/moderation block, not an
+                        # ordinary "the agent couldn't finish" failure — must
+                        # terminate here rather than fall through to the
+                        # normal-flow retry below, or the block would be
+                        # silently swallowed and the request would proceed
+                        # anyway (CodeRabbit, PR #143). Persist state for the
+                        # same reason as the success branch above.
+                        await self._evolve_state(chat_id, state, text, goals)
+                        return MindResponse(text=agent_result["error"])
                     logger.warning(
                         "[AriaMind] autonomous run failed, using normal flow: %s",
                         agent_result.get("error"),
