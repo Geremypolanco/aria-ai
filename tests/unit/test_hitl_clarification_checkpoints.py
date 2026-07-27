@@ -198,6 +198,50 @@ async def test_handle_clears_awaiting_clarification_on_autonomous_execution_succ
 
 
 @pytest.mark.asyncio
+async def test_handle_terminates_on_autonomous_execution_guardrail_block():
+    """Regression (CodeRabbit, PR #143): AriaAgent.run() returning a genuine
+    kill-switch/moderation block (guardrail_blocked=True) used to be treated
+    like an ordinary "the agent couldn't finish" failure — handle() would log
+    it and fall through to the normal reply flow, silently swallowing the
+    block and letting the request proceed anyway. A guardrail_blocked result
+    must terminate here with the block's own message, same as the success
+    path's early exit, including the same state-persistence requirement."""
+    prior_state = {
+        "awaiting_clarification": {"question": "Which platform?", "original_text": "post this"}
+    }
+
+    async def fake_reason(*a, **k):
+        return {"tool": None, "tool_args": {}, "reply": "", "autonomous_execution": True}
+
+    mind = AriaMind()
+    saved_state = {}
+
+    async def fake_evolve_state(chat_id, state, text, goals):
+        saved_state.update(state)
+
+    fake_agent = AsyncMock()
+    fake_agent.run = AsyncMock(
+        return_value={
+            "success": False,
+            "guardrail_blocked": True,
+            "error": "This account is temporarily frozen pending a safety review.",
+        }
+    )
+
+    with ExitStack() as stack:
+        _enter_common_stubs(stack, mind, fake_reason, load_state=prior_state)
+        stack.enter_context(patch.object(mind, "_evolve_state", fake_evolve_state))
+        stack.enter_context(
+            patch("apps.core.cognition.aria_agent.AriaAgent", return_value=fake_agent)
+        )
+
+        resp = await mind.handle("go do it autonomously", "chat-1")
+
+    assert resp.text == "This account is temporarily frozen pending a safety review."
+    assert "awaiting_clarification" not in saved_state
+
+
+@pytest.mark.asyncio
 async def test_handle_clears_awaiting_clarification_on_guardrail_decline():
     """Regression (CodeRabbit, PR #133): same leak as the autonomous-success
     path, for Layer 2's constitutional-review decline early return."""

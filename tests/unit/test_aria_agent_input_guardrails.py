@@ -38,7 +38,11 @@ async def test_run_blocked_when_kill_switch_active():
     with patch("apps.core.safety.guardrails.get_kill_switch", return_value=fake_switch):
         result = await agent.run("do something", email="frozen@example.com")
 
+    # The account context must actually reach the guard, not just get
+    # silently dropped — assert the awaited argument, not merely the result.
+    fake_switch.is_active.assert_awaited_once_with("frozen@example.com")
     assert result["success"] is False
+    assert result["guardrail_blocked"] is True
     assert "frozen" in result["error"].lower()
 
 
@@ -50,11 +54,16 @@ async def test_run_blocked_when_input_moderation_flags_the_task():
 
     with (
         patch("apps.core.safety.guardrails.get_kill_switch", return_value=fake_switch),
-        patch("apps.core.safety.guardrails.moderate_input", AsyncMock(return_value=blocked)),
+        patch(
+            "apps.core.safety.guardrails.moderate_input", AsyncMock(return_value=blocked)
+        ) as mock_moderate,
     ):
         result = await agent.run("set up a ponzi scheme", email="user@example.com")
 
+    fake_switch.is_active.assert_awaited_once_with("user@example.com")
+    mock_moderate.assert_awaited_once_with("set up a ponzi scheme", email="user@example.com")
     assert result["success"] is False
+    assert result["guardrail_blocked"] is True
     assert "fraud" in result["error"].lower()
 
 

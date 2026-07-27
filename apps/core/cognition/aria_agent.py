@@ -64,8 +64,16 @@ class AriaAgent:
         run() method, so only the hardcoded web_search case ever executes)
         — wiring review against tool names nothing can currently reach
         would be speculative dead code, not a real protection.
+
+        Both guardrail denials below carry "guardrail_blocked": True — a
+        genuine safety block must never be treated like an ordinary agent
+        failure. aria_mind.py's caller falls back to its normal reply flow
+        on {"success": False}, which is correct for "the agent couldn't
+        finish the task" but would silently swallow a kill-switch/moderation
+        block and let the request proceed anyway (CodeRabbit, PR #143) —
+        the flag lets the caller tell the two apart and terminate instead.
         """
-        logger.info(f"[AriaAgent] Starting task: {task}")
+        logger.info("[AriaAgent] Starting task (chars=%d)", len(task))
 
         from apps.core.config import settings as _guardrail_settings
 
@@ -75,12 +83,14 @@ class AriaAgent:
             if await guardrails.get_kill_switch().is_active(email):
                 return {
                     "success": False,
+                    "guardrail_blocked": True,
                     "error": "This account is temporarily frozen pending a safety review.",
                 }
             moderation = await guardrails.moderate_input(task, email=email)
             if moderation.blocked:
                 return {
                     "success": False,
+                    "guardrail_blocked": True,
                     "error": "I can't help with that request — it falls under "
                     f"{', '.join(moderation.categories) or 'a restricted category'}.",
                 }
