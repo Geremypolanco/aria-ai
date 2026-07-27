@@ -1352,11 +1352,16 @@ class AriaMind:
     # account; only the owner.
     #
     # execute_code is here too: CodeRunner (apps/core/tools/code_runner.py)
-    # runs the model-chosen code as a plain subprocess on the same host —
-    # no container/VM isolation — and its "blocked imports" check is a
-    # handful of substring matches, trivially bypassed. Until real sandboxing
-    # exists, this is effectively host code execution and must stay
-    # owner-only, not a free-tier chat capability.
+    # runs the model-chosen code inside a real bubblewrap sandbox when
+    # available (isolated mount/pid/net/ipc/uts namespaces, no network by
+    # default, only its own ephemeral workdir writable) — but it fails OPEN
+    # to a plain host subprocess (with ulimits only, no real isolation) if
+    # bwrap isn't installed or usable in this environment, observably via
+    # the result's "sandboxed": bool. Its "blocked imports"/dangerous-
+    # command checks are a handful of substring/regex matches, trivially
+    # bypassed on their own. Between that fallback and the fact that
+    # arbitrary code execution is inherently high-risk even when sandboxed,
+    # this stays owner-only, not a free-tier chat capability.
     #
     # computer_use launches a real headless Chromium and lets the model click
     # and type anywhere on the open web via coordinate-based actions — always
