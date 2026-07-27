@@ -1016,7 +1016,7 @@ class AriaMind:
                     await self._evolve_state(chat_id, state, text, goals)
                     return MindResponse(text=decline, awaiting_input=True)
                 obs, media, executed_args = await self._execute_with_retry(
-                    tool, tool_args, email=email
+                    tool, tool_args, email=email, text=text, chat_id=chat_id
                 )
                 final_text = await self._synthesize(text, tool, obs)
                 # bool(media or obs) was always True (obs is a non-empty string even on
@@ -1230,14 +1230,26 @@ class AriaMind:
         """True when a tool's raw observation is itself a checkpoint awaiting
         a follow-up confirmation — e.g. post_to_social's forced preview step,
         which mints a confirm_token and waits for the owner to repeat the
-        request before anything actually goes out. Checked against `obs`
-        (the tool's literal output), not the LLM-synthesized final_text,
-        since synthesis can freely reword text and isn't guaranteed to
-        preserve the exact marker this checks for."""
-        return "confirm_token:" in (obs or "").lower()
+        request before anything actually goes out, or a Layer 2 constitutional
+        review declining a RETRY's adapted args (guardrails.review_tool_call's
+        "queued it for a decision" message — the pre-execution decline at the
+        top of the dispatch above returns its own MindResponse with
+        awaiting_input=True directly and never reaches this check; this one
+        only covers the same decline surfacing from inside the retry loop).
+        Checked against `obs` (the tool's literal output), not the
+        LLM-synthesized final_text, since synthesis can freely reword text
+        and isn't guaranteed to preserve the exact marker this checks for."""
+        low = (obs or "").lower()
+        return "confirm_token:" in low or "queued it for a decision" in low
 
     async def _execute_with_retry(
-        self, tool: str, args: dict, max_retries: int = 3, email: str = ""
+        self,
+        tool: str,
+        args: dict,
+        max_retries: int = 3,
+        email: str = "",
+        text: str = "",
+        chat_id: str = "",
     ) -> tuple[str, dict, dict]:
         """
         Executes the tool with up to max_retries attempts.
@@ -1273,7 +1285,28 @@ class AriaMind:
             )
 
             # Adapt args for the next attempt
-            args = await self._adapt_args(tool, args, obs, attempt)
+            new_args = await self._adapt_args(tool, args, obs, attempt)
+
+            # SAFETY LAYER 2 (retry path): the caller already ran
+            # guardrails.review_tool_call() once, but only against the
+            # planner's ORIGINAL args. _adapt_args can propose materially
+            # different VALUES for a consequential tool (a different niche,
+            # a different cashflow amount, different PR content) — not just
+            # a formatting fix — and several CONSTITUTIONAL_REVIEW_TOOLS
+            # entries (e.g. record_cashflow_entry, create_flash_sale,
+            # run_income) have no separate Layer-3 content/code firewall to
+            # catch that downstream, so an adapted value would otherwise
+            # execute for real with zero safety review of what actually ran.
+            if new_args != args:
+                from apps.core.safety import guardrails
+
+                if tool in guardrails.CONSTITUTIONAL_REVIEW_TOOLS:
+                    decline = await guardrails.review_tool_call(
+                        tool, new_args, text, email=email, chat_id=chat_id
+                    )
+                    if decline:
+                        return decline, {}, new_args
+            args = new_args
 
         return (
             f"I tried {max_retries} times and couldn't complete '{tool}': {last_error}",
