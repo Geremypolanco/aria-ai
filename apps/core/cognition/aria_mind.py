@@ -1424,6 +1424,14 @@ class AriaMind:
             "record_cashflow_entry",
             "cashflow_summary",
             "forecast_cashflow",
+            # run_income runs the same class of autonomous business cycle as
+            # auto_income/launch_niche (real missions, real spend, real
+            # publishing) via Orchestrator.run_cycle(); square_sell creates a
+            # real Square catalog item + payment link using the owner's own
+            # SQUARE_ACCESS_TOKEN. Both were missing here by omission, not
+            # design — their direct siblings are all owner-gated.
+            "run_income",
+            "square_sell",
         }
     )
 

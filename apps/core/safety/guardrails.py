@@ -436,6 +436,14 @@ CONSTITUTIONAL_REVIEW_TOOLS = frozenset(
         "auto_income",
         "send_email",
         "publish_article",
+        # run_income (Orchestrator.run_cycle) is the same class of autonomous
+        # business cycle as auto_income/launch_niche above — real missions,
+        # real spend, real publishing. square_sell creates a real Square
+        # catalog item + payment link via the owner's own SQUARE_ACCESS_TOKEN,
+        # the same category as create_flash_sale above. Both were missing
+        # here by omission, not design.
+        "run_income",
+        "square_sell",
     }
 )
 
