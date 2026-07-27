@@ -974,7 +974,7 @@ class AriaMind:
                         ),
                         is_owner=auth.is_owner_email(email),
                     )
-                    agent_result = await agent.run(text)
+                    agent_result = await agent.run(text, email=email)
                     if agent_result.get("success"):
                         # Must persist here too: `state` may have had
                         # awaiting_clarification popped off above, and this

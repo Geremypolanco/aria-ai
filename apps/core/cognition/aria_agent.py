@@ -47,9 +47,44 @@ class AriaAgent:
         self.history = []
         self.is_owner = is_owner
 
-    async def run(self, task: str) -> dict[str, Any]:
-        """Executes a task autonomously until it completes or fails."""
+    async def run(self, task: str, email: str = "") -> dict[str, Any]:
+        """Executes a task autonomously until it completes or fails.
+
+        Runs Layers 1 & 4 (input moderation, kill switch) up front — the
+        same checks aria_mind.py's handle() already performs on the raw
+        text before it ever reaches this class's only current caller (the
+        autonomous_execution branch), so this is currently redundant there.
+        It's here anyway because AriaAgent is a general-purpose, reusable
+        class (per its own docstring) — a future caller that instantiates
+        it directly, bypassing handle(), must not silently skip these two
+        layers just because today's one caller happens to duplicate them.
+        Layers 2/3 (constitutional review, content/code firewall) are NOT
+        wired here: _execute_tool()'s dispatch below has no real mapping
+        for any consequential tool yet (every pre-registered tool lacks a
+        run() method, so only the hardcoded web_search case ever executes)
+        — wiring review against tool names nothing can currently reach
+        would be speculative dead code, not a real protection.
+        """
         logger.info(f"[AriaAgent] Starting task: {task}")
+
+        from apps.core.config import settings as _guardrail_settings
+
+        if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+            from apps.core.safety import guardrails
+
+            if await guardrails.get_kill_switch().is_active(email):
+                return {
+                    "success": False,
+                    "error": "This account is temporarily frozen pending a safety review.",
+                }
+            moderation = await guardrails.moderate_input(task, email=email)
+            if moderation.blocked:
+                return {
+                    "success": False,
+                    "error": "I can't help with that request — it falls under "
+                    f"{', '.join(moderation.categories) or 'a restricted category'}.",
+                }
+
         self.history = [{"role": "user", "content": task}]
 
         for step in range(self.max_steps):
