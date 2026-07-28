@@ -159,6 +159,19 @@ class AriaTelegramBot:
         if not self._is_authorized(chat_id):
             return
 
+        # _is_authorized() intentionally allows anyone through when
+        # TELEGRAM_CHAT_ID isn't configured yet (a friendlier first-run
+        # experience than being locked out of your own bot) — but that also
+        # means an unconfigured bot has no other gate at all: no per-user
+        # quota, no plan check, no cost ledger, unlike the web chat
+        # entrypoints (see main.py's _consume_free_quota/_rate_ok). Without
+        # a rate limit, that's unlimited free AI spend for whoever finds the
+        # bot. This applies regardless of authorization status, so it
+        # covers both the "wide open, unconfigured" case and a burst from
+        # the one legitimate owner chat.
+        if not await self._rate_ok(chat_id):
+            return
+
         text = msg.get("text", "").strip()
 
         # Photo → describe/VQA (handles both standalone photos and photos with captions)
@@ -423,6 +436,25 @@ class AriaTelegramBot:
     def _is_authorized(self, chat_id: str) -> bool:
         allowed = str(getattr(settings, "TELEGRAM_CHAT_ID", "") or "").strip()
         return not allowed or str(chat_id).strip() == allowed
+
+    @staticmethod
+    async def _rate_ok(chat_id: str, max_calls: int = 20, window_seconds: int = 60) -> bool:
+        """Bounds how fast one chat can send messages — this bot has no
+        other cost control (no plan/quota check like the web chat), so
+        without this an unconfigured (wide-open) or compromised chat could
+        drive unlimited AI spend. Fails OPEN if Redis is unavailable: a
+        cache hiccup must never silently stop the bot from responding."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if not cache:
+                return True
+            return await cache.check_rate_limit(
+                f"telegram_msg:{chat_id}", max_calls, window_seconds
+            )
+        except Exception:
+            return True
 
     @staticmethod
     def _owner_email() -> str:

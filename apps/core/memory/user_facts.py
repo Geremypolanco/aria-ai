@@ -280,6 +280,26 @@ class UserFactStore:
             logger.warning("[UserFacts] forget() failed: %s", exc)
             return False
 
+    async def forget_all(self, user_id: str) -> bool:
+        """Deletes every fact stored for `user_id` — used by account
+        deletion (a user's remembered facts must not outlive their
+        account) and by a future "forget everything about me" action.
+        Unlike forget(), there's no memory_id to double-check against, but
+        the `.eq("user_id", ...)` filter is still what scopes the delete to
+        exactly this caller and nobody else."""
+        user_id = (user_id or "").strip().lower()
+        if not user_id or not _configured():
+            return False
+        try:
+            from apps.core.memory.supabase_client import get_db
+
+            db = get_db()
+            db.table("aria_user_memories").delete().eq("user_id", user_id).execute()
+            return True
+        except Exception as exc:
+            logger.warning("[UserFacts] forget_all() failed: %s", exc)
+            return False
+
 
 _store: UserFactStore | None = None
 

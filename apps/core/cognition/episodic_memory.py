@@ -226,6 +226,27 @@ class EpisodicMemory:
             return 0.0
         return dot / (na * nb)
 
+    async def forget_all(self, user_id: str) -> bool:
+        """Deletes every episode stored for `user_id` — the Redis list (the
+        load-bearing copy) and, best-effort, the Supabase mirror. Used by
+        account deletion: without this, a deleted account's conversation
+        history for the last 180 days would silently outlive the account
+        itself."""
+        if not user_id:
+            return False
+        cache = self._cache_client()
+        if cache:
+            await cache.delete(self._key(user_id))
+        try:
+            from apps.core.memory.supabase_client import get_db
+
+            db = get_db()
+            if db:
+                db.table("aria_episodic_memory").delete().eq("user_id", user_id).execute()
+        except Exception:
+            pass
+        return True
+
     # ── SUPABASE (best-effort secondary durability, never load-bearing) ────
 
     async def _persist_episode(self, user_id: str, episode: dict) -> None:
