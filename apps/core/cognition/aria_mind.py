@@ -4223,9 +4223,11 @@ class AriaMind:
                 investment_usd = args.get("investment_usd")
                 if not name or investment_usd is None:
                     return "I need a name and the investment amount to start tracking ROI.", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.economics.roi_tracker import get_roi_tracker
 
-                record = await get_roi_tracker().track(name, category, float(investment_usd))
+                tracker = get_roi_tracker(await workspace_id_for(email))
+                record = await tracker.track(name, category, float(investment_usd))
                 return (
                     f"Tracking ROI for **{name}** ({category}): ${record.investment_usd:,.2f} "
                     f"invested. Update it later with update_roi_returns and record_id `{record.record_id}`."
@@ -4236,9 +4238,11 @@ class AriaMind:
                 returns_usd = args.get("returns_usd")
                 if not record_id or returns_usd is None:
                     return "I need the record_id and the returns amount.", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.economics.roi_tracker import get_roi_tracker
 
-                record = await get_roi_tracker().update_returns(record_id, float(returns_usd))
+                tracker = get_roi_tracker(await workspace_id_for(email))
+                record = await tracker.update_returns(record_id, float(returns_usd))
                 if record is None:
                     return f"No ROI record found with id `{record_id}`.", {}
                 return (
@@ -4247,9 +4251,10 @@ class AriaMind:
                 ), {}
 
             elif tool == "roi_summary":
+                from apps.core.tenancy import workspace_id_for
                 from apps.economics.roi_tracker import get_roi_tracker
 
-                tracker = get_roi_tracker()
+                tracker = get_roi_tracker(await workspace_id_for(email))
                 await tracker._load()
                 summary = tracker.roi_summary()
                 if summary["total_tracked"] == 0:
