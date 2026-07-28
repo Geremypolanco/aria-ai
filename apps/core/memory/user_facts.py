@@ -39,6 +39,7 @@ must never break because long-term memory is unavailable.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from apps.core.config import settings
@@ -181,7 +182,11 @@ class UserFactStore:
             )
             if category:
                 q = q.eq("category", category)
-            result = q.execute()
+            # q.execute() is synchronous (supabase-py) — run it off the event
+            # loop so a slow Supabase round-trip can't stall every other
+            # concurrent request on this worker (this is now called inside
+            # an asyncio.gather() from the Mission Control memory inspector).
+            result = await asyncio.to_thread(q.execute)
             return getattr(result, "data", None) or []
         except Exception as exc:
             logger.warning("[UserFacts] list_all() failed: %s", exc)

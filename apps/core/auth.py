@@ -67,22 +67,26 @@ _warned_ephemeral = False
 def _secret() -> bytes:
     """HMAC key for signing sessions + OAuth state.
 
-    Preference: SESSION_SECRET → ADMIN_PASSWORD → ARIA_API_KEY → ephemeral.
-    Never falls back to a public constant.
+    Requires SESSION_SECRET. Previously fell back to ADMIN_PASSWORD or
+    ARIA_API_KEY when unset — reusing a secret meant for a different purpose
+    to sign sessions couples unrelated trust boundaries (e.g. rotating the
+    admin password would silently invalidate every session, or vice versa).
+    Still fails open to an ephemeral per-process key rather than refusing to
+    start — a hard crash on missing config is a worse outcome for a
+    production deploy than degraded sessions — but now logs at CRITICAL,
+    not just warning, since this is a real misconfiguration to fix, not a
+    normal condition. Never falls back to a public constant.
     """
-    configured = (
-        getattr(settings, "SESSION_SECRET", None)
-        or getattr(settings, "ADMIN_PASSWORD", None)
-        or getattr(settings, "ARIA_API_KEY", None)
-    )
+    configured = getattr(settings, "SESSION_SECRET", None)
     if configured:
         return configured.encode()
     global _warned_ephemeral
     if not _warned_ephemeral:
-        logger.warning(
-            "No SESSION_SECRET/ADMIN_PASSWORD/ARIA_API_KEY set — using an ephemeral "
-            "per-process session key. Sessions will not persist across restarts or "
-            "multiple instances. Set SESSION_SECRET in production."
+        logger.critical(
+            "SESSION_SECRET is not set! Falling back to an ephemeral per-process "
+            "key — sessions will NOT survive a restart or work across multiple "
+            "instances. Set SESSION_SECRET now (this is not a normal condition "
+            "for a production deploy)."
         )
         _warned_ephemeral = True
     return _EPHEMERAL_SECRET.encode()

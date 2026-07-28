@@ -45,6 +45,35 @@ def test_no_public_fallback_secret():
     assert len(auth._secret()) >= 16
 
 
+def test_secret_no_longer_reuses_admin_password_or_aria_api_key(monkeypatch, caplog):
+    """Regression (security hardening pass): _secret() used to fall back to
+    ADMIN_PASSWORD or ARIA_API_KEY when SESSION_SECRET was unset — reusing a
+    secret meant for a different purpose to sign sessions couples unrelated
+    trust boundaries (rotating one silently invalidates/leaks into the
+    other). It must now use ONLY SESSION_SECRET, falling to the ephemeral
+    key (not a public constant) otherwise, with a CRITICAL-level warning."""
+    monkeypatch.setattr(auth.settings, "SESSION_SECRET", None, raising=False)
+    monkeypatch.setattr(
+        auth.settings, "ADMIN_PASSWORD", "totally-different-admin-secret", raising=False
+    )
+    monkeypatch.setattr(auth.settings, "ARIA_API_KEY", "totally-different-api-key", raising=False)
+    monkeypatch.setattr(auth, "_warned_ephemeral", False)
+
+    import logging
+
+    with caplog.at_level(logging.CRITICAL, logger="aria.auth"):
+        secret = auth._secret()
+
+    assert secret != b"totally-different-admin-secret"
+    assert secret != b"totally-different-api-key"
+    assert any(r.levelno == logging.CRITICAL for r in caplog.records)
+
+
+def test_secret_uses_session_secret_when_configured(monkeypatch):
+    monkeypatch.setattr(auth.settings, "SESSION_SECRET", "the-real-session-secret", raising=False)
+    assert auth._secret() == b"the-real-session-secret"
+
+
 def test_oauth_state_roundtrip_and_binding():
     state = auth.make_state()
     # valid when the callback state matches the cookie we set

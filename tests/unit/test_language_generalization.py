@@ -34,6 +34,25 @@ def test_aria_mind_lang_directive_names_no_specific_language():
     assert "exact same language" in directive
 
 
+def test_aria_mind_lang_directive_forbids_narrating_the_instruction():
+    """Regression: a weaker/faster model was observed narrating this
+    instruction verbatim ("Identifico el idioma como español...") instead of
+    silently applying it, producing a non-answer instead of a real reply."""
+    directive = AriaMind._lang_directive("Cuáles son las top 10 mejores AIs?")
+    lowered = directive.lower()
+    assert "do not mention" in lowered
+    assert "restate" in lowered
+    assert "narrate" in lowered
+
+
+def test_aria_mind_lang_directive_still_permits_answering_language_questions():
+    """The no-narration clause must forbid narrating THIS INSTRUCTION, not
+    forbid the model from ever mentioning a language — a user might
+    genuinely ask "what language is this sentence written in?"."""
+    directive = AriaMind._lang_directive("What language is this sentence written in?")
+    assert "genuinely asking" in directive.lower() or "genuinely ask" in directive.lower()
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [
@@ -111,7 +130,7 @@ async def test_image_fast_path_localizes_caption_for_non_english_request():
     )
 
     async def fake_retry(tool, args, email=""):
-        return "Image generated: a cat", {"image_bytes": b"fakepng"}
+        return "Image generated: a cat", {"image_bytes": b"fakepng"}, args
 
     with (
         patch.object(mind, "_ai_client", return_value=fake_ai),
@@ -139,7 +158,7 @@ async def test_image_fast_path_skips_localization_for_english_request():
     )
 
     async def fake_retry(tool, args, email=""):
-        return "Image generated: a cat", {"image_bytes": b"fakepng"}
+        return "Image generated: a cat", {"image_bytes": b"fakepng"}, args
 
     with (
         patch.object(mind, "_ai_client", return_value=fake_ai),
@@ -158,3 +177,20 @@ def test_workflow_lang_directive_embeds_arbitrary_goal_language():
     directive = workflow_lang_directive("Erstelle einen Marketingplan für mein Café")
     assert "Erstelle einen Marketingplan" in directive
     assert "exact same language" in directive
+
+
+def test_workflow_lang_directive_forbids_narrating_the_instruction():
+    """Same regression as aria_mind's sibling directive — this is an
+    independently-implemented copy with the same original phrasing bug."""
+    directive = workflow_lang_directive("Erstelle einen Marketingplan für mein Café")
+    lowered = directive.lower()
+    assert "never mention" in lowered
+    assert "restate" in lowered
+    assert "narrate" in lowered
+
+
+def test_workflow_lang_directive_still_permits_answering_language_questions():
+    """Same carve-out as aria_mind's sibling — must not suppress a goal that
+    genuinely asks to identify a language."""
+    directive = workflow_lang_directive("What language is this sentence written in?")
+    assert "genuinely asks" in directive.lower() or "genuinely ask" in directive.lower()

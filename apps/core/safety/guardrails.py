@@ -353,9 +353,29 @@ async def evaluate_plan(
                 risk_score=1.0,
                 reason="Constitutional reviewer returned no verdict — failing closed.",
             )
+        raw_safe = result.get("safe")
+        try:
+            risk_score = float(result.get("risk_score", 1.0))
+        except (TypeError, ValueError):
+            risk_score = 1.0
+        # Strict validation, not bool()/float() coercion: bool("false") is
+        # True in Python, so a malformed-but-truthy-looking LLM response
+        # (e.g. the string "false" instead of the JSON literal false) would
+        # otherwise silently read as a safe verdict instead of failing
+        # closed like every other malformed-response path here.
+        if not isinstance(raw_safe, bool) or not 0.0 <= risk_score <= 1.0:
+            await record_audit_event(
+                "plan_review_failed",
+                {"email": email, "tool": tool, "reason": "malformed classifier verdict"},
+            )
+            return PlanVerdict(
+                safe=False,
+                risk_score=1.0,
+                reason="Constitutional reviewer returned a malformed verdict — failing closed.",
+            )
         verdict = PlanVerdict(
-            safe=bool(result.get("safe", False)),
-            risk_score=float(result.get("risk_score", 1.0)),
+            safe=raw_safe,
+            risk_score=risk_score,
             reason=str(result.get("reason", "")),
         )
         if not verdict.safe or verdict.risk_score >= _RISK_BLOCK_THRESHOLD:
@@ -404,6 +424,33 @@ CONSTITUTIONAL_REVIEW_TOOLS = frozenset(
         "create_flash_sale",
         "create_product_bundle",
         "shopify_live_analytics",
+        # launch_niche/auto_income create a real, immediately-purchasable
+        # Gumroad product and publish public content (Medium/dev.to/Hashnode,
+        # a Zapier distribution webhook) autonomously — unlike the Shopify
+        # revenue-suite tools above, these call a live publish API, not just
+        # draft copy. send_email/publish_article are similarly public and
+        # unrecallable once sent; they only had content-safety filtering
+        # (blocks unsafe *content*), nothing judging whether the action
+        # itself should happen at all.
+        "launch_niche",
+        "auto_income",
+        "send_email",
+        "publish_article",
+        # run_income (Orchestrator.run_cycle) is the same class of autonomous
+        # business cycle as auto_income/launch_niche above — real missions,
+        # real spend, real publishing. square_sell creates a real Square
+        # catalog item + payment link via the owner's own SQUARE_ACCESS_TOKEN,
+        # the same category as create_flash_sale above. Both were missing
+        # here by omission, not design.
+        "run_income",
+        "square_sell",
+        # start_income_loop/run_income_cycle (IncomeLoop) run the exact same
+        # revenue strategies as auto_income above, just through a different
+        # module (a persistent 24/7 loop vs. an immediate one-off cycle) —
+        # reviewed for consistency with their sibling. income_loop_status is
+        # deliberately NOT here: it only reads status, no action to review.
+        "start_income_loop",
+        "run_income_cycle",
     }
 )
 
@@ -440,7 +487,12 @@ async def review_tool_call(
         pass
 
     verdict = await evaluate_plan(tool, tool_args, user_text, email=email)
-    if not verdict.safe:
+    # Matches evaluate_plan's own _RISK_BLOCK_THRESHOLD check (which already
+    # logs a "plan_review_blocked" audit event + anomaly record for a
+    # threshold-reaching score) — without this, a verdict of safe=True with
+    # risk_score >= _RISK_BLOCK_THRESHOLD logged as blocked but still ran,
+    # since this was the only check that actually gated execution.
+    if not verdict.safe or verdict.risk_score >= _RISK_BLOCK_THRESHOLD:
         from apps.core.safety.hitl_queue import get_hitl_queue
 
         hitl_req = await get_hitl_queue().enqueue(

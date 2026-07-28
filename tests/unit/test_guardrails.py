@@ -19,6 +19,7 @@ from apps.core.safety.guardrails import (
     check_content_safety,
     evaluate_plan,
     moderate_input,
+    review_tool_call,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -187,6 +188,66 @@ async def test_evaluate_plan_fails_closed_on_empty_response():
         verdict = await evaluate_plan("execute_code", {"code": "print(1)"}, "run some code")
 
     assert verdict.safe is False
+
+
+async def test_evaluate_plan_fails_closed_on_malformed_safe_field():
+    """Regression (CodeRabbit, PR #134): bool("false") is True in Python, so
+    a malformed-but-truthy-looking classifier response (a string instead of
+    the JSON boolean literal) used to silently read as a safe verdict."""
+    fake_ai = AsyncMock()
+    fake_ai.complete_json = AsyncMock(
+        return_value={"safe": "false", "risk_score": 0.1, "reason": "malformed"}
+    )
+    with patch("apps.core.tools.ai_client.get_ai_client", return_value=fake_ai):
+        verdict = await evaluate_plan("execute_code", {"code": "print(1)"}, "run some code")
+
+    assert verdict.safe is False
+    assert verdict.risk_score == 1.0
+
+
+async def test_review_tool_call_queues_a_safe_verdict_that_crosses_the_risk_threshold():
+    """Regression (CodeRabbit, PR #134): evaluate_plan() already logged a
+    "plan_review_blocked" audit event for safe=True with a threshold-crossing
+    risk_score, but review_tool_call() only checked verdict.safe — so the
+    action still ran despite being logged as blocked. This now affects live
+    email, public publishing, and purchasable-product creation (launch_niche/
+    auto_income/send_email/publish_article, added to CONSTITUTIONAL_REVIEW_TOOLS
+    in this same PR)."""
+    fake_ai = AsyncMock()
+    fake_ai.complete_json = AsyncMock(
+        return_value={
+            "safe": True,
+            "risk_score": 0.75,
+            "reason": "high-risk despite being marked safe",
+        }
+    )
+    with (
+        patch("apps.core.tools.ai_client.get_ai_client", return_value=fake_ai),
+        patch("apps.core.safety.hitl_queue.get_hitl_queue") as mock_queue,
+    ):
+        fake_queue = AsyncMock()
+        from apps.core.safety.hitl_queue import HitlRequest
+
+        fake_queue.enqueue = AsyncMock(
+            return_value=HitlRequest(
+                request_id="req_threshold1",
+                chat_id="",
+                email="",
+                user_text="send this email",
+                tool="send_email",
+                tool_args={"to": "someone@example.com"},
+                risk_score=0.75,
+                risk_reason="high-risk despite being marked safe",
+            )
+        )
+        mock_queue.return_value = fake_queue
+
+        decline = await review_tool_call(
+            "send_email", {"to": "someone@example.com"}, "send this email"
+        )
+
+    assert decline is not None
+    assert "req_threshold1" in decline
 
 
 # ── Layer 3: deterministic code/content firewall ─────────────────────────

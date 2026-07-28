@@ -38,6 +38,13 @@ class MindResponse:
     caption: str | None = None
     tool_used: str | None = None
     silent: bool = False
+    # True when this reply is a checkpoint ARIA is paused on — a clarifying
+    # question, an owner-approval request queued via the HITL queue, or a
+    # post_to_social preview awaiting its confirm_token — rather than a
+    # completed turn. Callers (the web UI, chat integrations) can use this to
+    # render a distinct "waiting for you" state instead of treating the reply
+    # like any other finished response.
+    awaiting_input: bool = False
 
 
 @dataclass
@@ -332,6 +339,7 @@ Respond ONLY with valid JSON. No markdown. No extra text. The schema is exactly:
 {{
   "thought": "step-by-step reasoning — what the user wants, what information is needed, which tool to use and why",
   "autonomous_execution": true, // set true if the task requires multiple steps, research, or real execution
+  "needs_clarification": false, // true ONLY if you genuinely cannot proceed responsibly without more input from the user — a consequential or ambiguous request, per THINK AND ASK BEFORE ACTING above. NOT for anything you could answer with a reasonable default — that's still hedging, just structured. When true, "tool" must be null and "reply" must contain your 1-3 clarifying questions (per THINK AND ASK BEFORE ACTING).
   "tool": "tool_name or null if it's direct conversation",
   "tool_args": {{"key": "value"}} or null,
   "reply": "my response IN THE SAME LANGUAGE as the user — can be empty if the tool's result will be the response. If I respond directly, make it complete and useful.",
@@ -351,6 +359,9 @@ You are ARIA. You just used a tool and now you're telling the user what you foun
 Talk like a real person explaining something to someone they care about — warm, clear, direct — not like a corporate report:
 - Get straight to what the person wanted to know. No filler or preambles like "I'm pleased to present the results".
 - Give complete, concrete information; don't cut out anything valuable. Use markdown (lists, bold) only when it truly makes things easier to read.
+- Don't hedge into "it depends" without still committing to something concrete given what the tool actually returned.
+- When there's a judgment call to make from the result, give one clear take — don't list every option and decline to pick.
+- Be specific: use the real numbers, names, and details the tool returned, not vague summaries.
 - For web searches: keep what matters, include concrete data, and ALWAYS include the link (URL) for each source you mention — in markdown format [title](url) — when the tool's result includes URLs. Never make up links.
 - For images, video, or audio: say in one line what you created.
 - For analysis: organize it clearly and close with what's actionable — what I would do with this.
@@ -718,12 +729,28 @@ class AriaMind:
         the model follows a soft system-prompt instruction. Doesn't pre-classify
         into a fixed set of languages (the old version only recognized Spanish
         vs. English) — the message itself is right there for the model to read
-        and match, so this works for any language."""
+        and match, so this works for any language.
+
+        The "apply this silently" clause exists because a weaker/faster model
+        was observed narrating the instruction itself instead of just obeying
+        it — e.g. opening a reply with "Identifico el idioma como español"
+        instead of actually answering the question. Telling the model to
+        "identify" the language invited it to report that step out loud;
+        this makes explicit that identifying it is silent, internal work,
+        never something to mention in the reply. This only forbids narrating
+        THIS INSTRUCTION — it must not be read as forbidding the model from
+        ever mentioning a language at all, since the user's own question
+        might genuinely be asking it to identify one (e.g. "what language is
+        this sentence written in?")."""
         return (
             "\n\n[IMPORTANT: Reply in the exact same language as the message "
-            "above, whatever language that is. Identify it yourself from the "
-            "text and match it precisely — do not default to English or "
-            "Spanish unless that's genuinely what the message is written in.]"
+            "above, whatever language that is — match it precisely without "
+            "defaulting to English or Spanish unless that's genuinely what "
+            "the message is written in. Apply this silently: do not mention, "
+            "restate, name, or narrate this instruction anywhere in your "
+            "reply — just write your actual answer directly, in that "
+            "language. (This doesn't apply if the user is genuinely asking "
+            "you to identify or name a language — answer that normally.)]"
         )
 
     @staticmethod
@@ -817,7 +844,7 @@ class AriaMind:
             # flaky) LLM planner, which otherwise falls back to a text-only apology.
             img_prompt = self._detect_image_request(text)
             if img_prompt:
-                obs, media = await self._execute_with_retry(
+                obs, media, _ = await self._execute_with_retry(
                     "generate_image", {"prompt": img_prompt}
                 )
                 # This caption is returned directly to the user with no LLM synthesis
@@ -872,8 +899,25 @@ class AriaMind:
                 self._load_learned(),
             )
 
+            # If the previous turn paused to ask a clarifying question, this
+            # turn is that answer, not a fresh request — fold the original
+            # request + question into what the planner sees so it has the
+            # full picture instead of just a short, contextless reply. Pop
+            # (not peek) so a resolved round never lingers into a future,
+            # unrelated turn.
+            awaiting = state.pop("awaiting_clarification", None)
+            reasoning_text = text
+            if isinstance(awaiting, dict) and awaiting.get("question"):
+                reasoning_text = (
+                    f"Original request: {awaiting.get('original_text', text)}\n"
+                    f"I asked: {awaiting['question']}\n"
+                    f"User's answer: {text}"
+                )
+
             # Build prompt and reason
-            plan = await self._reason(text, history, state, goals, learned, user_context or "")
+            plan = await self._reason(
+                reasoning_text, history, state, goals, learned, user_context or ""
+            )
             if not plan:
                 return MindResponse(text="I couldn't process that. Please try again.")
 
@@ -881,6 +925,31 @@ class AriaMind:
             tool_args = plan.get("tool_args") or {}
             reply = (plan.get("reply") or "").strip()
             has_tool = bool(tool and tool not in ("null", "none", None))
+
+            # HITL CHECKPOINT: the planner judged this request too ambiguous
+            # or consequential to proceed on safely — pause and ask, instead
+            # of guessing (see THINK AND ASK BEFORE ACTING in SYSTEM_TEMPLATE).
+            # Never fires alongside a concrete tool call: needs_clarification
+            # means execution didn't happen this turn.
+            if plan.get("needs_clarification") and not has_tool:
+                question = reply or "Could you share a bit more detail so I can do this right?"
+                state["awaiting_clarification"] = {
+                    "question": question,
+                    "original_text": reasoning_text,
+                }
+                await self._store_interaction(chat_id, text, question, None)
+                await self._evolve_state(chat_id, state, text, goals)
+                asyncio.create_task(self._maybe_reflect(chat_id))
+                await self._trace_turn(
+                    "clarification",
+                    text,
+                    question,
+                    turn_started,
+                    True,
+                    chat_id=chat_id,
+                    email=email,
+                )
+                return MindResponse(text=question, awaiting_input=True)
 
             # AUTONOMY (agent-style) — ONLY when the plan didn't pick a concrete
             # tool. This way, research/creation gets routed to its reliable tool
@@ -905,9 +974,26 @@ class AriaMind:
                         ),
                         is_owner=auth.is_owner_email(email),
                     )
-                    agent_result = await agent.run(text)
+                    agent_result = await agent.run(text, email=email)
                     if agent_result.get("success"):
+                        # Must persist here too: `state` may have had
+                        # awaiting_clarification popped off above, and this
+                        # return skips every other place that would normally
+                        # save it (see CodeRabbit, PR #133) — otherwise a
+                        # resolved clarification round reappears on the next,
+                        # unrelated turn.
+                        await self._evolve_state(chat_id, state, text, goals)
                         return MindResponse(text=agent_result["output"])
+                    if agent_result.get("guardrail_blocked"):
+                        # A genuine kill-switch/moderation block, not an
+                        # ordinary "the agent couldn't finish" failure — must
+                        # terminate here rather than fall through to the
+                        # normal-flow retry below, or the block would be
+                        # silently swallowed and the request would proceed
+                        # anyway (CodeRabbit, PR #143). Persist state for the
+                        # same reason as the success branch above.
+                        await self._evolve_state(chat_id, state, text, goals)
+                        return MindResponse(text=agent_result["error"])
                     logger.warning(
                         "[AriaMind] autonomous run failed, using normal flow: %s",
                         agent_result.get("error"),
@@ -934,8 +1020,14 @@ class AriaMind:
                 )
                 if decline:
                     await self._store_interaction(chat_id, text, decline, tool)
-                    return MindResponse(text=decline)
-                obs, media = await self._execute_with_retry(tool, tool_args, email=email)
+                    # Same reason as the autonomous_execution return above —
+                    # this early return must persist state too, or a popped
+                    # awaiting_clarification never actually clears in Redis.
+                    await self._evolve_state(chat_id, state, text, goals)
+                    return MindResponse(text=decline, awaiting_input=True)
+                obs, media, executed_args = await self._execute_with_retry(
+                    tool, tool_args, email=email, text=text, chat_id=chat_id
+                )
                 final_text = await self._synthesize(text, tool, obs)
                 # bool(media or obs) was always True (obs is a non-empty string even on
                 # failure), so self-reflection never saw a real failure signal — every
@@ -944,7 +1036,11 @@ class AriaMind:
                 # final screenshot even when the run failed, so `media` alone isn't a
                 # reliable success signal — judge success from the observation text.
                 turn_success = not self._looks_like_failure(obs)
-                await self._record_exec(tool, tool_args, obs, turn_success)
+                # executed_args, not the original tool_args plan — a retry may have
+                # adapted them (_adapt_args), so the plan's args can differ from what
+                # actually ran; recording/tracing the plan would misattribute a
+                # successful retry to arguments that were never executed.
+                await self._record_exec(tool, executed_args, obs, turn_success)
                 await self._store_interaction(chat_id, text, final_text, tool)
                 await self._evolve_state(chat_id, state, text, goals)
                 asyncio.create_task(self._maybe_reflect(chat_id))
@@ -956,6 +1052,8 @@ class AriaMind:
                     turn_success,
                     chat_id=chat_id,
                     email=email,
+                    tool_args=executed_args,
+                    raw_observation=obs,
                 )
                 # For documents, send text + doc; for A/V media, send caption only
                 is_doc = "document_bytes" in media
@@ -963,6 +1061,7 @@ class AriaMind:
                     text=final_text if is_doc else (None if media else final_text),
                     caption=final_text,
                     tool_used=tool,
+                    awaiting_input=self._looks_like_pending_confirmation(obs),
                     **media,
                 )
 
@@ -1064,7 +1163,10 @@ class AriaMind:
         resp = await ai.complete(
             system=(
                 "You are ARIA. Talk like a real person, not a corporate bot — warm, "
-                "direct, no filler. Reply in the SAME language as the user, max 2 sentences."
+                "direct, no filler. Answer the actual question directly — don't "
+                'restate it first. Don\'t hedge into "it depends" or list options '
+                "without picking one — commit to a specific, concrete answer. Reply "
+                "in the SAME language as the user, max 2 sentences."
             ),
             user=text + self._lang_directive(text),
             model=AIModel.FAST,
@@ -1134,13 +1236,40 @@ class AriaMind:
             return False
         return "reserved for" not in (obs or "").lower()
 
+    def _looks_like_pending_confirmation(self, obs: str) -> bool:
+        """True when a tool's raw observation is itself a checkpoint awaiting
+        a follow-up confirmation — e.g. post_to_social's forced preview step,
+        which mints a confirm_token and waits for the owner to repeat the
+        request before anything actually goes out, or a Layer 2 constitutional
+        review declining a RETRY's adapted args (guardrails.review_tool_call's
+        "queued it for a decision" message — the pre-execution decline at the
+        top of the dispatch above returns its own MindResponse with
+        awaiting_input=True directly and never reaches this check; this one
+        only covers the same decline surfacing from inside the retry loop).
+        Checked against `obs` (the tool's literal output), not the
+        LLM-synthesized final_text, since synthesis can freely reword text
+        and isn't guaranteed to preserve the exact marker this checks for."""
+        low = (obs or "").lower()
+        return "confirm_token:" in low or "queued it for a decision" in low
+
     async def _execute_with_retry(
-        self, tool: str, args: dict, max_retries: int = 3, email: str = ""
-    ) -> tuple[str, dict]:
+        self,
+        tool: str,
+        args: dict,
+        max_retries: int = 3,
+        email: str = "",
+        text: str = "",
+        chat_id: str = "",
+    ) -> tuple[str, dict, dict]:
         """
         Executes the tool with up to max_retries attempts.
         Each attempt may use adapted parameters.
-        Returns (observation_text, media_dict).
+        Returns (observation_text, media_dict, executed_args) — executed_args
+        is whichever args actually produced this result, which can differ
+        from the caller's original `args` once a retry has adapted them
+        (see _adapt_args). Callers that audit/trace this call must use
+        executed_args, not their own copy of the pre-retry args, or a
+        successful retry gets audited with arguments that were never run.
         """
         last_error = ""
         for attempt in range(max_retries):
@@ -1153,12 +1282,12 @@ class AriaMind:
             # reliable on its own (computer_use always returns a final screenshot
             # even when the run failed).
             if not self._looks_like_failure(obs):
-                return obs, media
+                return obs, media, args
 
             # Permission denials are deterministic — another attempt can't
             # change the outcome, so don't burn 2s/4s of backoff on one.
             if "reserved for" in obs.lower():
-                return obs, media
+                return obs, media, args
 
             last_error = obs
             logger.warning(
@@ -1166,22 +1295,97 @@ class AriaMind:
             )
 
             # Adapt args for the next attempt
-            args = self._adapt_args(tool, args, obs, attempt)
+            new_args = await self._adapt_args(tool, args, obs, attempt)
 
-        return f"I tried {max_retries} times and couldn't complete '{tool}': {last_error}", {}
+            # SAFETY LAYER 2 (retry path): the caller already ran
+            # guardrails.review_tool_call() once, but only against the
+            # planner's ORIGINAL args. _adapt_args can propose materially
+            # different VALUES for a consequential tool (a different niche,
+            # a different cashflow amount, different PR content) — not just
+            # a formatting fix — and several CONSTITUTIONAL_REVIEW_TOOLS
+            # entries (e.g. record_cashflow_entry, create_flash_sale,
+            # run_income) have no separate Layer-3 content/code firewall to
+            # catch that downstream, so an adapted value would otherwise
+            # execute for real with zero safety review of what actually ran.
+            if new_args != args:
+                from apps.core.safety import guardrails
 
-    def _adapt_args(self, tool: str, args: dict, error: str, attempt: int) -> dict:
-        """Adapts the arguments based on the error for the next attempt."""
+                if tool in guardrails.CONSTITUTIONAL_REVIEW_TOOLS:
+                    decline = await guardrails.review_tool_call(
+                        tool, new_args, text, email=email, chat_id=chat_id
+                    )
+                    if decline:
+                        return decline, {}, new_args
+            args = new_args
+
+        return (
+            f"I tried {max_retries} times and couldn't complete '{tool}': {last_error}",
+            {},
+            args,
+        )
+
+    async def _adapt_args(self, tool: str, args: dict, error: str, attempt: int) -> dict:
+        """Adapts the arguments based on the error for the next attempt.
+
+        generate_image/web_search have hand-tuned adaptations below (swap
+        model, shorten query). Every other tool used to just retry with the
+        exact same args that already failed — no self-correction at all for
+        ~98 of the ~100 tool branches. They now fall through to a generic
+        LLM-based correction: propose new argument VALUES for the same keys,
+        given the error, instead of blindly repeating what just failed.
+        Fails open to the original args on any error/mismatch — a broken
+        self-correction attempt must never break the retry loop itself."""
         if tool == "generate_image" and attempt == 1:
             # First fallback: change model
-            args = dict(args, _fallback_model="stabilityai/stable-diffusion-xl-base-1.0")
-        elif tool == "generate_image" and attempt == 2:
-            args = dict(args, _fallback_model="stabilityai/sdxl-turbo")
-        elif tool == "web_search" and attempt > 0:
+            return dict(args, _fallback_model="stabilityai/stable-diffusion-xl-base-1.0")
+        if tool == "generate_image" and attempt == 2:
+            return dict(args, _fallback_model="stabilityai/sdxl-turbo")
+        if tool == "web_search" and attempt > 0:
             # Simplify the query
             query = args.get("query", "")
             words = query.split()
-            args = {"query": " ".join(words[:4])}  # shorter query
+            return {"query": " ".join(words[:4])}  # shorter query
+        return await self._adapt_args_generic(tool, args, error)
+
+    async def _adapt_args_generic(self, tool: str, args: dict, error: str) -> dict:
+        """Generic self-correction fallback for any tool without a
+        hand-tuned adaptation above. Asks a FAST model to propose corrected
+        argument values (same keys only — never adding, removing, or
+        renaming one) given the tool, its current args, and the error. The
+        matching-key-set check is a deliberate guardrail: it's cheap to
+        verify and stops a confused/hallucinated response from smuggling in
+        an unrelated argument shape the next _execute_tool call wasn't
+        expecting."""
+        if not args:
+            return args
+        ai = self._ai_client()
+        if not ai:
+            return args
+        try:
+            import json
+
+            from apps.core.tools.ai_client import AIModel
+
+            result = await ai.complete_json(
+                system=(
+                    "A tool call failed. Given the tool name, its current "
+                    "arguments, and the error, propose corrected argument "
+                    "VALUES for the SAME KEYS — never add, remove, or rename "
+                    "a key. If you can't identify a plausible fix, return "
+                    "the arguments completely unchanged. Respond ONLY with "
+                    'JSON: {"tool_args": {...same keys as given...}}.'
+                ),
+                user=f"Tool: {tool}\nCurrent args: {json.dumps(args)}\nError: {error[:300]}",
+                model=AIModel.FAST,
+                max_tokens=400,
+                temperature=0.2,
+                agent_name="aria_mind_adapt_args",
+            )
+            adapted = result.get("tool_args") if isinstance(result, dict) else None
+            if isinstance(adapted, dict) and set(adapted.keys()) == set(args.keys()):
+                return adapted
+        except Exception as exc:
+            logger.debug("[AriaMind] generic arg adaptation failed for %s: %s", tool, exc)
         return args
 
     # Tools that write to a real, external system of record on the owner's
@@ -1191,11 +1395,18 @@ class AriaMind:
     # account; only the owner.
     #
     # execute_code is here too: CodeRunner (apps/core/tools/code_runner.py)
-    # runs the model-chosen code as a plain subprocess on the same host —
-    # no container/VM isolation — and its "blocked imports" check is a
-    # handful of substring matches, trivially bypassed. Until real sandboxing
-    # exists, this is effectively host code execution and must stay
-    # owner-only, not a free-tier chat capability.
+    # runs the model-chosen code inside a real bubblewrap sandbox when
+    # available (isolated mount/pid/net/ipc/uts namespaces, no network by
+    # default, only its own ephemeral workdir writable) — but it fails OPEN
+    # to a plain host subprocess with NO OS-level namespace/mount/network
+    # isolation if bwrap isn't installed or usable in this environment,
+    # observably via the result's "sandboxed": bool. The fallback still
+    # keeps its other defense-in-depth controls (sanitized environment,
+    # ulimits, an ephemeral workdir, dangerous-import checks), but those are
+    # a handful of substring/regex matches, trivially bypassed on their own.
+    # Between that fallback and the fact that arbitrary code execution is
+    # inherently high-risk even when sandboxed, this stays owner-only, not a
+    # free-tier chat capability.
     #
     # computer_use launches a real headless Chromium and lets the model click
     # and type anywhere on the open web via coordinate-based actions — always
@@ -1256,6 +1467,25 @@ class AriaMind:
             "record_cashflow_entry",
             "cashflow_summary",
             "forecast_cashflow",
+            # run_income (Orchestrator.run_cycle) and auto_income/launch_niche
+            # (NicheRevenueEngine.autonomous_income_cycle)/start_income_loop/
+            # run_income_cycle/income_loop_status (IncomeLoop) are the same
+            # class of action: real, unattended business cycles that read/
+            # write ONE global Redis key set (aria:income:*, not scoped per
+            # user) and spend against the owner's own real GUMROAD_TOKEN.
+            # square_sell creates a real Square catalog item + payment link
+            # via the owner's own SQUARE_ACCESS_TOKEN. None of these were
+            # owner-gated — a CodeRabbit review on this same PR caught that
+            # auto_income/launch_niche were only constitutionally reviewed,
+            # not owner-gated, despite this comment previously (incorrectly)
+            # claiming otherwise.
+            "run_income",
+            "square_sell",
+            "launch_niche",
+            "auto_income",
+            "start_income_loop",
+            "run_income_cycle",
+            "income_loop_status",
         }
     )
 
@@ -4454,9 +4684,24 @@ class AriaMind:
                 )
             return generic_failure_reply
 
+        # A tool's own SUCCESSFUL observation can still echo back a real
+        # credential (e.g. an API error message quoting its own auth header,
+        # a status check that includes a token) — unlike the failure path
+        # above, this text is meant to reach the user, so it can't just be
+        # replaced wholesale. Redact the narrow, high-confidence patterns
+        # (see apps/core/safety/redaction.py) once here, before any of the
+        # three paths below that can hand it to the user or the LLM —
+        # SYNTHESIS_SYSTEM tells the model to use the tool's real data
+        # verbatim, so an unredacted secret in the prompt could still come
+        # back out in the reply even though the model is never told to
+        # fabricate or hedge it.
+        from apps.core.safety.redaction import redact_sensitive_text
+
+        safe_observation = redact_sensitive_text(observation)
+
         ai = self._ai_client()
         if not ai:
-            return observation[:400]
+            return safe_observation[:400]
 
         from apps.core.tools.ai_client import AIModel
 
@@ -4464,7 +4709,7 @@ class AriaMind:
             system=SYNTHESIS_SYSTEM,
             user=(
                 f"The user asked: {user_input[:400]}\n"
-                f"I used the '{tool}' tool and got:\n{observation[:2000]}"
+                f"I used the '{tool}' tool and got:\n{safe_observation[:2000]}"
                 f"{self._lang_directive(user_input)}"
             ),
             model=AIModel.STRATEGY,
@@ -4475,7 +4720,7 @@ class AriaMind:
         )
         if resp and resp.success and resp.content:
             return resp.content.strip()
-        return observation[:600]
+        return safe_observation[:600]
 
     async def _fallback_reply(self, text: str) -> str:
         """Generates a direct, useful reply when the plan didn't include one."""
@@ -4618,6 +4863,8 @@ class AriaMind:
 
     async def _record_exec(self, tool: str, args: dict, obs: str, success: bool) -> None:
         """Stores an execution record for future self-reflection."""
+        from apps.core.safety.redaction import redact_sensitive_args, redact_sensitive_text
+
         cache = self._cache_client()
         if not cache:
             return
@@ -4629,8 +4876,8 @@ class AriaMind:
                 "ts": datetime.now(UTC).isoformat(),
                 "tool": tool,
                 "success": success,
-                "in": str(args)[:100],
-                "out": obs[:150],
+                "in": str(redact_sensitive_args(args))[:100],
+                "out": redact_sensitive_text(obs)[:150],
             }
         )
         execs = execs[-self.MAX_EXECS :]
@@ -4646,12 +4893,30 @@ class AriaMind:
         *,
         chat_id: str = "",
         email: str = "",
+        tool_args: dict | None = None,
+        raw_observation: str = "",
     ) -> None:
         """Records this turn with CognitionTracer (for ai_performance_report
         and the admin activity feed's history) and broadcasts it live to any
         admin console currently watching. Both are best-effort — a tracing or
         broadcast failure must never affect the actual reply the user already
-        received, so every error is swallowed independently of the other."""
+        received, so every error is swallowed independently of the other.
+
+        tool_args/raw_observation are optional — without them, a trace only
+        showed the user's message and the final, already-synthesized reply,
+        with no way to see what the tool was actually called with or what it
+        actually returned before _synthesize() rewrote it. Empty for the
+        "conversation" task_type, which has neither.
+
+        tool_args/raw_observation are each redacted once here (see
+        apps/core/safety/redaction.py) and the SAME sanitized values are used
+        for both the tracer and the admin_activity broadcast below —
+        redacting independently in two places risks one of them drifting
+        out of sync and leaking a secret the other correctly caught."""
+        from apps.core.safety.redaction import redact_sensitive_args, redact_sensitive_text
+
+        safe_tool_args = redact_sensitive_args(tool_args)
+        safe_observation = redact_sensitive_text(raw_observation)
         latency_ms = (time.monotonic() - started_at) * 1000
         with suppress(Exception):
             from apps.evaluation.phoenix.tracer import get_cognition_tracer
@@ -4664,6 +4929,8 @@ class AriaMind:
                 latency_ms=latency_ms,
                 success=success,
                 metadata={"chat_id": chat_id, "email": email},
+                tool_args=safe_tool_args,
+                raw_observation=safe_observation,
             )
         with suppress(Exception):
             import json
@@ -4682,6 +4949,8 @@ class AriaMind:
                         "response": response[:300],
                         "success": success,
                         "latency_ms": round(latency_ms, 1),
+                        "tool_args": str(safe_tool_args)[:300] if safe_tool_args else None,
+                        "raw_observation": safe_observation[:300],
                     },
                     ensure_ascii=False,
                 ),

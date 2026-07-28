@@ -1151,6 +1151,51 @@ async def admin_api_mission_control_telemetry(request: Request):
     }
 
 
+@app.get("/admin/api/mission-control/memory/{email}")
+async def admin_api_mission_control_memory(request: Request, email: str):
+    """Read-only working-memory inspector for Mission Control's Memory
+    Mutation Console — every real source ARIA actually draws from for this
+    user, assembled in one place, with no editing yet (that's a follow-up):
+
+      - thread.history / thread.state: this chat thread only (aria_mind.py's
+        K_HISTORY/K_STATE, 7d/30d TTL).
+      - episodic: cross-thread recall across this user's other conversations
+        (episodic_memory.py, 180d TTL, Redis-primary).
+      - facts: durable curated facts/preferences with no TTL, no cap
+        (user_facts.py, Supabase — empty if Supabase isn't configured).
+      - global.goals / global.learned: NOT per-user — a single shared store
+        across every user (aria_mind.py's K_GOALS/K_LEARNED) — included
+        because they still shape this user's replies, but labeled so they
+        aren't mistaken for this user's own memory.
+    """
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    email = email.strip().lower()
+    from apps.core.cognition.aria_mind import get_aria_mind
+    from apps.core.cognition.episodic_memory import get_episodic_memory
+    from apps.core.memory.user_facts import get_user_facts
+
+    cid = _conversation_id({"email": email})
+    mind = get_aria_mind()
+    history, state, goals, learned, episodes, facts = await asyncio.gather(
+        mind._load_history(cid),
+        mind._load_state(cid),
+        mind._load_goals(),
+        mind._load_learned(),
+        get_episodic_memory().get_recent(email, n=20),
+        get_user_facts().list_all(email, limit=50),
+    )
+    return {
+        "email": email,
+        "conversation_id": cid,
+        "thread": {"history": history, "state": state},
+        "episodic": episodes,
+        "facts": facts,
+        "global": {"goals": goals, "learned": learned},
+        "note": "global.goals and global.learned are shared across every user, not scoped to this email.",
+    }
+
+
 @app.get("/api/v1/connectors/health")
 async def connectors_health():
     """Connector health for the preventive banner. Refreshes lazily if stale
@@ -1748,10 +1793,15 @@ async def api_plans(request: Request):
     user = _current_user(request)
     email = (user.get("email") or "").strip().lower() if user else ""
     current = await _get_user_plan(email) if email else "free"
-    from apps.core import seats
+    from apps.core import founding, seats
 
     member_of = await seats.owner_of(email) if email else None
-    return {"plans": PUBLIC_PLANS, "current": current, "is_member": bool(member_of)}
+    return {
+        "plans": PUBLIC_PLANS,
+        "current": current,
+        "is_member": bool(member_of),
+        "founding_offer": founding.public_offer(),
+    }
 
 
 @app.get("/api/v1/account/members")
@@ -2117,6 +2167,16 @@ def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
     seats = int(plan.get("seats", 1) or 1)
     seat_note = f" · up to {seats} members" if seats > 1 else ""
     go = f"/billing/checkout?tier={tier}&amp;agreed=1"
+    from apps.core import founding
+
+    _offer = founding.public_offer()
+    founder_note = (
+        f'<div class="founder"><b>Founding member</b> — enter code '
+        f'<code>{_offer["code"]}</code> at checkout for {_offer["percent_off"]}% off '
+        f'for life. First {_offer["cap"]} customers only.</div>'
+        if _offer
+        else ""
+    )
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ARIA · Confirm {plan['name']}</title><style>
@@ -2131,6 +2191,10 @@ h1{{font-size:22px;margin-bottom:4px;color:#18181b}} .price{{color:#52525b;font-
 border-radius:12px;padding:14px 14px;margin-bottom:20px}}
 .ack input{{margin-top:3px;width:18px;height:18px;accent-color:#15E06A;flex:0 0 auto;cursor:pointer}}
 .ack label{{font-size:13.5px;line-height:1.55;color:#3f4a44;cursor:pointer}}
+.founder{{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:12px 14px;
+margin-bottom:18px;font-size:13.5px;line-height:1.5;color:#065f46}}
+.founder code{{background:#065f46;color:#fff;padding:2px 7px;border-radius:6px;font-weight:700;
+font-family:ui-monospace,SFMono-Regular,monospace}}
 .btn{{display:block;width:100%;text-align:center;padding:13px;border-radius:12px;border:0;
 background:#15E06A;color:#04150d;font-weight:700;font-size:15px;box-shadow:0 8px 24px -6px rgba(21,224,106,.45);
 text-decoration:none;cursor:pointer;transition:filter .15s}}
@@ -2140,6 +2204,7 @@ text-decoration:none;cursor:pointer;transition:filter .15s}}
 </style></head><body><div class="card">
 <h1>Confirm {plan['name']}</h1>
 <div class="price"><b>{price}</b>{seat_note} · renews monthly · cancel anytime</div>
+{founder_note}
 <div class="ack">
   <input type="checkbox" id="ack" onchange="document.getElementById('go').setAttribute('aria-disabled', this.checked?'false':'true')">
   <label for="ack">{NO_REFUND_ACK}</label>
@@ -2176,6 +2241,12 @@ async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""
     if not key:
         # Billing not configured yet — send the user back with a clear flag.
         return RedirectResponse("/app?billing=unavailable", status_code=303)
+
+    # Make sure the founding-member promo code exists so customers can enter it
+    # at Stripe checkout (allow_promotion_codes is already on). Fail-open.
+    from apps.core import founding
+
+    await founding.ensure_promo(key)
 
     email = (user.get("email") or "").strip().lower()
     base = (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
@@ -2556,6 +2627,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": 0,
             "media_type": None,
             "media_base64": None,
+            "awaiting_input": False,
         }
     if not _current_user(request):
         return {
@@ -2564,6 +2636,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": 0,
             "media_type": None,
             "media_base64": None,
+            "awaiting_input": False,
         }
 
     # Personalize + enforce plan limits from the signed-in user.
@@ -2597,6 +2670,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
 
     # Global panic freeze + AI burn-rate cap (paid plans frozen over budget).
@@ -2607,6 +2681,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": 0,
             "media_type": None,
             "media_base64": None,
+            "awaiting_input": False,
         }
     if email and plan in ("pro", "business"):
         from apps.core.ops.cost_ledger import get_ledger
@@ -2622,6 +2697,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
 
     # If a team professional is selected, prepend their persona so ARIA works as them.
@@ -2668,6 +2744,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
             "processing_time_ms": elapsed,
             "media_type": media_type,
             "media_base64": media_b64,
+            "awaiting_input": resp.awaiting_input,
         }
     except Exception as e:
         logger.error(f"Chat (aria_mind) error: {e}")
@@ -2682,6 +2759,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
         except Exception as e2:
             logger.error(f"Chat fallback error: {e2}")
@@ -2691,6 +2769,7 @@ async def chat(req: ChatRequest, request: Request, background_tasks: BackgroundT
                 "processing_time_ms": 0,
                 "media_type": None,
                 "media_base64": None,
+                "awaiting_input": False,
             }
 
 
@@ -3225,7 +3304,13 @@ async def websocket_chat(ws: WebSocket):
             await _record_ai_cost(email, plan, user_text, reply_text)
             if email and reply_text:
                 asyncio.create_task(_remember_turn(email, user_text, reply_text))
-            await ws.send_json({"reply": reply_text, "tool": resp.tool_used})
+            await ws.send_json(
+                {
+                    "reply": reply_text,
+                    "tool": resp.tool_used,
+                    "awaiting_input": resp.awaiting_input,
+                }
+            )
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:

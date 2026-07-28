@@ -40,6 +40,15 @@ class AITrace:
     hallucination_risk: float = 0.0
     ts: float = field(default_factory=time.time)
     metadata: dict = field(default_factory=dict)
+    # The tool's actual call args and its raw pre-synthesis observation —
+    # without these, a trace only shows the user's message and the final,
+    # already-rewritten reply, which is a real gap for debugging/audit:
+    # there's no way to see what was actually run or what it actually
+    # returned before _synthesize() rephrased it. Optional/empty for the
+    # "conversation" task_type (no tool) and any caller that doesn't have
+    # them, so this stays backward-compatible.
+    tool_args: dict | None = None
+    raw_observation: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +65,11 @@ class AITrace:
             "hallucination_risk": self.hallucination_risk,
             "ts": self.ts,
             "metadata": self.metadata,
+            # Bounded like every other free-text field here — tool_args can
+            # contain a large payload (e.g. execute_code's code, generate_pdf's
+            # content), so it's stored as a truncated repr, not the raw dict.
+            "tool_args": str(self.tool_args)[:300] if self.tool_args else None,
+            "raw_observation": self.raw_observation[:500],
         }
 
 
@@ -119,6 +133,8 @@ class CognitionTracer:
         latency_ms: float = 0.0,
         success: bool = True,
         metadata: dict = None,
+        tool_args: dict | None = None,
+        raw_observation: str = "",
     ) -> AITrace:
         if metadata is None:
             metadata = {}
@@ -134,6 +150,8 @@ class CognitionTracer:
             quality_score=self._score_quality(response),
             hallucination_risk=self._estimate_hallucination(response),
             metadata=metadata,
+            tool_args=tool_args,
+            raw_observation=raw_observation,
         )
         self._traces.append(trace.to_dict())
         if len(self._traces) > self.MAX_TRACES:
