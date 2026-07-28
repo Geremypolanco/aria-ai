@@ -15,7 +15,9 @@ from apps.core.tools.ai_client import get_ai_client  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-_REDIS_KEY = "shopify:cart_recovery:v1"
+_REDIS_KEY_TEMPLATE = "shopify:cart_recovery:v1:{workspace_id}"
+# Pre-multi-tenancy global key — see CartRecoveryEngine._load()'s fallback.
+_LEGACY_REDIS_KEY = "shopify:cart_recovery:v1"
 _REDIS_TTL = 86400 * 30  # 30 days
 
 # Delays (hours) and discounts for each recovery step
@@ -71,11 +73,23 @@ class AbandonedCart:
 
 
 class CartRecoveryEngine:
-    """Manages abandoned cart registration and AI-powered recovery sequences."""
+    """Manages abandoned cart registration and AI-powered recovery sequences —
+    one instance per workspace (apps/core/tenancy.py)."""
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: str = "_default") -> None:
+        self._workspace_id = workspace_id or "_default"
+        self._cache_key = _REDIS_KEY_TEMPLATE.format(workspace_id=self._workspace_id)
         self._carts: list[dict] = []
         self._loaded = False
+
+    def _is_legacy_owner_workspace(self) -> bool:
+        """True only for the actual configured owner's own workspace_id —
+        see CashflowEngine's identical method (apps/business/finance/
+        cashflow_engine.py) for why this must never apply to any other
+        workspace."""
+        from apps.core import auth
+
+        return self._workspace_id in auth.owner_emails()
 
     # ------------------------------------------------------------------
     # Persistence
@@ -86,7 +100,9 @@ class CartRecoveryEngine:
             return
         try:
             cache = get_cache()
-            data = await cache.get(_REDIS_KEY)
+            data = await cache.get(self._cache_key)
+            if not data and self._is_legacy_owner_workspace():
+                data = await cache.get(_LEGACY_REDIS_KEY)
             if data and isinstance(data, list):
                 self._carts = data
         except Exception:
@@ -96,7 +112,7 @@ class CartRecoveryEngine:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_REDIS_KEY, self._carts, ttl_seconds=_REDIS_TTL)
+            await cache.set(self._cache_key, self._carts, ttl_seconds=_REDIS_TTL)
         except Exception:
             logger.exception("CartRecoveryEngine._save failed")
 
@@ -343,11 +359,13 @@ class CartRecoveryEngine:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_engine: CartRecoveryEngine | None = None
+_engines: dict[str, CartRecoveryEngine] = {}
 
 
-def get_cart_recovery_engine() -> CartRecoveryEngine:
-    global _engine
-    if _engine is None:
-        _engine = CartRecoveryEngine()
-    return _engine
+def get_cart_recovery_engine(workspace_id: str = "_default") -> CartRecoveryEngine:
+    """One CartRecoveryEngine per workspace — `workspace_id` defaults to
+    "_default" only for callers not yet converted to pass a real one."""
+    workspace_id = workspace_id or "_default"
+    if workspace_id not in _engines:
+        _engines[workspace_id] = CartRecoveryEngine(workspace_id)
+    return _engines[workspace_id]

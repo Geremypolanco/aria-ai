@@ -15,7 +15,9 @@ from apps.core.tools.ai_client import get_ai_client  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-_REDIS_KEY = "shopify:bundles:v1"
+_REDIS_KEY_TEMPLATE = "shopify:bundles:v1:{workspace_id}"
+# Pre-multi-tenancy global key — see BundleGenerator._load()'s fallback.
+_LEGACY_REDIS_KEY = "shopify:bundles:v1"
 _REDIS_TTL = 86400 * 60  # 60 days
 
 _VALID_BUNDLE_TYPES = {"complementary", "quantity", "starter", "premium"}
@@ -68,11 +70,23 @@ class ProductBundle:
 
 
 class BundleGenerator:
-    """Creates and manages product bundles with AI-generated copy."""
+    """Creates and manages product bundles with AI-generated copy — one
+    instance per workspace (apps/core/tenancy.py)."""
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: str = "_default") -> None:
+        self._workspace_id = workspace_id or "_default"
+        self._cache_key = _REDIS_KEY_TEMPLATE.format(workspace_id=self._workspace_id)
         self._bundles: list[dict] = []
         self._loaded = False
+
+    def _is_legacy_owner_workspace(self) -> bool:
+        """True only for the actual configured owner's own workspace_id —
+        see CashflowEngine's identical method (apps/business/finance/
+        cashflow_engine.py) for why this must never apply to any other
+        workspace."""
+        from apps.core import auth
+
+        return self._workspace_id in auth.owner_emails()
 
     # ------------------------------------------------------------------
     # Persistence
@@ -83,7 +97,9 @@ class BundleGenerator:
             return
         try:
             cache = get_cache()
-            data = await cache.get(_REDIS_KEY)
+            data = await cache.get(self._cache_key)
+            if not data and self._is_legacy_owner_workspace():
+                data = await cache.get(_LEGACY_REDIS_KEY)
             if data and isinstance(data, list):
                 self._bundles = data
         except Exception:
@@ -93,7 +109,7 @@ class BundleGenerator:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_REDIS_KEY, self._bundles, ttl_seconds=_REDIS_TTL)
+            await cache.set(self._cache_key, self._bundles, ttl_seconds=_REDIS_TTL)
         except Exception:
             logger.exception("BundleGenerator._save failed")
 
@@ -344,11 +360,13 @@ class BundleGenerator:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_generator: BundleGenerator | None = None
+_generators: dict[str, BundleGenerator] = {}
 
 
-def get_bundle_generator() -> BundleGenerator:
-    global _generator
-    if _generator is None:
-        _generator = BundleGenerator()
-    return _generator
+def get_bundle_generator(workspace_id: str = "_default") -> BundleGenerator:
+    """One BundleGenerator per workspace — `workspace_id` defaults to
+    "_default" only for callers not yet converted to pass a real one."""
+    workspace_id = workspace_id or "_default"
+    if workspace_id not in _generators:
+        _generators[workspace_id] = BundleGenerator(workspace_id)
+    return _generators[workspace_id]

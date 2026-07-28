@@ -20,7 +20,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_REDIS_KEY = "shopify:flash_sales:v1"
+_REDIS_KEY_TEMPLATE = "shopify:flash_sales:v1:{workspace_id}"
+# Pre-multi-tenancy global key — see FlashSaleEngine._load()'s fallback.
+_LEGACY_REDIS_KEY = "shopify:flash_sales:v1"
 _REDIS_TTL = 86400 * 60  # 60 days
 
 
@@ -90,11 +92,23 @@ class FlashSale:
 
 
 class FlashSaleEngine:
-    """Manages the full lifecycle of flash sales with AI copywriting support."""
+    """Manages the full lifecycle of flash sales with AI copywriting support —
+    one instance per workspace (apps/core/tenancy.py)."""
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: str = "_default") -> None:
+        self._workspace_id = workspace_id or "_default"
+        self._cache_key = _REDIS_KEY_TEMPLATE.format(workspace_id=self._workspace_id)
         self._sales: list[dict] = []
         self._loaded = False
+
+    def _is_legacy_owner_workspace(self) -> bool:
+        """True only for the actual configured owner's own workspace_id —
+        see CashflowEngine's identical method (apps/business/finance/
+        cashflow_engine.py) for why this must never apply to any other
+        workspace."""
+        from apps.core import auth
+
+        return self._workspace_id in auth.owner_emails()
 
     # ------------------------------------------------------------------
     # Persistence
@@ -105,7 +119,9 @@ class FlashSaleEngine:
             return
         try:
             cache = get_cache()
-            data = await cache.get(_REDIS_KEY)
+            data = await cache.get(self._cache_key)
+            if not data and self._is_legacy_owner_workspace():
+                data = await cache.get(_LEGACY_REDIS_KEY)
             if data and isinstance(data, list):
                 self._sales = data
         except Exception:
@@ -115,7 +131,7 @@ class FlashSaleEngine:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_REDIS_KEY, self._sales, ttl_seconds=_REDIS_TTL)
+            await cache.set(self._cache_key, self._sales, ttl_seconds=_REDIS_TTL)
         except Exception:
             logger.exception("FlashSaleEngine._save failed")
 
@@ -313,11 +329,13 @@ class FlashSaleEngine:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_engine: FlashSaleEngine | None = None
+_engines: dict[str, FlashSaleEngine] = {}
 
 
-def get_flash_sale_engine() -> FlashSaleEngine:
-    global _engine
-    if _engine is None:
-        _engine = FlashSaleEngine()
-    return _engine
+def get_flash_sale_engine(workspace_id: str = "_default") -> FlashSaleEngine:
+    """One FlashSaleEngine per workspace — `workspace_id` defaults to
+    "_default" only for callers not yet converted to pass a real one."""
+    workspace_id = workspace_id or "_default"
+    if workspace_id not in _engines:
+        _engines[workspace_id] = FlashSaleEngine(workspace_id)
+    return _engines[workspace_id]

@@ -1435,34 +1435,43 @@ class AriaMind:
             "check_social_session",
             "post_to_social",
             # ── "The business's" singular real state ────────────────────
-            # Most of these modules still persist to ONE global Redis key
-            # (not scoped per-user — e.g. shopify:flash_sales:v1), and
-            # shopify_live_analytics/shopify_store_status read from the
-            # owner's own real Shopify Admin API credentials
-            # (SHOPIFY_ACCESS_TOKEN) — even a per-workspace Redis key
-            # wouldn't give a team its own isolated store, since every
-            # workspace would still hit the one real Shopify account
-            # configured for this deployment. A non-owner authenticated
-            # user reaching any of these could corrupt the owner's real
-            # financial ledger or read the owner's real store's private
-            # revenue data through the owner's own API token — a
-            # data-integrity/exposure issue, not just a permissions
-            # nicety. Two exceptions so far, both purely Redis-backed
-            # bookkeeping with no shared external credential: CashflowEngine
-            # (apps/business/finance/cashflow_engine.py, record_cashflow_
-            # entry/cashflow_summary/forecast_cashflow) and ROITracker
-            # (apps/economics/roi_tracker.py, track_roi/update_roi_returns/
-            # roi_summary) are now keyed per workspace
-            # (apps/core/tenancy.py) rather than one global key, so the
-            # underlying storage-isolation reason for gating them no
-            # longer applies — they remain owner-only here pending a
-            # separate product decision on whether team members should get
-            # this tool access at all, not because of a data-leak risk.
-            # Content/growth tools wired the same session (blog, LinkedIn,
-            # Twitter, internal linking, reinforcement learning) are
-            # deliberately NOT included here: they don't touch money or
-            # credentials, so open access to them is a lower-severity,
-            # legitimate multi-user utility tradeoff.
+            # All of these are now keyed per workspace (apps/core/
+            # tenancy.py) rather than one global Redis key, and
+            # shopify_store_status/shopify_live_analytics resolve a
+            # per-workspace Shopify client (apps/shopify/api_client.py's
+            # get_shopify_client_for(), falling back to the owner's legacy
+            # env-configured store only for the owner's own workspace_id) —
+            # see CashflowEngine (apps/business/finance/cashflow_engine.py),
+            # ROITracker (apps/economics/roi_tracker.py), the Shopify
+            # Revenue Suite (cart_recovery.py, flash_sale_engine.py,
+            # bundle_generator.py, product_recommender.py, product_seo.py,
+            # shopify_funnels.py — pure Redis bookkeeping, no external
+            # credential at all), and apps/core/connectors/oauth_hub.py's
+            # Shopify OAuth connect flow. The underlying storage/credential-
+            # isolation reason for gating all of these no longer applies —
+            # they remain owner-only here pending a separate product
+            # decision on whether team members should get this tool access
+            # at all, not because of a data-leak risk. Content/growth tools
+            # wired the same session (blog, LinkedIn, Twitter, internal
+            # linking, reinforcement learning) are deliberately NOT included
+            # here: they don't touch money or credentials, so open access
+            # to them is a lower-severity, legitimate multi-user utility
+            # tradeoff.
+            #
+            # income_loop.py's autonomous tools (run_income/auto_income/
+            # launch_niche/start_income_loop/run_income_cycle/
+            # income_loop_status) are the one deliberate exception NOT
+            # converted: it always acts through the owner's own real
+            # external accounts (GITHUB_TOKEN, GUMROAD_TOKEN, ...), none of
+            # which have a per-workspace credential path today, and runs as
+            # ONE background loop per process rather than per workspace.
+            # Redis-key scoping alone would look isolated while every
+            # workspace's autonomous actions still landed in the owner's
+            # real GitHub repo/Gumroad account — worse than doing nothing.
+            # Converting it means first deciding whether "run your own
+            # autonomous, real-money-spending business cycle" should be a
+            # per-team feature at all, not an engineering task to start
+            # speculatively.
             "recover_abandoned_cart",
             "create_flash_sale",
             "create_product_bundle",
@@ -2991,9 +3000,10 @@ class AriaMind:
                         "I need the customer's email and the cart items to build a recovery sequence.",
                         {},
                     )
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
 
-                engine = get_cart_recovery_engine()
+                engine = get_cart_recovery_engine(await workspace_id_for(email))
                 cart = await engine.register_abandoned_cart(user_id, email, items, cart_value)
                 sequence = await engine.generate_recovery_sequence(cart)
                 lines = [
@@ -3012,9 +3022,10 @@ class AriaMind:
                 duration_hours = float(args.get("duration_hours", 24))
                 if not name or not products:
                     return "I need a sale name and at least one product to create a flash sale.", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
 
-                engine = get_flash_sale_engine()
+                engine = get_flash_sale_engine(await workspace_id_for(email))
                 prices = {
                     p.get("id", p.get("title", "")): float(p.get("price", 0)) for p in products
                 }
@@ -3038,9 +3049,10 @@ class AriaMind:
                 discount_pct = float(args.get("discount_pct", 0.15))
                 if len(products) < 2:
                     return "I need at least 2 products to build a bundle.", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.bundles.bundle_generator import get_bundle_generator
 
-                bundle = await get_bundle_generator().create_bundle(
+                bundle = await get_bundle_generator(await workspace_id_for(email)).create_bundle(
                     products, bundle_type, discount_pct
                 )
                 return (
@@ -3059,9 +3071,11 @@ class AriaMind:
                 limit = int(args.get("limit", 5))
                 if not catalog:
                     return "I need a product catalog to recommend from.", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.revenue.product_recommender import get_product_recommender
 
-                result = await get_product_recommender().recommend(
+                recommender = get_product_recommender(await workspace_id_for(email))
+                result = await recommender.recommend(
                     user_id, context, catalog, current_product_id, limit
                 )
                 if not result.recommended_ids:
@@ -3075,6 +3089,7 @@ class AriaMind:
                 return "\n".join(lines), {}
 
             elif tool == "shopify_revenue_dashboard":
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.bundles.bundle_generator import get_bundle_generator
                 from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
                 from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
@@ -3082,17 +3097,18 @@ class AriaMind:
                 from apps.shopify.revenue.product_recommender import get_product_recommender
                 from apps.shopify.seo.product_seo import get_product_seo_optimizer
 
-                cart_engine = get_cart_recovery_engine()
+                ws_id = await workspace_id_for(email)
+                cart_engine = get_cart_recovery_engine(ws_id)
                 await cart_engine._load()
-                sale_engine = get_flash_sale_engine()
+                sale_engine = get_flash_sale_engine(ws_id)
                 await sale_engine._load()
-                bundle_engine = get_bundle_generator()
+                bundle_engine = get_bundle_generator(ws_id)
                 await bundle_engine._load()
-                rec_engine = get_product_recommender()
+                rec_engine = get_product_recommender(ws_id)
                 await rec_engine._load()
-                seo_engine = get_product_seo_optimizer()
+                seo_engine = get_product_seo_optimizer(ws_id)
                 await seo_engine._load()
-                funnel_engine = get_shopify_funnel_engine()
+                funnel_engine = get_shopify_funnel_engine(ws_id)
                 await funnel_engine._load()
 
                 cart_stats = cart_engine.recovery_stats()
@@ -3122,9 +3138,11 @@ class AriaMind:
                 current_title = args.get("current_title", "")
                 if not product_name or not current_title:
                     return "I need at least the product name and its current title to optimize.", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.seo.product_seo import get_product_seo_optimizer
 
-                seo = await get_product_seo_optimizer().optimize_product(
+                seo_optimizer = get_product_seo_optimizer(await workspace_id_for(email))
+                seo = await seo_optimizer.optimize_product(
                     args.get("product_id", "") or product_name,
                     product_name,
                     current_title,
@@ -3144,9 +3162,11 @@ class AriaMind:
                 niche = args.get("niche", "")
                 if not niche:
                     return "What niche/product category should I find keywords for?", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.seo.product_seo import get_product_seo_optimizer
 
-                result = await get_product_seo_optimizer().audit_keywords(niche)
+                seo_optimizer = get_product_seo_optimizer(await workspace_id_for(email))
+                result = await seo_optimizer.audit_keywords(niche)
                 return (
                     f"**SEO keywords for '{niche}'**\n"
                     f"Commercial intent: {', '.join(result['commercial_keywords'])}\n"
@@ -3159,9 +3179,11 @@ class AriaMind:
                 upsell_product = args.get("upsell_product", "")
                 if not original_product or not upsell_product:
                     return "I need both the original product and the upsell product.", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
 
-                offer = await get_shopify_funnel_engine().create_upsell_flow(
+                funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
+                offer = await funnel_engine.create_upsell_flow(
                     original_product,
                     float(args.get("original_price", 0)),
                     upsell_product,
@@ -3177,9 +3199,11 @@ class AriaMind:
                 product_name = args.get("product_name", "")
                 if not product_name:
                     return "Which product's checkout should I optimize?", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
 
-                result = await get_shopify_funnel_engine().optimize_checkout(
+                funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
+                result = await funnel_engine.optimize_checkout(
                     product_name, args.get("pain_points", []) or []
                 )
                 lines = [
@@ -3194,9 +3218,11 @@ class AriaMind:
                 product_name = args.get("product_name", "")
                 if not product_name:
                     return "Which product is this post-purchase flow for?", {}
+                from apps.core.tenancy import workspace_id_for
                 from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
 
-                funnel = await get_shopify_funnel_engine().create_post_purchase_flow(
+                funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
+                funnel = await funnel_engine.create_post_purchase_flow(
                     product_name, args.get("category", "general")
                 )
                 lines = [f"**Post-purchase flow: {product_name}** ({funnel.headline})"]
