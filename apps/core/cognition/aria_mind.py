@@ -1436,22 +1436,28 @@ class AriaMind:
             "post_to_social",
             # ── "The business's" singular real state ────────────────────
             # Most of these modules still persist to ONE global Redis key
-            # (not scoped per-user — e.g. economics:roi:v1,
-            # shopify:flash_sales:v1), and shopify_live_analytics/
-            # shopify_store_status read from the owner's own real Shopify
-            # Admin API credentials (SHOPIFY_ACCESS_TOKEN). A non-owner
-            # authenticated user reaching any of these could corrupt the
-            # owner's real financial ledger or read the owner's real
-            # store's private revenue data through the owner's own API
-            # token — a data-integrity/exposure issue, not just a
-            # permissions nicety. record_cashflow_entry/cashflow_summary/
-            # forecast_cashflow are the first exception: CashflowEngine
-            # (apps/business/finance/cashflow_engine.py) is now keyed per
-            # workspace (apps/core/tenancy.py) rather than one global key,
-            # so the underlying storage-isolation reason for gating them no
+            # (not scoped per-user — e.g. shopify:flash_sales:v1), and
+            # shopify_live_analytics/shopify_store_status read from the
+            # owner's own real Shopify Admin API credentials
+            # (SHOPIFY_ACCESS_TOKEN) — even a per-workspace Redis key
+            # wouldn't give a team its own isolated store, since every
+            # workspace would still hit the one real Shopify account
+            # configured for this deployment. A non-owner authenticated
+            # user reaching any of these could corrupt the owner's real
+            # financial ledger or read the owner's real store's private
+            # revenue data through the owner's own API token — a
+            # data-integrity/exposure issue, not just a permissions
+            # nicety. Two exceptions so far, both purely Redis-backed
+            # bookkeeping with no shared external credential: CashflowEngine
+            # (apps/business/finance/cashflow_engine.py, record_cashflow_
+            # entry/cashflow_summary/forecast_cashflow) and ROITracker
+            # (apps/economics/roi_tracker.py, track_roi/update_roi_returns/
+            # roi_summary) are now keyed per workspace
+            # (apps/core/tenancy.py) rather than one global key, so the
+            # underlying storage-isolation reason for gating them no
             # longer applies — they remain owner-only here pending a
             # separate product decision on whether team members should get
-            # cashflow-tool access at all, not because of a data-leak risk.
+            # this tool access at all, not because of a data-leak risk.
             # Content/growth tools wired the same session (blog, LinkedIn,
             # Twitter, internal linking, reinforcement learning) are
             # deliberately NOT included here: they don't touch money or
