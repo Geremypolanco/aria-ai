@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 from apps.core.memory.redis_client import get_cache
 from apps.core.tools.ai_client import AIModel, get_ai_client
 
-_KEY = "shopify:seo:v1"
+_KEY_TEMPLATE = "shopify:seo:v1:{workspace_id}"
+# Pre-multi-tenancy global key — see ProductSEOOptimizer._load()'s fallback.
+_LEGACY_KEY = "shopify:seo:v1"
 _TTL = 86400 * 30
 
 
@@ -55,19 +57,32 @@ class ProductSEO:
 
 class ProductSEOOptimizer:
     """
-    Shopify product SEO engine.
-    State persisted in Redis (key: shopify:seo:v1, TTL 30d).
+    Shopify product SEO engine — one instance per workspace
+    (apps/core/tenancy.py). State persisted in Redis (TTL 30d).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: str = "_default") -> None:
+        self._workspace_id = workspace_id or "_default"
+        self._cache_key = _KEY_TEMPLATE.format(workspace_id=self._workspace_id)
         self._optimizations: list[dict] = []
         self._loaded = False
+
+    def _is_legacy_owner_workspace(self) -> bool:
+        """True only for the actual configured owner's own workspace_id —
+        see CashflowEngine's identical method (apps/business/finance/
+        cashflow_engine.py) for why this must never apply to any other
+        workspace."""
+        from apps.core import auth
+
+        return self._workspace_id in auth.owner_emails()
 
     async def _load(self) -> None:
         if not self._loaded:
             try:
                 cache = get_cache()
-                data = await cache.get(_KEY)
+                data = await cache.get(self._cache_key)
+                if not data and self._is_legacy_owner_workspace():
+                    data = await cache.get(_LEGACY_KEY)
                 if isinstance(data, dict):
                     self._optimizations = data.get("optimizations", [])
             except Exception:
@@ -77,7 +92,9 @@ class ProductSEOOptimizer:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_KEY, {"optimizations": self._optimizations[-500:]}, ttl_seconds=_TTL)
+            await cache.set(
+                self._cache_key, {"optimizations": self._optimizations[-500:]}, ttl_seconds=_TTL
+            )
         except Exception:
             pass
 
@@ -262,11 +279,13 @@ class ProductSEOOptimizer:
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_instance: ProductSEOOptimizer | None = None
+_instances: dict[str, ProductSEOOptimizer] = {}
 
 
-def get_product_seo_optimizer() -> ProductSEOOptimizer:
-    global _instance
-    if _instance is None:
-        _instance = ProductSEOOptimizer()
-    return _instance
+def get_product_seo_optimizer(workspace_id: str = "_default") -> ProductSEOOptimizer:
+    """One ProductSEOOptimizer per workspace — `workspace_id` defaults to
+    "_default" only for callers not yet converted to pass a real one."""
+    workspace_id = workspace_id or "_default"
+    if workspace_id not in _instances:
+        _instances[workspace_id] = ProductSEOOptimizer(workspace_id)
+    return _instances[workspace_id]

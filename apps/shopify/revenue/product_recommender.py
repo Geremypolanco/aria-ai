@@ -13,7 +13,9 @@ from apps.core.memory.redis_client import get_cache
 
 logger = logging.getLogger(__name__)
 
-_REDIS_KEY = "shopify:recommendations:v1"
+_REDIS_KEY_TEMPLATE = "shopify:recommendations:v1:{workspace_id}"
+# Pre-multi-tenancy global key — see ProductRecommender._load()'s fallback.
+_LEGACY_REDIS_KEY = "shopify:recommendations:v1"
 _REDIS_TTL = 86400 * 30  # 30 days
 
 _VALID_CONTEXTS = {"cart", "product", "homepage", "post_purchase"}
@@ -57,14 +59,26 @@ class RecommendationSet:
 
 
 class ProductRecommender:
-    """Tracks interactions and returns contextualised product recommendations."""
+    """Tracks interactions and returns contextualised product recommendations
+    — one instance per workspace (apps/core/tenancy.py)."""
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: str = "_default") -> None:
+        self._workspace_id = workspace_id or "_default"
+        self._cache_key = _REDIS_KEY_TEMPLATE.format(workspace_id=self._workspace_id)
         # user_id -> list of product_ids interacted with
         self._interaction_data: dict[str, list[str]] = {}
         self._loaded = False
         # Lightweight popularity counter: product_id -> interaction count
         self._popularity: dict[str, int] = {}
+
+    def _is_legacy_owner_workspace(self) -> bool:
+        """True only for the actual configured owner's own workspace_id —
+        see CashflowEngine's identical method (apps/business/finance/
+        cashflow_engine.py) for why this must never apply to any other
+        workspace."""
+        from apps.core import auth
+
+        return self._workspace_id in auth.owner_emails()
 
     # ------------------------------------------------------------------
     # Persistence
@@ -75,7 +89,9 @@ class ProductRecommender:
             return
         try:
             cache = get_cache()
-            data = await cache.get(_REDIS_KEY)
+            data = await cache.get(self._cache_key)
+            if not data and self._is_legacy_owner_workspace():
+                data = await cache.get(_LEGACY_REDIS_KEY)
             if data and isinstance(data, dict):
                 self._interaction_data = data.get("interactions", {})
                 self._popularity = data.get("popularity", {})
@@ -87,7 +103,7 @@ class ProductRecommender:
         try:
             cache = get_cache()
             await cache.set(
-                _REDIS_KEY,
+                self._cache_key,
                 {"interactions": self._interaction_data, "popularity": self._popularity},
                 ttl_seconds=_REDIS_TTL,
             )
@@ -294,11 +310,13 @@ class ProductRecommender:
 # Singleton
 # ---------------------------------------------------------------------------
 
-_recommender: ProductRecommender | None = None
+_recommenders: dict[str, ProductRecommender] = {}
 
 
-def get_product_recommender() -> ProductRecommender:
-    global _recommender
-    if _recommender is None:
-        _recommender = ProductRecommender()
-    return _recommender
+def get_product_recommender(workspace_id: str = "_default") -> ProductRecommender:
+    """One ProductRecommender per workspace — `workspace_id` defaults to
+    "_default" only for callers not yet converted to pass a real one."""
+    workspace_id = workspace_id or "_default"
+    if workspace_id not in _recommenders:
+        _recommenders[workspace_id] = ProductRecommender(workspace_id)
+    return _recommenders[workspace_id]
