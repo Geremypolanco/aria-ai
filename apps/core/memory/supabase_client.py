@@ -28,6 +28,15 @@ class AriaDatabase:
         """
         return self._client.table(name)
 
+    def rpc(self, fn_name: str, params: dict | None = None):
+        """Passthrough to the underlying client's RPC call. Without this,
+        any caller doing `db.rpc(...)` (e.g. user_facts.py's pgvector
+        similarity search via match_user_memories()) hits an AttributeError
+        on this wrapper — silently swallowed by the caller's broad except
+        block, which made vector recall fall back to keyword search on
+        every single call instead of an explicit, deliberate choice."""
+        return self._client.rpc(fn_name, params or {})
+
     # ── LOGS ──────────────────────────────────────────────
 
     async def log(

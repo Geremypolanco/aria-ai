@@ -70,6 +70,25 @@ def _configured() -> bool:
     return bool(getattr(settings, "SUPABASE_URL", "") and getattr(settings, "SUPABASE_KEY", ""))
 
 
+def _client_for(user_id: str):
+    """The best available Supabase client for a request scoped to
+    `user_id`: the RLS-enforced anon+JWT client (apps/core/memory/
+    rls_client.py) when SUPABASE_ANON_KEY/SUPABASE_JWT_SECRET are
+    configured — real, DB-enforced isolation, not just defense-in-depth —
+    else today's service-role client. Safe either way: every query site in
+    this file already filters explicitly by user_id, so RLS is an
+    additional enforcement layer here, never the only one."""
+    from apps.core.memory.rls_client import get_rls_client
+
+    rls_client = get_rls_client(user_id)
+    if rls_client is not None:
+        return rls_client
+
+    from apps.core.memory.supabase_client import get_db
+
+    return get_db()
+
+
 class UserFactStore:
     """Per-user durable facts/preferences, backed by Supabase + pgvector."""
 
@@ -111,9 +130,7 @@ class UserFactStore:
             logger.debug("[UserFacts] embed failed, storing without embedding: %s", exc)
 
         try:
-            from apps.core.memory.supabase_client import get_db
-
-            db = get_db()
+            db = _client_for(user_id)
             # supabase-py's client is synchronous — .execute() is a plain
             # call, not a coroutine (see episodic_memory.py's docstring for
             # the bug class this pattern avoids).
@@ -146,9 +163,7 @@ class UserFactStore:
         store bounded. Best-effort — a failure here must never undo the
         write that just succeeded."""
         try:
-            from apps.core.memory.supabase_client import get_db
-
-            db = get_db()
+            db = _client_for(user_id)
             q = (
                 db.table("aria_user_memories")
                 .select("id")
@@ -185,9 +200,7 @@ class UserFactStore:
 
         if embedding:
             try:
-                from apps.core.memory.supabase_client import get_db
-
-                db = get_db()
+                db = _client_for(user_id)
                 result = db.rpc(
                     "match_user_memories",
                     {
@@ -231,9 +244,7 @@ class UserFactStore:
         if not user_id or not _configured():
             return []
         try:
-            from apps.core.memory.supabase_client import get_db
-
-            db = get_db()
+            db = _client_for(user_id)
             q = (
                 db.table("aria_user_memories")
                 .select("*")
@@ -264,9 +275,7 @@ class UserFactStore:
         if not user_id or not memory_id or not _configured():
             return False
         try:
-            from apps.core.memory.supabase_client import get_db
-
-            db = get_db()
+            db = _client_for(user_id)
             result = (
                 db.table("aria_user_memories")
                 .delete()
@@ -291,9 +300,7 @@ class UserFactStore:
         if not user_id or not _configured():
             return False
         try:
-            from apps.core.memory.supabase_client import get_db
-
-            db = get_db()
+            db = _client_for(user_id)
             db.table("aria_user_memories").delete().eq("user_id", user_id).execute()
             return True
         except Exception as exc:

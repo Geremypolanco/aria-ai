@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     # ── DATABASE ──────────────────────────────────────────
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
+    # Anon (public) key — distinct from SUPABASE_KEY (service role, bypasses
+    # RLS by design). apps/core/memory/rls_client.py pairs this with a
+    # signed JWT so Postgres Row-Level Security has a real, non-bypassing
+    # client to enforce against for per-user memory tables. Optional: memory
+    # reads/writes fall back to the service-role client (today's behavior)
+    # when this or SUPABASE_JWT_SECRET is unset.
+    SUPABASE_ANON_KEY: str = ""
+    # Supabase dashboard → Settings → API → JWT Secret. Signs the short-lived
+    # per-request JWTs rls_client.py builds — NOT the same as SUPABASE_KEY
+    # or SUPABASE_ANON_KEY. Required (together with SUPABASE_ANON_KEY) to
+    # activate real DB-enforced RLS; without it, RLS policies on the memory
+    # tables are defense-in-depth only, since the service-role client
+    # bypasses RLS entirely.
+    SUPABASE_JWT_SECRET: str = ""
     UPSTASH_REDIS_REST_URL: str = ""
     UPSTASH_REDIS_REST_TOKEN: str = ""
     REDIS_URL: str | None = None
