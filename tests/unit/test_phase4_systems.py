@@ -3,10 +3,12 @@ Tests for Phase 4 enterprise systems:
 - Event schemas and bus
 - Platform abstractions (cache, AI)
 - Deterministic rule engine and constraints
-- Tiered memory (HOT/WARM)
 - Central Executive Agent
 - Business Intelligence Telemetry
 - Benchmark harness
+
+(Tiered memory (HOT/WARM) was removed along with its dead source module —
+see the memory-system dead-code cleanup commit.)
 """
 
 from __future__ import annotations
@@ -392,105 +394,6 @@ class TestConstraints:
         r = ConstraintResult(False, [{"field": "x", "message": "bad x"}])
         with pytest.raises(ConstraintViolation):
             r.raise_if_invalid()
-
-
-# ── Tiered Memory ─────────────────────────────────────────────────────────────
-
-
-class TestTieredMemory:
-    @pytest.fixture
-    def mem(self):
-        from apps.core.memory.tiering.tiered_memory import TieredMemory
-
-        return TieredMemory()
-
-    @pytest.mark.asyncio
-    async def test_store_and_retrieve_hot(self, mem):
-        with patch.object(mem._warm, "put", new=AsyncMock()):
-            item_id = await mem.store("ARIA is an autonomous AI", category="system")
-        item = await mem.retrieve(item_id)
-        assert item is not None
-        assert item.content == "ARIA is an autonomous AI"
-
-    @pytest.mark.asyncio
-    async def test_search_finds_by_keyword(self, mem):
-        with (
-            patch.object(mem._warm, "put", new=AsyncMock()),
-            patch.object(mem._warm, "search", new=AsyncMock(return_value=[])),
-        ):
-            await mem.store("Shopify revenue strategy works", category="business")
-            await mem.store("Unrelated medical knowledge", category="general")
-            results = await mem.search("revenue strategy")
-        assert len(results) >= 1
-        assert any("revenue" in r.content.lower() for r in results)
-
-    @pytest.mark.asyncio
-    async def test_search_category_filter(self, mem):
-        with (
-            patch.object(mem._warm, "put", new=AsyncMock()),
-            patch.object(mem._warm, "search", new=AsyncMock(return_value=[])),
-        ):
-            await mem.store("Business fact", category="business")
-            await mem.store("System fact", category="system")
-            results = await mem.search("fact", category="business")
-        assert all(r.category == "business" for r in results)
-
-    def test_hot_tier_lru_eviction(self):
-        from apps.core.memory.tiering.tiered_memory import HotTier, MemoryItem
-        import time
-
-        hot = HotTier(capacity=3)
-        now = time.time()
-        for i in range(4):
-            item = MemoryItem(
-                id=f"item_{i}",
-                content=f"Content {i}",
-                category="test",
-                source="aria",
-                confidence=0.8,
-                importance=0.5,
-                ts=now,
-                ts_iso="2026-01-01T00:00:00Z",
-            )
-            hot.put(item)
-        assert hot.size() <= 3
-
-    def test_hot_tier_search(self):
-        from apps.core.memory.tiering.tiered_memory import HotTier, MemoryItem
-        import time
-
-        hot = HotTier(capacity=10)
-        now = time.time()
-        for term in ["alpha", "beta", "gamma"]:
-            hot.put(
-                MemoryItem(
-                    id=f"id_{term}",
-                    content=f"Fact about {term}",
-                    category="test",
-                    source="aria",
-                    confidence=0.8,
-                    importance=0.5,
-                    ts=now,
-                    ts_iso="2026-01-01T00:00:00Z",
-                )
-            )
-        results = hot.search("alpha")
-        assert len(results) == 1
-        assert "alpha" in results[0].content
-
-    def test_memory_item_tier_score_recency(self):
-        from apps.core.memory.tiering.tiered_memory import MemoryItem
-        import time
-
-        recent = MemoryItem("r", "content", "cat", "src", 0.9, 0.9, time.time(), "now")
-        old = MemoryItem("o", "content", "cat", "src", 0.9, 0.9, time.time() - 86400 * 10, "old")
-        assert recent.tier_score() > old.tier_score()
-
-    def test_summary_structure(self, mem):
-        s = mem.summary()
-        assert "hot_size" in s
-        assert "write_count" in s
-        assert "hot_hit_rate" in s
 
 
 # ── Executive Agent ───────────────────────────────────────────────────────────
