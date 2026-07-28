@@ -48,6 +48,23 @@ logger = logging.getLogger("aria.user_facts")
 
 _VALID_CATEGORIES = ("fact", "preference", "constraint")
 
+# Unlike episodic_memory.py (200-item list, trimmed in Python) this store has
+# no in-memory list to slice — the cap is enforced by deleting the oldest
+# rows past MAX_FACTS_PER_USER after each write. 500 is generous for
+# legitimate "things ARIA should remember about me" use while still bounding
+# storage and (more importantly) the number of embedding rows carried
+# forever for one user.
+MAX_FACTS_PER_USER = 500
+
+# Bounds how fast one user can write new facts — 20/hour is generous for a
+# real conversation (a user telling ARIA new things about themselves a few
+# times a session) but stops a compromised/scripted account from writing
+# thousands of rows, and triggering thousands of HF embedding calls, in a
+# burst. This is an abuse guard, not a correctness guarantee, so it fails
+# OPEN if Redis is unavailable — a cache hiccup must never block a
+# legitimate save.
+_WRITE_RATE_LIMIT_PER_HOUR = 20
+
 
 def _configured() -> bool:
     return bool(getattr(settings, "SUPABASE_URL", "") and getattr(settings, "SUPABASE_KEY", ""))
@@ -70,6 +87,10 @@ class UserFactStore:
         user_id = (user_id or "").strip().lower()
         content = (content or "").strip()
         if not user_id or not content or not _configured():
+            return None
+
+        if not await self._check_write_rate_limit(user_id):
+            logger.warning("[UserFacts] remember() rate-limited for %s", user_id)
             return None
 
         category = category if category in _VALID_CATEGORIES else "fact"
@@ -98,10 +119,50 @@ class UserFactStore:
             # the bug class this pattern avoids).
             result = db.table("aria_user_memories").insert(row).execute()
             data = getattr(result, "data", None) or []
-            return data[0]["id"] if data else None
+            memory_id = data[0]["id"] if data else None
         except Exception as exc:
             logger.warning("[UserFacts] remember() failed: %s", exc)
             return None
+
+        if memory_id:
+            await self._enforce_cap(user_id)
+        return memory_id
+
+    async def _check_write_rate_limit(self, user_id: str) -> bool:
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if not cache:
+                return True
+            return await cache.check_rate_limit(
+                f"user_facts_write:{user_id}", _WRITE_RATE_LIMIT_PER_HOUR, 3600
+            )
+        except Exception:
+            return True
+
+    async def _enforce_cap(self, user_id: str) -> None:
+        """Deletes the oldest facts past MAX_FACTS_PER_USER, keeping the
+        store bounded. Best-effort — a failure here must never undo the
+        write that just succeeded."""
+        try:
+            from apps.core.memory.supabase_client import get_db
+
+            db = get_db()
+            q = (
+                db.table("aria_user_memories")
+                .select("id")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .range(MAX_FACTS_PER_USER, MAX_FACTS_PER_USER + 200)
+            )
+            result = await asyncio.to_thread(q.execute)
+            overflow = getattr(result, "data", None) or []
+            for row in overflow:
+                del_q = db.table("aria_user_memories").delete().eq("id", row["id"])
+                await asyncio.to_thread(del_q.execute)
+        except Exception as exc:
+            logger.debug("[UserFacts] cap enforcement failed (non-fatal): %s", exc)
 
     async def recall(
         self, user_id: str, query: str, top_k: int = 5, category: str | None = None
