@@ -93,6 +93,25 @@ class AriaCache:
     async def increment(self, key: str) -> int:
         return await self._cmd("INCR", key) or 0
 
+    async def scan_keys(self, pattern: str, limit: int = 1000) -> list[str]:
+        """Enumerates keys matching a glob pattern (e.g. "aria:semantic:*")
+        via Redis SCAN — safe for production use (unlike KEYS, it doesn't
+        block the server), but still O(n) over the whole keyspace, so
+        callers should use a narrow pattern and treat this as an
+        occasional/background lookup, not a hot path. Stops after `limit`
+        keys even if SCAN isn't exhausted, to bound worst-case cost."""
+        keys: list[str] = []
+        cursor = "0"
+        while True:
+            result = await self._cmd("SCAN", cursor, "MATCH", pattern, "COUNT", "200")
+            if not result or not isinstance(result, list) or len(result) != 2:
+                break
+            cursor, batch = result
+            keys.extend(batch or [])
+            if cursor == "0" or len(keys) >= limit:
+                break
+        return keys[:limit]
+
     # ── TASK QUEUES ────────────────────────────────────────
     async def enqueue(self, queue: str, task: dict) -> bool:
         """Adds a task to the end of the queue."""
