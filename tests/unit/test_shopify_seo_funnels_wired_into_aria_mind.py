@@ -191,13 +191,19 @@ async def test_create_post_purchase_flow_reachable_from_tool_dispatch():
 
 
 # ── ShopifyAPIClient ──────────────────────────────────────────────────
+# shopify_store_status/shopify_live_analytics resolve their client via
+# apps.shopify.api_client.get_shopify_client_for(workspace_id) (per-workspace
+# credentials — see test_shopify_workspace_credentials.py for that resolver's
+# own isolation tests), not the old single global get_shopify_api_client().
 async def test_shopify_store_status_not_configured():
+    from unittest.mock import AsyncMock
+
     from apps.shopify.api_client import ShopifyAPIClient
 
     client = ShopifyAPIClient()
     client._domain = ""
     client._token = ""
-    with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
+    with patch("apps.shopify.api_client.get_shopify_client_for", AsyncMock(return_value=client)):
         mind = AriaMind()
         obs, media = await mind._execute_tool("shopify_store_status", {}, email=OWNER_EMAIL)
 
@@ -206,12 +212,14 @@ async def test_shopify_store_status_not_configured():
 
 
 async def test_shopify_store_status_configured():
+    from unittest.mock import AsyncMock
+
     from apps.shopify.api_client import ShopifyAPIClient
 
     client = ShopifyAPIClient()
     client._domain = "mystore.myshopify.com"
     client._token = "shpat_faketoken"
-    with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
+    with patch("apps.shopify.api_client.get_shopify_client_for", AsyncMock(return_value=client)):
         mind = AriaMind()
         obs, media = await mind._execute_tool("shopify_store_status", {}, email=OWNER_EMAIL)
 
@@ -222,12 +230,14 @@ async def test_shopify_store_status_configured():
 
 
 async def test_shopify_live_analytics_requires_configured_store():
+    from unittest.mock import AsyncMock
+
     from apps.shopify.api_client import ShopifyAPIClient
 
     client = ShopifyAPIClient()
     client._domain = ""
     client._token = ""
-    with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
+    with patch("apps.shopify.api_client.get_shopify_client_for", AsyncMock(return_value=client)):
         mind = AriaMind()
         obs, media = await mind._execute_tool("shopify_live_analytics", {}, email=OWNER_EMAIL)
 
@@ -252,7 +262,7 @@ async def test_shopify_live_analytics_reachable_when_configured():
             top_products=[{"product_id": "1", "title": "Yoga Mat", "revenue": 400.0}],
         )
     )
-    with patch("apps.shopify.api_client.get_shopify_api_client", return_value=client):
+    with patch("apps.shopify.api_client.get_shopify_client_for", AsyncMock(return_value=client)):
         mind = AriaMind()
         obs, media = await mind._execute_tool(
             "shopify_live_analytics", {"days": 30}, email=OWNER_EMAIL

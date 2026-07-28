@@ -147,10 +147,21 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str | None = None
     PAYPAL_CLIENT_ID: str | None = None
     PAYPAL_SECRET: str | None = None
+    # The owner's OWN store — a single manually-generated custom-app token,
+    # global for the whole deployment. This is the legacy/fallback path a
+    # per-workspace connect (below) migrates away from, kept working so the
+    # owner's existing integration never breaks.
     SHOPIFY_URL: str | None = None
     SHOPIFY_API_KEY: str | None = None
     SHOPIFY_ADMIN_TOKEN: str | None = None
     SHOPIFY_AUTOMATION_TOKEN: str | None = None
+    # This app's own Shopify Partner OAuth app credentials — what lets ANY
+    # team connect THEIR OWN store via apps/core/connectors/oauth_hub.py's
+    # per-store OAuth flow, distinct from SHOPIFY_API_KEY/SHOPIFY_ADMIN_TOKEN
+    # above (the owner's personal, already-generated token). Get these from
+    # the Shopify Partner Dashboard → app → Client credentials.
+    SHOPIFY_CLIENT_ID: str | None = None
+    SHOPIFY_CLIENT_SECRET: str | None = None
     LEMONSQUEEZY_API_KEY: str | None = None
     LEMONSQUEEZY_STORE_ID: str | None = None
 
