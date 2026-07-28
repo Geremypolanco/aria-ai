@@ -1737,6 +1737,11 @@ class MemberRequest(BaseModel):
     email: str
 
 
+class MemoryFactRequest(BaseModel):
+    content: str
+    category: str = "fact"
+
+
 @app.get("/api/v1/plans")
 async def api_plans(request: Request):
     """Public plan catalog + the signed-in user's current plan, for any UI."""
@@ -1796,6 +1801,63 @@ async def account_remove_member(req: MemberRequest, request: Request):
 
     ok = await seats.remove_member(email, req.email)
     return {"ok": ok, "members": await seats.list_members(email)}
+
+
+@app.get("/api/v1/memory")
+async def api_memory_list(request: Request):
+    """Everything ARIA has remembered long-term about the signed-in user —
+    the same store list_user_facts/remember_user_fact/forget_user_fact (the
+    chat tools) read/write, exposed here so a user can see and manage it
+    without having to ask ARIA in conversation. See
+    apps/core/memory/user_facts.py for the isolation guarantees (every
+    query is scoped to this exact email)."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    email = (user.get("email") or "").strip().lower()
+    from apps.core.memory.user_facts import get_user_facts
+
+    facts = await get_user_facts().list_all(email)
+    return {"facts": facts}
+
+
+@app.post("/api/v1/memory")
+async def api_memory_add(req: MemoryFactRequest, request: Request):
+    """Manually add a fact/preference for ARIA to remember — the same write
+    path as the remember_user_fact chat tool, for users who'd rather type it
+    into a form than tell ARIA in conversation."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    email = (user.get("email") or "").strip().lower()
+    content = (req.content or "").strip()
+    if not content:
+        return JSONResponse({"error": "content is required"}, status_code=400)
+    category = req.category if req.category in ("fact", "preference", "constraint") else "fact"
+    from apps.core.memory.user_facts import get_user_facts
+
+    memory_id = await get_user_facts().remember(email, content, category=category)
+    if not memory_id:
+        return JSONResponse(
+            {"error": "Long-term memory storage isn't configured right now."}, status_code=503
+        )
+    return {"ok": True, "facts": await get_user_facts().list_all(email)}
+
+
+@app.delete("/api/v1/memory/{memory_id}")
+async def api_memory_forget(memory_id: str, request: Request):
+    """Deletes one remembered fact — scoped to the caller's own email, same
+    as the forget_user_fact chat tool. UserFactStore.forget() filters the
+    delete by user_id too, so this can never remove another user's row even
+    given an arbitrary memory_id."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    email = (user.get("email") or "").strip().lower()
+    from apps.core.memory.user_facts import get_user_facts
+
+    ok = await get_user_facts().forget(email, memory_id)
+    return {"ok": ok, "facts": await get_user_facts().list_all(email)}
 
 
 @app.get("/account/team", response_class=HTMLResponse)
@@ -1886,6 +1948,90 @@ async function removeMember(email){{
   }}catch(e){{}}
 }}
 loadMembers();
+</script>
+</body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/account/memory", response_class=HTMLResponse)
+async def account_memory_page(request: Request):
+    """Self-contained page for viewing/managing what ARIA remembers
+    long-term about the signed-in user (see apps/core/memory/user_facts.py)
+    — the same data the remember_user_fact/list_user_facts/forget_user_fact
+    chat tools read and write, exposed here so it isn't only reachable by
+    asking ARIA in conversation. Server-rendered and standalone, same
+    pattern as /account/team; reads/writes via /api/v1/memory."""
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=307)
+    html = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ARIA · What I remember about you</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><style>
+*{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{min-height:100vh;background:#fafaf9;color:#3f3f46;padding:40px 20px;display:flex;justify-content:center}
+.card{width:560px;max-width:100%;background:#fff;border:1px solid #e7e5e4;border-radius:18px;padding:30px 28px;box-shadow:0 24px 60px -24px rgba(28,25,23,.18);height:fit-content}
+.top{font-size:13px;margin-bottom:18px} a{color:#059669;text-decoration:none} a:hover{text-decoration:underline}
+h1{font-size:22px;color:#1c1917;margin-bottom:6px}
+.lead{font-size:14px;color:#57534e;line-height:1.6;margin:8px 0 18px}
+.addrow{display:flex;gap:8px} .addrow input,.addrow select{padding:12px 14px;border:1px solid #d6d3d1;border-radius:11px;font-size:14.5px}
+.addrow input{flex:1} .addrow input:focus,.addrow select:focus{outline:0;border-color:#6ee7b7;box-shadow:0 0 0 3px rgba(16,185,129,.14)}
+.addrow button{border:0;border-radius:11px;padding:12px 18px;font-weight:700;font-size:14px;background:#059669;color:#fff;cursor:pointer}
+.addrow button:hover{background:#047857}
+.msg{font-size:13px;margin:12px 0;min-height:18px} .msg.err{color:#b91c1c} .msg.ok{color:#047857}
+.list{margin-top:8px} .frow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 2px;border-top:1px solid #f0efee;font-size:14px}
+.fcontent{flex:1} .fcat{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#059669;margin-right:8px}
+.rm{border:1px solid #e7e5e4;background:#fff;color:#b91c1c;border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;flex-shrink:0}
+.rm:hover{background:#fef2f2;border-color:#fecaca} .empty{color:#78716c;font-size:13.5px;padding:14px 2px}
+</style></head><body><div class="card">
+<div class="top"><a href="/app">← Back to ARIA</a></div>
+<h1>What I remember about you</h1>
+<div class="lead">Facts and preferences ARIA has saved to remember across conversations —
+the same list she checks before answering you. Add one manually, or remove anything
+that's wrong or out of date.</div>
+<div class="addrow">
+<input id="fContent" type="text" placeholder="e.g. I prefer concise answers" autocomplete="off">
+<select id="fCategory"><option value="fact">Fact</option><option value="preference">Preference</option>
+<option value="constraint">Constraint</option></select>
+<button id="fAdd" onclick="addFact()">Save</button>
+</div>
+<div id="fMsg" class="msg"></div><div id="fList" class="list"></div>
+</div>
+<script>
+async function loadFacts(){
+  try{
+    const r=await fetch('/api/v1/memory',{credentials:'same-origin'});
+    const d=await r.json(); renderFacts(d.facts||[]);
+  }catch(e){}
+}
+function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function renderFacts(facts){
+  const list=document.getElementById('fList');
+  if(!facts.length){ list.innerHTML='<div class="empty">Nothing saved yet.</div>'; return; }
+  list.innerHTML = facts.map(f=>'<div class="frow"><div class="fcontent"><span class="fcat">'
+    +esc(f.category||'fact')+'</span>'+esc(f.content||'')+'</div>'
+    +'<button class="rm" onclick="forgetFact(\\''+esc(f.id||'')+'\\')">Forget</button></div>').join('');
+}
+async function addFact(){
+  const inp=document.getElementById('fContent'); const cat=document.getElementById('fCategory');
+  const msg=document.getElementById('fMsg'); const content=(inp.value||'').trim();
+  if(!content) return;
+  document.getElementById('fAdd').disabled=true;
+  try{
+    const r=await fetch('/api/v1/memory',{method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',body:JSON.stringify({content,category:cat.value})});
+    const d=await r.json();
+    if(d.ok){ inp.value=''; msg.textContent='Saved.'; msg.className='msg ok'; renderFacts(d.facts||[]); }
+    else{ msg.textContent=d.error||'Something went wrong.'; msg.className='msg err'; }
+  }catch(e){ msg.textContent='Something went wrong. Try again.'; msg.className='msg err'; }
+  document.getElementById('fAdd').disabled=false;
+}
+async function forgetFact(id){
+  try{
+    const r=await fetch('/api/v1/memory/'+encodeURIComponent(id),{method:'DELETE',credentials:'same-origin'});
+    const d=await r.json(); renderFacts(d.facts||[]);
+  }catch(e){}
+}
+loadFacts();
 </script>
 </body></html>"""
     return HTMLResponse(html)
