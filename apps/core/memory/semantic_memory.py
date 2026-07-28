@@ -13,6 +13,7 @@ This is the "what ARIA knows" layer — distinct from episodic memory ("what hap
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -273,18 +274,49 @@ class SemanticMemory:
             cache = get_cache()
             if cache:
                 key = f"aria:semantic:{fact.id}"
-                # Store without embedding to save space (embeddings are large)
-                d = fact.to_dict()
-                d["embedding"] = []  # embeddings stored separately if needed
-                await cache.set(key, json.dumps(d), ttl_seconds=FACT_TTL_REDIS)
+                # The embedding IS included here (unlike an earlier version
+                # of this method, which stripped it "to save space") —
+                # without it, a fact reloaded on a different process/machine
+                # (see _load_from_redis) could only ever be found by keyword
+                # overlap, never by the similarity search this whole module
+                # exists for. A 384-float embedding is ~3KB; at
+                # MAX_WORKING_MEMORY (500 facts) that's under 1.5MB, not a
+                # real storage concern.
+                await cache.set(key, json.dumps(fact.to_dict()), ttl_seconds=FACT_TTL_REDIS)
         except Exception as exc:
             logger.debug("[SemanticMem] Redis persist failed: %s", exc)
 
     async def _load_from_redis(self) -> None:
+        """Backfills in-process working memory from Redis on first use.
+
+        Working memory (self._working) is a plain dict on this instance —
+        it does NOT survive a process restart or exist on any other machine
+        Fly.io's autoscaling might route a request to (the same class of bug
+        apps/core/cognition/episodic_memory.py's docstring documents and
+        fixes for itself). Previously this method was a no-op stub (it just
+        set self._loaded = True), so a fact stored by one process/machine
+        was invisible to search()/get() on any other — Redis had a durable
+        copy, but nothing ever read it back in bulk."""
         self._loaded = True
-        # In production: scan Redis for aria:semantic:* keys and load recent facts
-        # For now, working memory is populated as facts come in
-        logger.debug("[SemanticMem] Semantic memory initialized")
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if not cache:
+                return
+            keys = await cache.scan_keys("aria:semantic:*", limit=MAX_WORKING_MEMORY)
+            for key in keys:
+                fact_id = key.rsplit(":", 1)[-1]
+                if fact_id in self._working:
+                    continue
+                raw = await cache.get(key)
+                if raw:
+                    with contextlib.suppress(Exception):
+                        # cache.get() already deserializes JSON.
+                        self._working[fact_id] = Fact.from_dict(raw)
+            logger.debug("[SemanticMem] Loaded %d facts from Redis", len(keys))
+        except Exception as exc:
+            logger.debug("[SemanticMem] Load from Redis failed: %s", exc)
 
     async def _load_fact_from_redis(self, fact_id: str) -> Fact | None:
         try:
