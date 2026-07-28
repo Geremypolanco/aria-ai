@@ -2538,8 +2538,18 @@ async def connector_disconnect(pid: str, request: Request):
 
 @app.post("/api/v1/account/delete")
 async def delete_account(request: Request):
-    """Delete the signed-in user's stored data (profile, plan, connected
-    connector tokens) and sign out."""
+    """Delete the signed-in user's stored data — profile, plan, connected
+    connector tokens, chat history (every session variant, not just the
+    default one), long-term memory (episodic + remembered facts) — and sign
+    out.
+
+    Previously this only cleared profile/plan/connector tokens: a deleted
+    account's conversation history and remembered facts silently outlived
+    the account itself, in both Redis and Supabase. This is the closest
+    thing this app has to a single "forget everything about me" action —
+    apps/core/memory/user_facts.py's forget_user_fact chat tool only ever
+    deletes one fact at a time.
+    """
     from apps.core import auth
     from apps.core.connectors import oauth_hub as hub
 
@@ -2557,8 +2567,30 @@ async def delete_account(request: Request):
         for key in keys:
             with suppress(Exception):
                 await cache.delete(key)
+
+        # Chat history exists per conversation (default + any custom
+        # session_id — see _conversation_id()), not one key per user, so it
+        # has to be discovered via scan rather than built from a template.
+        from apps.core.cognition.aria_mind import get_aria_mind
+
+        mind = get_aria_mind()
+        history_keys = await cache.scan_keys(f"aria:mind:history:u:{email}*")
+        for key in history_keys:
+            cid = key[len("aria:mind:history:") :]
+            with suppress(Exception):
+                await mind._clear_conversation(cid)
     except Exception as e:
         logger.warning(f"delete_account failed: {e}")
+
+    with suppress(Exception):
+        from apps.core.cognition.episodic_memory import get_episodic_memory
+
+        await get_episodic_memory().forget_all(email)
+    with suppress(Exception):
+        from apps.core.memory.user_facts import get_user_facts
+
+        await get_user_facts().forget_all(email)
+
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(auth.USER_COOKIE)
     return resp
