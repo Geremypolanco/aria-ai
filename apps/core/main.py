@@ -1788,10 +1788,15 @@ async def api_plans(request: Request):
     user = _current_user(request)
     email = (user.get("email") or "").strip().lower() if user else ""
     current = await _get_user_plan(email) if email else "free"
-    from apps.core import seats
+    from apps.core import founding, seats
 
     member_of = await seats.owner_of(email) if email else None
-    return {"plans": PUBLIC_PLANS, "current": current, "is_member": bool(member_of)}
+    return {
+        "plans": PUBLIC_PLANS,
+        "current": current,
+        "is_member": bool(member_of),
+        "founding_offer": founding.public_offer(),
+    }
 
 
 @app.get("/api/v1/account/members")
@@ -2016,6 +2021,16 @@ def _checkout_confirm_page(tier: str, plan: dict) -> HTMLResponse:
     seats = int(plan.get("seats", 1) or 1)
     seat_note = f" · up to {seats} members" if seats > 1 else ""
     go = f"/billing/checkout?tier={tier}&amp;agreed=1"
+    from apps.core import founding
+
+    _offer = founding.public_offer()
+    founder_note = (
+        f'<div class="founder"><b>Founding member</b> — enter code '
+        f'<code>{_offer["code"]}</code> at checkout for {_offer["percent_off"]}% off '
+        f'for life. First {_offer["cap"]} customers only.</div>'
+        if _offer
+        else ""
+    )
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ARIA · Confirm {plan['name']}</title><style>
@@ -2030,6 +2045,10 @@ h1{{font-size:22px;margin-bottom:4px;color:#18181b}} .price{{color:#52525b;font-
 border-radius:12px;padding:14px 14px;margin-bottom:20px}}
 .ack input{{margin-top:3px;width:18px;height:18px;accent-color:#15E06A;flex:0 0 auto;cursor:pointer}}
 .ack label{{font-size:13.5px;line-height:1.55;color:#3f4a44;cursor:pointer}}
+.founder{{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:12px 14px;
+margin-bottom:18px;font-size:13.5px;line-height:1.5;color:#065f46}}
+.founder code{{background:#065f46;color:#fff;padding:2px 7px;border-radius:6px;font-weight:700;
+font-family:ui-monospace,SFMono-Regular,monospace}}
 .btn{{display:block;width:100%;text-align:center;padding:13px;border-radius:12px;border:0;
 background:#15E06A;color:#04150d;font-weight:700;font-size:15px;box-shadow:0 8px 24px -6px rgba(21,224,106,.45);
 text-decoration:none;cursor:pointer;transition:filter .15s}}
@@ -2039,6 +2058,7 @@ text-decoration:none;cursor:pointer;transition:filter .15s}}
 </style></head><body><div class="card">
 <h1>Confirm {plan['name']}</h1>
 <div class="price"><b>{price}</b>{seat_note} · renews monthly · cancel anytime</div>
+{founder_note}
 <div class="ack">
   <input type="checkbox" id="ack" onchange="document.getElementById('go').setAttribute('aria-disabled', this.checked?'false':'true')">
   <label for="ack">{NO_REFUND_ACK}</label>
@@ -2075,6 +2095,12 @@ async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""
     if not key:
         # Billing not configured yet — send the user back with a clear flag.
         return RedirectResponse("/app?billing=unavailable", status_code=303)
+
+    # Make sure the founding-member promo code exists so customers can enter it
+    # at Stripe checkout (allow_promotion_codes is already on). Fail-open.
+    from apps.core import founding
+
+    await founding.ensure_promo(key)
 
     email = (user.get("email") or "").strip().lower()
     base = (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
