@@ -3205,12 +3205,15 @@ class AriaMind:
                 return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
 
             elif tool == "shopify_store_status":
-                from apps.shopify.api_client import get_shopify_api_client
+                from apps.core.tenancy import workspace_id_for
+                from apps.shopify.api_client import get_shopify_client_for
 
-                status = get_shopify_api_client().client_status()
+                client = await get_shopify_client_for(await workspace_id_for(email))
+                status = client.client_status()
                 if not status["configured"]:
                     return (
-                        "No Shopify store connected — set SHOPIFY_SHOP_DOMAIN and "
+                        "No Shopify store connected — connect your own store from the "
+                        "Connectors menu, or (owner only) set SHOPIFY_SHOP_DOMAIN and "
                         "SHOPIFY_ACCESS_TOKEN to enable real revenue/order data. Until then, "
                         "shopify_revenue_dashboard only reflects ARIA's own tracked activity, "
                         "not actual store sales.",
@@ -3222,13 +3225,15 @@ class AriaMind:
                 ), {}
 
             elif tool == "shopify_live_analytics":
-                from apps.shopify.api_client import get_shopify_api_client
+                from apps.core.tenancy import workspace_id_for
+                from apps.shopify.api_client import get_shopify_client_for
 
-                client = get_shopify_api_client()
+                client = await get_shopify_client_for(await workspace_id_for(email))
                 if not client.is_configured:
                     return (
                         "No Shopify store connected — check shopify_store_status. "
-                        "I can't pull real revenue without SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN.",
+                        "Connect your own store from the Connectors menu, or (owner only) "
+                        "set SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN.",
                         {},
                     )
                 days = int(args.get("days", 30))

@@ -2438,8 +2438,25 @@ async def connectors_status(request: Request):
     return {"connectors": await hub.status_for(email)}
 
 
+def _shopify_connect_form(error: str = "") -> HTMLResponse:
+    err_html = f'<p style="color:#d33">{error}</p>' if error else ""
+    return HTMLResponse(
+        f"""
+    <html><body style="font-family:sans-serif;max-width:420px;margin:80px auto">
+      <h2>Connect your Shopify store</h2>
+      <p>Enter your shop's domain to continue to Shopify's consent screen.</p>
+      {err_html}
+      <form method="get" action="/connectors/shopify/connect">
+        <input name="shop" placeholder="my-store.myshopify.com" style="width:100%;padding:8px;font-size:14px" autofocus required>
+        <button type="submit" style="margin-top:12px;padding:8px 16px">Continue</button>
+      </form>
+    </body></html>
+    """
+    )
+
+
 @app.get("/connectors/{pid}/connect")
-async def connector_connect(pid: str, request: Request):
+async def connector_connect(pid: str, request: Request, shop: str = ""):
     """Kick off the real OAuth consent flow for a provider."""
     from apps.core import auth
     from apps.core.connectors import oauth_hub as hub
@@ -2450,7 +2467,26 @@ async def connector_connect(pid: str, request: Request):
     p = hub.PROVIDERS.get(pid)
     if not p:
         return RedirectResponse("/app?conn=unknown&s=error", status_code=303)
-    # Not configured, or a non-redirect provider (shopify per-store / zapier key).
+    if pid == "shopify":
+        if not hub.is_configured("shopify"):
+            return RedirectResponse("/app?conn=shopify&s=setup", status_code=303)
+        if not shop:
+            return _shopify_connect_form()
+        state = auth.make_state()
+        url = hub.shopify_authorize_url(shop, state)
+        if not url:
+            return _shopify_connect_form("That doesn't look like a valid shop domain.")
+        resp = RedirectResponse(url, status_code=307)
+        resp.set_cookie(
+            hub.STATE_COOKIE,
+            f"shopify|{state}|",
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=600,
+        )
+        return resp
+    # Not configured, or a non-redirect provider (zapier/activepieces key).
     if p.special or not hub.is_configured(pid):
         return RedirectResponse(f"/app?conn={pid}&s=setup", status_code=303)
     # Google-based connectors reuse the already-registered login callback
@@ -2512,7 +2548,16 @@ async def connector_callback(
         return RedirectResponse(f"/app?conn={pid}&s=error", status_code=303)
     if c_pid != pid or not auth.check_state(state, c_state):
         return RedirectResponse(f"/app?conn={pid}&s=error", status_code=303)
-    token = await hub.exchange_code(pid, code, verifier)
+
+    if pid == "shopify":
+        # Shopify requires its own HMAC verification on top of the shared
+        # CSRF `state` check above — see verify_shopify_hmac()'s docstring.
+        if not hub.verify_shopify_hmac(dict(request.query_params)):
+            return RedirectResponse("/app?conn=shopify&s=error", status_code=303)
+        shop = request.query_params.get("shop", "")
+        token = await hub.shopify_exchange_code(shop, code)
+    else:
+        token = await hub.exchange_code(pid, code, verifier)
     if not token or not token.get("access_token"):
         return RedirectResponse(f"/app?conn={pid}&s=error", status_code=303)
     email = (user.get("email") or "").strip().lower()

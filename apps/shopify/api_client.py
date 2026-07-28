@@ -104,9 +104,17 @@ class ShopifyAPIClient:
     SHOPIFY_SHOP_DOMAIN / SHOPIFY_ACCESS_TOKEN are not set.
     """
 
-    def __init__(self) -> None:
-        self._domain: str = os.environ.get("SHOPIFY_SHOP_DOMAIN", "")
-        self._token: str = os.environ.get("SHOPIFY_ACCESS_TOKEN", "")
+    def __init__(self, domain: str | None = None, token: str | None = None) -> None:
+        """`domain`/`token` let a caller build a client for a specific
+        workspace's connected store (see get_shopify_client_for() below);
+        omitting both falls back to this deployment's own env-configured
+        store, unchanged from before per-workspace connect existed."""
+        self._domain: str = (
+            domain if domain is not None else os.environ.get("SHOPIFY_SHOP_DOMAIN", "")
+        )
+        self._token: str = (
+            token if token is not None else os.environ.get("SHOPIFY_ACCESS_TOKEN", "")
+        )
         self._api_version: str = "2024-01"
         self._products_cache: list[dict] = []
         self._orders_cache: list[dict] = []
@@ -421,3 +429,52 @@ def get_shopify_api_client() -> ShopifyAPIClient:
     if _client_instance is None:
         _client_instance = ShopifyAPIClient()
     return _client_instance
+
+
+# ── Per-workspace client (apps/core/tenancy.py) ────────────────────────────────
+# Resolved fresh on every call, keyed to that workspace's OWN connected store
+# (apps/core/connectors/oauth_hub.py) rather than this deployment's single
+# env-configured store — the actual per-tenant isolation piece, since giving
+# CashflowEngine/ROITracker a per-workspace Redis key alone would still have
+# every workspace reading/writing the SAME real Shopify store otherwise.
+# Deliberately NOT cached per workspace_id: unlike CashflowEngine/ROITracker
+# (whose per-workspace object holds fetched _entries state worth reusing), a
+# cached client here would freeze whatever credentials resolved on first use
+# — so a workspace that connects its own store AFTER an earlier unconfigured
+# lookup would stay stuck reading nothing until the process restarts. The
+# cost of re-resolving is one Redis read, already async.
+async def get_shopify_client_for(workspace_id: str) -> ShopifyAPIClient:
+    """The right Shopify client for `workspace_id`: their own connected store
+    if they've gone through /connectors/shopify/connect, else — ONLY for the
+    actual configured owner's own workspace_id — this deployment's legacy
+    env-configured store (SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN), so the
+    owner's existing integration keeps working exactly as before. Any other
+    workspace with no connected store of its own gets an unconfigured client
+    (is_configured=False, every call gracefully degrades) — never the
+    owner's store, which would be a cross-tenant data leak identical in kind
+    to the one CashflowEngine/ROITracker's legacy-key fallback guards against."""
+    workspace_id = (workspace_id or "").strip().lower()
+    if not workspace_id:
+        return ShopifyAPIClient(domain="", token="")
+
+    domain, token = "", ""
+    try:
+        from apps.core.connectors import oauth_hub
+
+        record = await oauth_hub.get_token(workspace_id, "shopify")
+        if record and record.get("access_token") and record.get("shop_domain"):
+            domain, token = record["shop_domain"], record["access_token"]
+    except Exception as exc:
+        logger.debug("[Shopify] connected-store lookup failed for %s: %s", workspace_id, exc)
+
+    if not domain:
+        try:
+            from apps.core import auth
+
+            if workspace_id in auth.owner_emails():
+                domain = os.environ.get("SHOPIFY_SHOP_DOMAIN", "")
+                token = os.environ.get("SHOPIFY_ACCESS_TOKEN", "")
+        except Exception as exc:
+            logger.debug("[Shopify] owner fallback check failed for %s: %s", workspace_id, exc)
+
+    return ShopifyAPIClient(domain=domain, token=token)
