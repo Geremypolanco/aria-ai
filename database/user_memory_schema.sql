@@ -12,18 +12,29 @@
 --
 -- ISOLATION MODEL (read before changing anything here):
 -- ARIA's application backend connects to Supabase with the SERVICE ROLE key
--- (apps/core/config.py: SUPABASE_KEY), and Postgres/Supabase's service role
--- BYPASSES Row-Level Security by design — no RLS policy can prevent it from
--- reading/writing any row. The RLS policy below is therefore DEFENSE IN
--- DEPTH ONLY (it protects this table if it's ever queried with a
--- non-service-role key — e.g. a future direct-from-browser Supabase client),
--- NOT the primary isolation guarantee. The actual, load-bearing isolation
--- guarantee is enforced in application code: every read/write in
+-- (apps/core/config.py: SUPABASE_KEY) by default, and Postgres/Supabase's
+-- service role BYPASSES Row-Level Security by design — no RLS policy can
+-- prevent it from reading/writing any row over that connection. The
+-- load-bearing isolation guarantee, always in force regardless of RLS
+-- configuration, is enforced in application code: every read/write in
 -- apps/core/memory/user_facts.py requires an explicit, server-verified
 -- user_id (the signed-in user's email — see apps/core/auth.py) and every
 -- query — including the vector-similarity RPC below — has that user_id
 -- baked into its WHERE clause, so it is structurally impossible for a
 -- lookup to return another user's rows regardless of the query text.
+--
+-- The RLS policy below is a SECOND, independent, DB-enforced layer — real,
+-- not merely cosmetic — when SUPABASE_ANON_KEY and SUPABASE_JWT_SECRET are
+-- both configured (see apps/core/config.py). In that case,
+-- apps/core/memory/rls_client.py signs a short-lived JWT for the caller's
+-- user_id and presents it with the ANON key instead of the service-role
+-- key; the policy below checks that JWT's claims, so Postgres itself will
+-- refuse a query whose JWT email doesn't match the row's user_id, even if
+-- application code somewhere had a bug. Without those two settings
+-- configured, the app falls back to the service-role client and this
+-- policy is defense-in-depth only (protects the table if it's ever queried
+-- some other way, e.g. a future direct-from-browser client) — never a
+-- regression, since the application-code guarantee above holds either way.
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -54,15 +65,26 @@ CREATE INDEX IF NOT EXISTS idx_user_memories_embedding
 
 ALTER TABLE aria_user_memories ENABLE ROW LEVEL SECURITY;
 
--- Defense-in-depth only — see the isolation-model comment above. Scopes rows
--- to whatever the caller sets via `SET LOCAL app.current_user_id` for the
--- duration of a transaction; a caller that never sets it (e.g. the app's
--- normal service-role connection) sees nothing under this policy alone,
--- which is fine because service-role bypasses RLS entirely anyway.
+-- Real, DB-enforced isolation when the caller presents a JWT signed with
+-- SUPABASE_JWT_SECRET (via the ANON key — see apps/core/memory/
+-- rls_client.py); defense-in-depth only otherwise — see the isolation-model
+-- comment above. `current_setting('request.jwt.claims', true)` is
+-- PostgREST's per-request JWT claims, NOT a session variable — unlike
+-- `SET LOCAL app.current_user_id` (which never worked here: PostgREST is
+-- stateless per request with no session continuity), this is populated by
+-- PostgREST itself from the Bearer token on every single request. A caller
+-- with no valid JWT (e.g. the app's normal service-role connection, or the
+-- anon key with no/expired token) sees `NULL` here and this policy denies
+-- everything under it — fine, because service-role bypasses RLS entirely
+-- anyway and the anon key alone (no JWT) shouldn't be able to read anything.
 CREATE POLICY "user_isolation" ON aria_user_memories
   FOR ALL
-  USING (user_id = current_setting('app.current_user_id', true))
-  WITH CHECK (user_id = current_setting('app.current_user_id', true));
+  USING (
+    user_id = COALESCE(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  )
+  WITH CHECK (
+    user_id = COALESCE(current_setting('request.jwt.claims', true)::json ->> 'email', '')
+  );
 
 CREATE POLICY "service_role_all" ON aria_user_memories FOR ALL USING (true);
 

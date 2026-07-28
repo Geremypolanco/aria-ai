@@ -1435,20 +1435,28 @@ class AriaMind:
             "check_social_session",
             "post_to_social",
             # ── "The business's" singular real state ────────────────────
-            # Every one of these modules persists to ONE global Redis key
-            # (not scoped per-user — e.g. business:cashflow:v1,
-            # economics:roi:v1, shopify:flash_sales:v1), and
-            # shopify_live_analytics/shopify_store_status read from the
-            # owner's own real Shopify Admin API credentials
-            # (SHOPIFY_ACCESS_TOKEN). A non-owner authenticated user reaching
-            # any of these could corrupt the owner's real financial ledger
-            # or read the owner's real store's private revenue data through
-            # the owner's own API token — a data-integrity/exposure issue,
-            # not just a permissions nicety. Content/growth tools wired the
-            # same session (blog, LinkedIn, Twitter, internal linking,
-            # reinforcement learning) are deliberately NOT included here:
-            # they don't touch money or credentials, so open access to them
-            # is a lower-severity, legitimate multi-user utility tradeoff.
+            # Most of these modules still persist to ONE global Redis key
+            # (not scoped per-user — e.g. economics:roi:v1,
+            # shopify:flash_sales:v1), and shopify_live_analytics/
+            # shopify_store_status read from the owner's own real Shopify
+            # Admin API credentials (SHOPIFY_ACCESS_TOKEN). A non-owner
+            # authenticated user reaching any of these could corrupt the
+            # owner's real financial ledger or read the owner's real
+            # store's private revenue data through the owner's own API
+            # token — a data-integrity/exposure issue, not just a
+            # permissions nicety. record_cashflow_entry/cashflow_summary/
+            # forecast_cashflow are the first exception: CashflowEngine
+            # (apps/business/finance/cashflow_engine.py) is now keyed per
+            # workspace (apps/core/tenancy.py) rather than one global key,
+            # so the underlying storage-isolation reason for gating them no
+            # longer applies — they remain owner-only here pending a
+            # separate product decision on whether team members should get
+            # cashflow-tool access at all, not because of a data-leak risk.
+            # Content/growth tools wired the same session (blog, LinkedIn,
+            # Twitter, internal linking, reinforcement learning) are
+            # deliberately NOT included here: they don't touch money or
+            # credentials, so open access to them is a lower-severity,
+            # legitimate multi-user utility tradeoff.
             "recover_abandoned_cart",
             "create_flash_sale",
             "create_product_bundle",
@@ -4268,8 +4276,9 @@ class AriaMind:
                 if entry_type not in ("income", "expense") or amount is None:
                     return 'I need type ("income" or "expense"), an amount, and a category.', {}
                 from apps.business.finance.cashflow_engine import get_cashflow_engine
+                from apps.core.tenancy import workspace_id_for
 
-                entry = await get_cashflow_engine().record(
+                entry = await get_cashflow_engine(await workspace_id_for(email)).record(
                     entry_type,
                     float(amount),
                     category,
@@ -4281,8 +4290,9 @@ class AriaMind:
 
             elif tool == "cashflow_summary":
                 from apps.business.finance.cashflow_engine import get_cashflow_engine
+                from apps.core.tenancy import workspace_id_for
 
-                engine = get_cashflow_engine()
+                engine = get_cashflow_engine(await workspace_id_for(email))
                 await engine._load()
                 summary = engine.summary()
                 runway = await engine.runway_months()
@@ -4297,10 +4307,10 @@ class AriaMind:
 
             elif tool == "forecast_cashflow":
                 from apps.business.finance.cashflow_engine import get_cashflow_engine
+                from apps.core.tenancy import workspace_id_for
 
-                forecast = await get_cashflow_engine().forecast_cashflow(
-                    int(args.get("months_ahead", 3))
-                )
+                engine = get_cashflow_engine(await workspace_id_for(email))
+                forecast = await engine.forecast_cashflow(int(args.get("months_ahead", 3)))
                 lines = ["**Cashflow forecast**"]
                 for f in forecast:
                     lines.append(

@@ -15,6 +15,11 @@ Pillow==12.3.0  # security: 10.4.0 had multiple CVEs, see pip-audit
 
 # ── Base de datos ─────────────────────────────────────────
 supabase==2.7.4
+# Signs the per-user JWTs apps/core/memory/rls_client.py presents to
+# PostgREST so Postgres RLS can enforce real per-user isolation on the
+# memory tables — already imported in production by
+# apps/core/integrations/advanced_integrations.py, but was never pinned.
+PyJWT==2.13.0
 
 # ── Scheduler ─────────────────────────────────────────────
 apscheduler==3.10.4

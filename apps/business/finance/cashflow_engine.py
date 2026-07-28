@@ -8,7 +8,11 @@ from datetime import UTC, datetime
 from apps.core.memory.redis_client import get_cache
 
 _TTL = 365 * 24 * 3600
-_CACHE_KEY = "business:cashflow:v1"
+_CACHE_KEY_TEMPLATE = "business:cashflow:v1:{workspace_id}"
+# Pre-multi-tenancy global key — every entry lived here when there was only
+# ever one workspace. See CashflowEngine._load()'s fallback for why this is
+# still read (never written) going forward.
+_LEGACY_CACHE_KEY = "business:cashflow:v1"
 
 
 @dataclass
@@ -54,16 +58,32 @@ def _month_key(ts: float) -> str:
 
 
 class CashflowEngine:
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: str = "_default") -> None:
+        self._workspace_id = workspace_id or "_default"
+        self._cache_key = _CACHE_KEY_TEMPLATE.format(workspace_id=self._workspace_id)
         self._entries: list[dict] = []
         self._loaded = False
+
+    def _is_legacy_owner_workspace(self) -> bool:
+        """True only for the actual configured owner's own workspace_id —
+        the sole tenant that could possibly have data under the old global
+        key, back from before workspaces existed. Deliberately NOT a
+        fallback for every workspace with an empty ledger: that would leak
+        the owner's real financial history into any other/new workspace's
+        view the first time it loads, exactly the cross-tenant bug this
+        conversion exists to close."""
+        from apps.core import auth
+
+        return self._workspace_id in auth.owner_emails()
 
     async def _load(self) -> None:
         if self._loaded:
             return
         try:
             cache = get_cache()
-            data = await cache.get(_CACHE_KEY)
+            data = await cache.get(self._cache_key)
+            if not data and self._is_legacy_owner_workspace():
+                data = await cache.get(_LEGACY_CACHE_KEY)
             if data and isinstance(data, list):
                 self._entries = data
         except Exception:
@@ -74,7 +94,7 @@ class CashflowEngine:
         self._loaded = True
         try:
             cache = get_cache()
-            await cache.set(_CACHE_KEY, self._entries, ttl_seconds=_TTL)
+            await cache.set(self._cache_key, self._entries, ttl_seconds=_TTL)
         except Exception:
             pass
 
@@ -242,11 +262,17 @@ class CashflowEngine:
         }
 
 
-_cashflow_engine_instance: CashflowEngine | None = None
+_cashflow_engines: dict[str, CashflowEngine] = {}
 
 
-def get_cashflow_engine() -> CashflowEngine:
-    global _cashflow_engine_instance
-    if _cashflow_engine_instance is None:
-        _cashflow_engine_instance = CashflowEngine()
-    return _cashflow_engine_instance
+def get_cashflow_engine(workspace_id: str = "_default") -> CashflowEngine:
+    """One CashflowEngine per workspace (apps/core/tenancy.py), not one
+    process-wide instance — the previous single-instance singleton is
+    exactly what made every team share one ledger regardless of who was
+    asking. `workspace_id` defaults to "_default" only for callers that
+    haven't been converted to pass a real one yet; every caller reachable
+    from a user request should resolve and pass tenancy.workspace_id_for(email)."""
+    workspace_id = workspace_id or "_default"
+    if workspace_id not in _cashflow_engines:
+        _cashflow_engines[workspace_id] = CashflowEngine(workspace_id)
+    return _cashflow_engines[workspace_id]
