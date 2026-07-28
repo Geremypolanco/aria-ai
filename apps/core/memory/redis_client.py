@@ -197,12 +197,24 @@ class AriaCache:
 
     # ── RATE LIMITING ─────────────────────────────────────
     async def check_rate_limit(self, key: str, max_calls: int, window_seconds: int) -> bool:
-        """Returns True if the call can be made, False if it exceeds the limit."""
+        """Returns True if the call can be made, False if it exceeds the
+        limit. Fails OPEN (returns True) if the INCR itself fails (Redis
+        down/rejected command) — `current` comes back None, which used to
+        read as "exceeded" and silently block every caller during a Redis
+        outage. That's the wrong default for an abuse guard (this repo has
+        no live callers of this method yet — the first is
+        apps/core/memory/user_facts.py's write-rate limit, which explicitly
+        wants a cache hiccup to never block a legitimate save). A future
+        security-critical limiter (e.g. login attempts) should make its own
+        deliberate fail-closed choice rather than relying on this default.
+        """
         rate_key = f"ratelimit:{key}"
         current = await self._cmd("INCR", rate_key)
+        if current is None:
+            return True
         if current == 1:
             await self._cmd("EXPIRE", rate_key, window_seconds)
-        return current is not None and int(current) <= max_calls
+        return int(current) <= max_calls
 
     # ── DISTRIBUTED LOCKS ──────────────────────────────────
     async def acquire_lock(self, resource: str, ttl_seconds: int = 60) -> bool:
