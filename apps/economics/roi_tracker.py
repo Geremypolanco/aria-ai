@@ -12,7 +12,11 @@ from dataclasses import dataclass, field
 from apps.core.memory.redis_client import get_cache
 from apps.core.tools.ai_client import AIModel, get_ai_client
 
-_ROI_KEY = "economics:roi:v1"
+_ROI_KEY_TEMPLATE = "economics:roi:v1:{workspace_id}"
+# Pre-multi-tenancy global key — every record lived here when there was only
+# ever one workspace. See ROITracker._load()'s fallback for why this is
+# still read (never written) going forward.
+_LEGACY_ROI_KEY = "economics:roi:v1"
 _ROI_TTL = 86400 * 90  # 90 days
 
 
@@ -49,17 +53,31 @@ class ROIRecord:
 
 
 class ROITracker:
-    """Tracks ROI per action, department, and campaign."""
+    """Tracks ROI per action, department, and campaign — one instance per
+    workspace (apps/core/tenancy.py), each keyed to its own Redis record."""
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_id: str = "_default") -> None:
+        self._workspace_id = workspace_id or "_default"
+        self._cache_key = _ROI_KEY_TEMPLATE.format(workspace_id=self._workspace_id)
         self._records: list[dict] = []
         self._loaded = False
+
+    def _is_legacy_owner_workspace(self) -> bool:
+        """True only for the actual configured owner's own workspace_id —
+        see CashflowEngine's identical method (apps/business/finance/
+        cashflow_engine.py) for why this must never apply to any other
+        workspace."""
+        from apps.core import auth
+
+        return self._workspace_id in auth.owner_emails()
 
     async def _load(self) -> None:
         if not self._loaded:
             try:
                 cache = get_cache()
-                data = await cache.get(_ROI_KEY)
+                data = await cache.get(self._cache_key)
+                if not data and self._is_legacy_owner_workspace():
+                    data = await cache.get(_LEGACY_ROI_KEY)
                 if data and isinstance(data, dict):
                     self._records = data.get("records", [])
             except Exception:
@@ -69,7 +87,7 @@ class ROITracker:
     async def _save(self) -> None:
         try:
             cache = get_cache()
-            await cache.set(_ROI_KEY, {"records": self._records}, ttl_seconds=_ROI_TTL)
+            await cache.set(self._cache_key, {"records": self._records}, ttl_seconds=_ROI_TTL)
         except Exception:
             pass
 
@@ -234,11 +252,15 @@ class ROITracker:
         return "ROI analysis: Insufficient data for recommendations."
 
 
-_instance: ROITracker | None = None
+_instances: dict[str, ROITracker] = {}
 
 
-def get_roi_tracker() -> ROITracker:
-    global _instance
-    if _instance is None:
-        _instance = ROITracker()
-    return _instance
+def get_roi_tracker(workspace_id: str = "_default") -> ROITracker:
+    """One ROITracker per workspace — `workspace_id` defaults to
+    "_default" only for callers not yet converted to pass a real one; every
+    caller reachable from a user request should resolve and pass
+    apps.core.tenancy.workspace_id_for(email)."""
+    workspace_id = workspace_id or "_default"
+    if workspace_id not in _instances:
+        _instances[workspace_id] = ROITracker(workspace_id)
+    return _instances[workspace_id]
