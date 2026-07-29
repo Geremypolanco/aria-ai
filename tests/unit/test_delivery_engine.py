@@ -37,7 +37,12 @@ def engine():
     with patch("apps.acquisition.delivery.delivery_engine.get_cache", return_value=_mock_cache()):
         from apps.acquisition.delivery.delivery_engine import DeliveryEngine
 
-        return DeliveryEngine()
+        # yield, not return: the patch must stay active for the whole test
+        # body, since register_deliverable/deliver call get_cache() lazily
+        # inside _load()/_save() — a `return` here would exit the `with`
+        # block (and revert the patch) before the test ever awaits anything,
+        # letting those calls reach the real redis client instead.
+        yield DeliveryEngine()
 
 
 PHISHING_TEXT = "Please verify your account now, click here to continue or it will be suspended."
@@ -86,8 +91,8 @@ async def test_register_deliverable_blocks_phishing_content():
         from apps.acquisition.delivery.delivery_engine import DeliveryEngine
 
         engine = DeliveryEngine()
+        result = await engine.register_deliverable(sku="x", name="X", content=PHISHING_TEXT)
 
-    result = await engine.register_deliverable(sku="x", name="X", content=PHISHING_TEXT)
     assert result["success"] is False
     assert "blocked pattern" in result["error"].lower()
     assert engine.get_deliverable("x") is None
@@ -109,6 +114,41 @@ async def test_deliver_sends_registered_deliverable(engine):
     assert record.status == "sent"
     assert "resend" in record.detail
     assert engine.recent_deliveries()[0]["sku"] == "playbook-v1"
+
+
+async def test_deliver_is_idempotent_for_the_same_order_ref(engine):
+    """A repeat call for an order already confirmed sent (e.g. an automated
+    retry after an ambiguous response) must return the stored result, never
+    send a second real email for one purchase."""
+    await engine.register_deliverable(sku="x", name="X", content="https://example.com")
+    send = AsyncMock(return_value={"success": True, "provider": "resend"})
+    with patch("apps.core.tools.publishing_tools.PublishingTools.send_newsletter", send):
+        first = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+        second = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+
+    assert first.status == second.status == "sent"
+    assert first.record_id == second.record_id
+    send.assert_awaited_once()
+
+
+async def test_deliver_retries_after_a_failed_attempt_for_the_same_order_ref(engine):
+    """A prior failure never actually sent anything, so it must not block a
+    fresh attempt for the same order_ref."""
+    await engine.register_deliverable(sku="x", name="X", content="https://example.com")
+    with patch(
+        "apps.core.tools.publishing_tools.PublishingTools.send_newsletter",
+        AsyncMock(return_value={"success": False, "error": "boom"}),
+    ):
+        first = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+    with patch(
+        "apps.core.tools.publishing_tools.PublishingTools.send_newsletter",
+        AsyncMock(return_value={"success": True, "provider": "resend"}),
+    ):
+        second = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+
+    assert first.status == "failed"
+    assert second.status == "sent"
+    assert first.record_id != second.record_id
 
 
 async def test_deliver_refuses_unregistered_sku(engine):

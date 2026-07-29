@@ -130,6 +130,22 @@ at all (§1.6 / Phase 1).
   recommendation) before assuming any should merge.
 - **HubSpot/Salesforce connectors built, unused.** No integration work
   scheduled until a concrete need names which CRM to sync first.
+- **No workspace-scoped state, anywhere in the acquisition suite.**
+  `CRMEngine`, `LeadEngine`, `LeadScraper`, `OutreachSequencer`, and the new
+  `DeliveryEngine` all share the identical pattern: one global Redis key,
+  one process-global singleton, no `workspace_id_for(email)` derivation
+  (contrast with `CashflowEngine`/`ROITracker`, which already take a
+  workspace id — see `aria_mind.py`'s `cashflow_summary`/`track_roi`
+  handlers). Flagged by CodeRabbit on this PR against `DeliveryEngine`
+  specifically; true of every sibling module, not new here. Retrofitting
+  one module in isolation wouldn't close the actual boundary (the others
+  would still be crossable), so this needs a suite-wide pass, not a
+  one-file patch — tracked as its own phase rather than folded into Phase 1.
+- **Whole-document read-modify-write, same suite.** Every module above
+  loads one JSON blob, mutates it in memory, and writes the whole thing
+  back — no atomic Redis primitives or optimistic versioning, so two
+  concurrent workers can clobber each other's writes. Same reasoning as
+  above: a repo-wide pattern, best fixed once across all of them together.
 
 ---
 
@@ -143,6 +159,7 @@ at all (§1.6 / Phase 1).
 | 4 | Real digital-presence analysis via an external SEO/traffic API | Planned |
 | 5 | Shared prospect identity across the acquisition modules | Planned |
 | 6 | HubSpot/Salesforce sync for prospects who already run a CRM | Planned (needs a concrete first user) |
+| 7 | Workspace-scoped, atomically-persisted state across the whole acquisition suite (`CRMEngine`, `LeadEngine`, `LeadScraper`, `OutreachSequencer`, `DeliveryEngine`) | Planned (§3) |
 
 ---
 

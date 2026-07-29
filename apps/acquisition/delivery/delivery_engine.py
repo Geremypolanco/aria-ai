@@ -164,8 +164,25 @@ class DeliveryEngine:
         order_ref: str = "",
     ) -> DeliveryRecord:
         """Send whatever was registered for `sku` to `buyer_email`, and log
-        the outcome. Never invents content for a sku that wasn't registered."""
+        the outcome. Never invents content for a sku that wasn't registered.
+
+        Idempotent per (sku, order_ref): a repeat call for an order that was
+        already confirmed sent returns that same stored record instead of
+        sending again — an ambiguous or automated retry (e.g. aria_mind.py's
+        generic failure-retry loop) must never risk a second real email for
+        one purchase. A prior "failed"/"no_deliverable" outcome never sent
+        anything, so it doesn't block a fresh attempt."""
         await self._load()
+
+        if order_ref:
+            for existing in self._records:
+                if (
+                    existing.get("sku") == sku
+                    and existing.get("order_ref") == order_ref
+                    and existing.get("status") == "sent"
+                ):
+                    return DeliveryRecord(**existing)
+
         record = DeliveryRecord(
             sku=sku, buyer_email=buyer_email, buyer_name=buyer_name, order_ref=order_ref
         )
