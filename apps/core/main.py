@@ -2502,7 +2502,8 @@ async def connectors_status(request: Request):
 
 def _shopify_connect_form(error: str = "") -> HTMLResponse:
     err_html = f'<p style="color:#d33">{error}</p>' if error else ""
-    return HTMLResponse(f"""
+    return HTMLResponse(
+        f"""
     <html><body style="font-family:sans-serif;max-width:420px;margin:80px auto">
       <h2>Connect your Shopify store</h2>
       <p>Enter your shop's domain to continue to Shopify's consent screen.</p>
@@ -2512,7 +2513,8 @@ def _shopify_connect_form(error: str = "") -> HTMLResponse:
         <button type="submit" style="margin-top:12px;padding:8px 16px">Continue</button>
       </form>
     </body></html>
-    """)
+    """
+    )
 
 
 @app.get("/connectors/{pid}/connect")
