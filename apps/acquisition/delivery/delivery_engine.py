@@ -26,6 +26,7 @@ path, not a second bespoke send mechanism.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 import uuid
 from contextlib import suppress
@@ -37,6 +38,10 @@ logger = logging.getLogger("aria.acquisition.delivery")
 
 _KEY = "acquisition:delivery:v1"
 _TTL = 86400 * 365
+# Generous relative to a typical transactional-email API call, but still a
+# fixed lease, not a renewable heartbeat — see deliver()'s docstring for the
+# residual race this doesn't close.
+_LOCK_TTL_SECONDS = 120
 
 
 @dataclass
@@ -66,7 +71,7 @@ class DeliveryRecord:
     buyer_email: str = ""
     buyer_name: str = ""
     order_ref: str = ""
-    status: str = "pending"  # sent | failed | no_deliverable
+    status: str = "pending"  # sent | failed | no_deliverable | ambiguous | in_progress
     detail: str = ""
     created_at: float = field(default_factory=time.time)
 
@@ -167,29 +172,43 @@ class DeliveryEngine:
         """Send whatever was registered for `sku` to `buyer_email`, and log
         the outcome. Never invents content for a sku that wasn't registered.
 
-        Idempotent per (sku, order_ref): a repeat call for an order that was
-        already confirmed sent returns that same stored record instead of
-        sending again — an ambiguous or automated retry (e.g. aria_mind.py's
-        generic failure-retry loop) must never risk a second real email for
-        one purchase. A prior "failed"/"no_deliverable" outcome never sent
-        anything, so it doesn't block a fresh attempt.
+        Idempotent per (sku, order_ref): a repeat call for an order already
+        "sent" or "ambiguous" returns that same stored record instead of
+        acting again — an automated retry (e.g. aria_mind.py's generic
+        failure-retry loop) must never risk a second real email for one
+        purchase. A prior "failed"/"no_deliverable" outcome never sent
+        anything (the provider itself cleanly reported failure), so it
+        doesn't block a fresh attempt.
 
         When order_ref is given, the check-then-send-then-record sequence
-        below runs under a short Redis lock keyed on (sku, order_ref), so two
-        genuinely concurrent calls for the same order can't both pass the
-        dedup check and both send. If the lock itself is unavailable (no
-        order_ref, or the cache is down), this narrows to the sequential
-        protection above only — still correct for the common case (a retry
-        after this call has already returned), just not against a true race.
-        Residual, not fully closed: if the provider call itself times out
-        ambiguously (the email may have actually gone out despite us seeing
-        an error), a later retry can still double-send — closing that needs
-        an idempotency key on the provider side, which PublishingTools does
-        not expose today."""
+        below runs under a Redis lock keyed on (sku, order_ref) and fenced
+        with a per-call token — release only deletes the lock if it still
+        holds *this* call's token, so a call whose lease already expired
+        can't delete a different call's active lock. If the lock itself is
+        unavailable (no order_ref, or the cache is down), this narrows to
+        the sequential protection above only — still correct for the common
+        case (a retry after this call has already returned), just not
+        against a true race.
+
+        Two things this does NOT fully close, documented rather than
+        silently assumed away:
+        - The lease has a fixed TTL (_LOCK_TTL_SECONDS), not a renewable
+          heartbeat. A send that runs longer than the TTL can still let a
+          second call acquire the lock and send again. Closing this needs a
+          renewable lease or a durable claim (Phase 7).
+        - If send_newsletter() raises instead of returning a clean
+          {"success": False} — a timeout after the provider may have already
+          accepted the email — the outcome is genuinely unknown. That's
+          recorded as "ambiguous", not "failed": deliver() treats it as a
+          blocking prior state (like "sent") so an automated retry can't act
+          on it, but resolving whether it actually sent requires checking
+          the provider's own logs; PublishingTools exposes no idempotency
+          key to make this provably safe."""
         await self._load()
 
         cache = None
         lock_key = None
+        lock_token = ""  # nosec B105 -- lock-fencing value, not a credential; set via secrets.token_hex below
         if order_ref:
             try:
                 cache = get_cache()
@@ -197,8 +216,11 @@ class DeliveryEngine:
                 cache = None
             if cache:
                 lock_key = f"delivery:{sku}:{order_ref}"
+                lock_token = secrets.token_hex(8)
                 try:
-                    locked = await cache.acquire_lock(lock_key, ttl_seconds=30)
+                    locked = await cache.set_if_not_exists(
+                        lock_key, lock_token, ttl_seconds=_LOCK_TTL_SECONDS
+                    )
                 except Exception:
                     locked = False
                 if not locked:
@@ -217,7 +239,7 @@ class DeliveryEngine:
                     if (
                         existing.get("sku") == sku
                         and existing.get("order_ref") == order_ref
-                        and existing.get("status") == "sent"
+                        and existing.get("status") in ("sent", "ambiguous")
                     ):
                         return DeliveryRecord(**existing)
 
@@ -252,7 +274,15 @@ class DeliveryEngine:
                     subject, body, to_override=buyer_email
                 )
             except Exception as exc:
-                result = {"success": False, "error": str(exc)}
+                # Genuinely unknown outcome — do NOT record as "failed" (that
+                # would tell deliver()'s own dedup check, and the caller's
+                # retry logic, that nothing was sent and a retry is safe).
+                record.status = "ambiguous"
+                record.detail = f"send_newsletter raised before confirming outcome: {exc}"
+                self._records.append(record.to_dict())
+                await self._save()
+                logger.warning("DeliveryEngine.deliver: %s", record.detail)
+                return record
 
             if result.get("success"):
                 record.status = "sent"
@@ -267,7 +297,9 @@ class DeliveryEngine:
         finally:
             if lock_key and cache:
                 with suppress(Exception):
-                    await cache.release_lock(lock_key)
+                    stored_token = await cache.get(lock_key)
+                    if stored_token == lock_token:
+                        await cache.delete(lock_key)
 
     def get_deliverable(self, sku: str) -> dict | None:
         return self._deliverables.get(sku)
@@ -283,12 +315,14 @@ class DeliveryEngine:
         sent = sum(1 for r in self._records if r.get("status") == "sent")
         failed = sum(1 for r in self._records if r.get("status") == "failed")
         no_deliverable = sum(1 for r in self._records if r.get("status") == "no_deliverable")
+        ambiguous = sum(1 for r in self._records if r.get("status") == "ambiguous")
         return {
             "total_deliverables_registered": len(self._deliverables),
             "total_delivery_attempts": total,
             "sent": sent,
             "failed": failed,
             "no_deliverable": no_deliverable,
+            "ambiguous": ambiguous,
             "success_rate_pct": round(sent / total * 100, 1) if total else 0.0,
         }
 

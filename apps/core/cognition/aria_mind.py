@@ -3372,6 +3372,29 @@ class AriaMind:
                         "call register_deliverable first, I won't guess what to send.",
                         {},
                     )
+                if record.status == "ambiguous":
+                    # Deliberately phrased without any word from
+                    # AriaMind._FAILURE_SIGNALS: the send outcome is
+                    # genuinely unknown (the provider call raised before
+                    # confirming success/failure), so the generic
+                    # _execute_with_retry loop must NOT treat this as a
+                    # retryable failure and fire again — that could send
+                    # the product a second time for one purchase.
+                    return (
+                        f"Delivery to {buyer_email} for sku `{sku}` is unconfirmed — "
+                        "the send attempt raised an exception before we could tell "
+                        "whether the email actually went out. Check the email "
+                        "provider's own logs before deliver_purchase runs again with "
+                        "this same order_ref; a blind repeat risks sending it twice.",
+                        {},
+                    )
+                if record.status == "in_progress":
+                    return (
+                        f"A delivery for sku `{sku}` and this order is already "
+                        "underway from another call right now — wait for it to "
+                        "finish rather than starting a second one for the same order.",
+                        {},
+                    )
                 return f"**Delivery to {buyer_email} failed:** {record.detail}", {}
 
             # ── LINKEDIN OUTREACH ────────────────────────────────────────────

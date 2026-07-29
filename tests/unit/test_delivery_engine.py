@@ -29,6 +29,8 @@ def _mock_cache():
     c = MagicMock()
     c.get = AsyncMock(return_value=None)
     c.set = AsyncMock(return_value=True)
+    c.set_if_not_exists = AsyncMock(return_value=True)
+    c.delete = AsyncMock(return_value=True)
     c.acquire_lock = AsyncMock(return_value=True)
     c.release_lock = AsyncMock(return_value=True)
     return c
@@ -125,7 +127,7 @@ async def test_deliver_refuses_concurrent_send_for_the_same_order_ref(engine):
     await engine.register_deliverable(sku="x", name="X", content="https://example.com")
     with patch("apps.acquisition.delivery.delivery_engine.get_cache") as get_cache_mock:
         locked_cache = MagicMock()
-        locked_cache.acquire_lock = AsyncMock(return_value=False)
+        locked_cache.set_if_not_exists = AsyncMock(return_value=False)
         get_cache_mock.return_value = locked_cache
         record = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
 
@@ -165,6 +167,36 @@ async def test_deliver_retries_after_a_failed_attempt_for_the_same_order_ref(eng
     assert first.status == "failed"
     assert second.status == "sent"
     assert first.record_id != second.record_id
+
+
+async def test_deliver_records_ambiguous_outcome_on_provider_exception(engine):
+    """An exception from send_newsletter means we genuinely don't know if
+    the email went out — must be "ambiguous", never "failed" (which would
+    tell both the dedup check and the caller's retry logic that nothing was
+    sent and a retry is safe)."""
+    await engine.register_deliverable(sku="x", name="X", content="https://example.com")
+    with patch(
+        "apps.core.tools.publishing_tools.PublishingTools.send_newsletter",
+        AsyncMock(side_effect=TimeoutError("connection reset")),
+    ):
+        record = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+
+    assert record.status == "ambiguous"
+    assert "connection reset" in record.detail
+
+
+async def test_deliver_does_not_retry_after_an_ambiguous_outcome(engine):
+    """A second call for the same order after an ambiguous outcome must
+    return the stored ambiguous record, not attempt to send again."""
+    await engine.register_deliverable(sku="x", name="X", content="https://example.com")
+    send = AsyncMock(side_effect=TimeoutError("connection reset"))
+    with patch("apps.core.tools.publishing_tools.PublishingTools.send_newsletter", send):
+        first = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+        second = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+
+    assert first.status == second.status == "ambiguous"
+    assert first.record_id == second.record_id
+    send.assert_awaited_once()
 
 
 async def test_deliver_refuses_unregistered_sku(engine):

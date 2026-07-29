@@ -186,13 +186,31 @@ at all (§1.6 / Phase 1).
 - `apps/core/capabilities/catalog.py`'s `fulfillment.digital_delivery`
   entry corrected to describe this real mechanism instead of the
   nonexistent `/access/{key}` route.
+- **Idempotency, hardened through CodeRabbit review:** `deliver()` is
+  idempotent per `(sku, order_ref)` — a repeat call for an order already
+  `sent` or `ambiguous` returns the stored record rather than acting again.
+  The check-then-send-then-record sequence runs under a Redis lock fenced
+  with a per-call token (release only deletes the lock if it still holds
+  *this* call's token), so two genuinely concurrent calls can't both pass
+  the dedup check and both send. A provider call that raises instead of
+  cleanly failing is recorded as `"ambiguous"` (outcome genuinely unknown),
+  never `"failed"` — the dispatcher phrases that outcome to deliberately
+  avoid every substring `AriaMind._FAILURE_SIGNALS` matches on, so the
+  generic tool-retry loop can't treat an unconfirmed send as safely
+  retryable. Two things this does not fully close, documented in
+  `deliver()`'s own docstring rather than assumed away: the lock's TTL is a
+  fixed lease, not a renewable heartbeat, so a send slower than the lease
+  can still race; and there's no idempotency key on the provider side, so
+  "ambiguous" can only be flagged, not automatically resolved.
 
 **Tests:** `tests/unit/test_delivery_engine.py` (registration validation,
-content-safety blocking, send success/failure, refusal on an unregistered
-sku, stats) and `tests/unit/test_delivery_tools_wired_into_aria_mind.py`
+content-safety blocking, send success/failure, sequential and concurrent
+idempotency, ambiguous-outcome handling, refusal on an unregistered sku,
+stats) and `tests/unit/test_delivery_tools_wired_into_aria_mind.py`
 (dispatcher reachability, matching the `test_social_session_wired_into_
 aria_mind.py` convention of exercising `AriaMind._execute_tool` directly
-rather than the engine in isolation).
+rather than the engine in isolation — including asserting the ambiguous/
+in_progress responses don't trip `_looks_like_failure()`).
 
 **Known limitation, disclosed rather than hidden:** delivery today is
 triggered by asking ARIA to run `deliver_purchase` — it is not yet wired
