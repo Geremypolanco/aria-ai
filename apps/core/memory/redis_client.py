@@ -93,6 +93,15 @@ class AriaCache:
     async def increment(self, key: str) -> int:
         return await self._cmd("INCR", key) or 0
 
+    async def increment_by(self, key: str, amount: float) -> float:
+        """Atomically add `amount` (may be fractional, e.g. a dollar figure)
+        to `key` — INCR only supports whole integers by 1."""
+        result = await self._cmd("INCRBYFLOAT", key, amount)
+        try:
+            return float(result)
+        except (TypeError, ValueError):
+            return 0.0
+
     async def scan_keys(self, pattern: str, limit: int = 1000) -> list[str]:
         """Enumerates keys matching a glob pattern (e.g. "aria:semantic:*")
         via Redis SCAN — safe for production use (unlike KEYS, it doesn't
@@ -224,6 +233,25 @@ class AriaCache:
 
     async def release_lock(self, resource: str) -> bool:
         return await self.delete(f"lock:{resource}")
+
+    async def compare_and_delete(self, key: str, expected_value: str) -> bool:
+        """Atomically delete `key` only if its current value still equals
+        `expected_value` — the standard fenced-lock release pattern. A plain
+        get()-then-delete() has a real TOCTOU race: the lease can expire and
+        a different holder can acquire the same key between the two calls,
+        and the stale holder's delete would remove the new holder's lock.
+        Runs as a single Lua script server-side so the check and the delete
+        can't be interleaved with anything else. Returns False (does NOT
+        delete) on any error, script-support issue, or value mismatch — a
+        lock that isn't confirmably ours is safer left alone; it still
+        expires on its own via the key's TTL."""
+        script = (
+            'if redis.call("GET", KEYS[1]) == ARGV[1] then '
+            'return redis.call("DEL", KEYS[1]) '
+            "else return 0 end"
+        )
+        result = await self._cmd("EVAL", script, "1", key, expected_value)
+        return result == 1
 
     # ── REAL-TIME METRICS ──────────────────────────────────
     async def increment_metric(self, metric: str) -> int:
