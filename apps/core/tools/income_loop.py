@@ -396,6 +396,11 @@ class CycleResult:
     ts: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
+# Persists across process restarts (unlike self._running, which lives only
+# in this process's memory) — see IncomeLoop.start()/resume_if_previously_running().
+_SHOULD_RUN_KEY = "aria:income:should_run"
+
+
 class IncomeLoop:
     """
     Autonomous income machine. Never sleeps for more than 30 minutes.
@@ -430,6 +435,21 @@ class IncomeLoop:
         self._running = True
         self._task = asyncio.create_task(self._run_forever())
         logger.info("[IncomeLoop] 24/7 income loop started (interval=%ds)", INTERVAL_SECONDS)
+        # Persisted so a restart can resume the loop on its own — this
+        # process is in-memory only (a bare asyncio.create_task, no
+        # supervisor), and every deploy/redeploy kills it silently. Without
+        # this flag the loop just stays stopped until the owner happens to
+        # notice (there was no automatic way to tell) and re-asks ARIA to
+        # start it. See resume_if_previously_running(), called once from
+        # main.py's lifespan on boot.
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if cache:
+                await cache.set(_SHOULD_RUN_KEY, "1")
+        except Exception as exc:
+            logger.debug("[IncomeLoop] failed to persist should-run flag: %s", exc)
         # Proactive Telegram notification on startup
         asyncio.create_task(self._notify_startup())
 
@@ -438,6 +458,27 @@ class IncomeLoop:
         if self._task and not self._task.done():
             self._task.cancel()
         logger.info("[IncomeLoop] Stopped")
+
+    async def resume_if_previously_running(self) -> None:
+        """Called once at app boot (main.py's lifespan). The loop has no
+        supervisor of its own — a restart (including the routine ones
+        deploy.yml triggers on every merge to main) silently stops it with
+        no automatic way for the owner to notice short of asking
+        income_loop_status. Auto-resumes it if it was running before this
+        restart, so a deploy doesn't quietly halt all autonomous content/
+        SEO/social activity until someone happens to check."""
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if not cache:
+                return
+            should_run = await cache.get(_SHOULD_RUN_KEY)
+            if should_run:
+                await self.start()
+                logger.info("[IncomeLoop] Resumed after restart (was running before shutdown)")
+        except Exception as exc:
+            logger.warning("[IncomeLoop] resume-on-boot check failed: %s", exc)
 
     @property
     def is_running(self) -> bool:

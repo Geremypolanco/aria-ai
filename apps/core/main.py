@@ -370,6 +370,22 @@ async def lifespan(app: FastAPI):
         except Exception as e:  # noqa: BLE001
             logger.warning(f"in-process worker not started: {e}")
 
+    # The 24/7 income loop (apps/core/tools/income_loop.py) only ever starts
+    # when the owner asks ARIA to in chat, and lives only as an in-process
+    # asyncio task with no supervisor — every restart (including the routine
+    # ones deploy.yml triggers on every merge to main) silently stops it,
+    # with no automatic way for the owner to notice. Resume it here if it
+    # was running before this restart, so a routine deploy doesn't quietly
+    # halt all autonomous content/SEO/social activity.
+    try:
+        import asyncio as _asyncio
+
+        from apps.core.tools.income_loop import get_income_loop
+
+        _asyncio.create_task(get_income_loop().resume_if_previously_running())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"income loop resume-on-boot check not started: {e}")
+
     yield
 
     if health_task is not None:
