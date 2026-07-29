@@ -377,12 +377,19 @@ async def lifespan(app: FastAPI):
     # with no automatic way for the owner to notice. Resume it here if it
     # was running before this restart, so a routine deploy doesn't quietly
     # halt all autonomous content/SEO/social activity.
+    #
+    # The task is kept in `income_resume_task` (not discarded) — asyncio only
+    # holds a weak reference to a task, so a fire-and-forget create_task()
+    # call risks the task being garbage-collected before it finishes (a real
+    # risk here: this task itself awaits a Redis round-trip). Cancelled on
+    # shutdown alongside health_task/worker_task below, same as those two.
+    income_resume_task = None
     try:
         import asyncio as _asyncio
 
         from apps.core.tools.income_loop import get_income_loop
 
-        _asyncio.create_task(get_income_loop().resume_if_previously_running())
+        income_resume_task = _asyncio.create_task(get_income_loop().resume_if_previously_running())
     except Exception as e:  # noqa: BLE001
         logger.warning(f"income loop resume-on-boot check not started: {e}")
 
@@ -394,6 +401,8 @@ async def lifespan(app: FastAPI):
         worker_stop.set()
     if worker_task is not None:
         worker_task.cancel()
+    if income_resume_task is not None:
+        income_resume_task.cancel()
     logger.info("ARIA AI shutting down...")
 
 

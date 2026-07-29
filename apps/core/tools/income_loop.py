@@ -453,11 +453,22 @@ class IncomeLoop:
         # Proactive Telegram notification on startup
         asyncio.create_task(self._notify_startup())
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         self._running = False
         if self._task and not self._task.done():
             self._task.cancel()
         logger.info("[IncomeLoop] Stopped")
+        # Must clear the should-run flag start() persists, or the next
+        # restart's resume_if_previously_running() would read the stale
+        # flag and silently override this explicit stop (CodeRabbit, PR #153).
+        try:
+            from apps.core.memory.redis_client import get_cache
+
+            cache = get_cache()
+            if cache:
+                await cache.delete(_SHOULD_RUN_KEY)
+        except Exception as exc:
+            logger.debug("[IncomeLoop] failed to clear should-run flag: %s", exc)
 
     async def resume_if_previously_running(self) -> None:
         """Called once at app boot (main.py's lifespan). The loop has no

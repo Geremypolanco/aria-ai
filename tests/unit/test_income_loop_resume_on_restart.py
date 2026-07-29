@@ -12,6 +12,10 @@ start() now persists a "should be running" flag to Redis, and
 resume_if_previously_running() (called once from main.py's lifespan on
 boot) checks it and auto-resumes the loop if it was running before the
 restart — so a deploy no longer silently halts autonomous activity.
+
+stop() (CodeRabbit, PR #153) must clear that same flag — otherwise an
+explicit stop would be silently overridden by resume_if_previously_running()
+on the next restart, since the stale "should run" flag would still be set.
 """
 
 from __future__ import annotations
@@ -110,3 +114,70 @@ async def test_resume_does_not_raise_when_cache_get_fails():
         await loop.resume_if_previously_running()  # must not raise
 
     assert not loop.is_running
+
+
+async def test_stop_clears_should_run_flag():
+    loop = _bare_loop()
+    loop._running = True
+    fake_cache = AsyncMock()
+
+    with patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache):
+        await loop.stop()
+
+    fake_cache.delete.assert_awaited_once_with(_SHOULD_RUN_KEY)
+    assert not loop.is_running
+
+
+async def test_stop_does_not_raise_when_cache_unavailable():
+    loop = _bare_loop()
+    loop._running = True
+
+    with patch("apps.core.memory.redis_client.get_cache", return_value=None):
+        await loop.stop()  # must not raise
+
+    assert not loop.is_running
+
+
+async def test_stop_does_not_raise_when_cache_delete_fails():
+    loop = _bare_loop()
+    loop._running = True
+    fake_cache = AsyncMock()
+    fake_cache.delete = AsyncMock(side_effect=RuntimeError("redis down"))
+
+    with patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache):
+        await loop.stop()  # must not raise
+
+    assert not loop.is_running
+
+
+async def test_stopped_loop_does_not_get_resumed_after_restart():
+    """End-to-end: start persists the flag, stop clears it — a fresh
+    IncomeLoop instance (simulating the next process) must not auto-resume."""
+    shared_state: dict[str, str] = {}
+
+    async def fake_get(key):
+        return shared_state.get(key)
+
+    async def fake_set(key, value, ttl_seconds=None):
+        shared_state[key] = value
+
+    async def fake_delete(key):
+        shared_state.pop(key, None)
+
+    fake_cache = AsyncMock()
+    fake_cache.get = fake_get
+    fake_cache.set = fake_set
+    fake_cache.delete = fake_delete
+
+    with patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache):
+        loop = _bare_loop()
+        await loop.start()
+        assert loop.is_running
+        await loop.stop()
+        assert not loop.is_running
+
+        # A fresh instance, as if the process had just restarted.
+        next_process_loop = _bare_loop()
+        await next_process_loop.resume_if_previously_running()
+
+    assert not next_process_loop.is_running
