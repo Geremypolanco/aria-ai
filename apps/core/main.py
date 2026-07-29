@@ -146,6 +146,9 @@ TRACK_EVENTS = (
     "auth_success",
     "checkout_started",
     "checkout_agreed",
+    "first_login",
+    "plan_purchased",
+    "subscription_canceled",
 )
 
 
@@ -393,6 +396,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:  # noqa: BLE001
         logger.warning(f"income loop resume-on-boot check not started: {e}")
 
+    # Weekly owner report (apps/core/notifications/owner_alerts.py). Checks
+    # hourly whether 7 days have actually elapsed since the last send (state
+    # in Redis) rather than asyncio.sleep(7 days) — the same restart-survival
+    # reasoning as income_resume_task above: a naive long sleep would almost
+    # never survive across deploy.yml's frequent redeploys.
+    weekly_report_task = None
+    try:
+        import asyncio as _asyncio
+
+        from apps.core.notifications.owner_alerts import weekly_report_loop
+
+        weekly_report_task = _asyncio.create_task(weekly_report_loop())
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"weekly report loop not started: {e}")
+
     yield
 
     if health_task is not None:
@@ -403,6 +421,8 @@ async def lifespan(app: FastAPI):
         worker_task.cancel()
     if income_resume_task is not None:
         income_resume_task.cancel()
+    if weekly_report_task is not None:
+        weekly_report_task.cancel()
     logger.info("ARIA AI shutting down...")
 
 
@@ -1364,8 +1384,10 @@ a.lnk{{color:#047857;text-decoration:none;font-weight:600}} a.lnk:hover{{text-de
 
 async def _auth_success_redirect(email: str, name: str, provider: str) -> RedirectResponse:
     from apps.core import auth
+    from apps.core.notifications import owner_alerts
 
     await _track("auth_success")
+    asyncio.create_task(owner_alerts.notify_first_login(email, name, provider))
     resp = RedirectResponse("/app", status_code=303)
     resp.set_cookie(
         auth.USER_COOKIE,
@@ -1474,11 +1496,17 @@ async def auth_github():
 
 async def _finish_login(profile: dict | None):
     from apps.core import auth
+    from apps.core.notifications import owner_alerts
 
     if not profile or not profile.get("email"):
         return RedirectResponse("/login?e=failed", status_code=303)
     await auth.remember_user(profile)
     await _track("auth_success")
+    asyncio.create_task(
+        owner_alerts.notify_first_login(
+            profile["email"], profile.get("name", ""), profile.get("provider", "")
+        )
+    )
     resp = RedirectResponse("/app", status_code=303)
     resp.set_cookie(
         auth.USER_COOKIE,
@@ -2366,6 +2394,8 @@ async def billing_webhook(request: Request):
         return JSONResponse({"error": "invalid signature"}, status_code=400)
 
     try:
+        from apps.core.notifications import owner_alerts
+
         etype = event.get("type", "")
         obj = (event.get("data") or {}).get("object") or {}
 
@@ -2377,12 +2407,19 @@ async def billing_webhook(request: Request):
             )
             if email:
                 await _set_user_plan(email, "free")
+                # Only a genuine deletion is "the customer canceled their
+                # subscription" — invoice.payment_failed is a declined charge,
+                # a different event the owner didn't ask to be alerted on.
+                if etype == "customer.subscription.deleted":
+                    asyncio.create_task(owner_alerts.notify_subscription_canceled(email))
 
         elif etype == "customer.subscription.updated":
             email = ((obj.get("metadata") or {}).get("email") or "").strip().lower()
             status = obj.get("status")
             if email and status in ("canceled", "unpaid", "incomplete_expired"):
                 await _set_user_plan(email, "free")
+                if status == "canceled":
+                    asyncio.create_task(owner_alerts.notify_subscription_canceled(email))
 
         elif etype == "checkout.session.completed":
             meta = obj.get("metadata") or {}
@@ -2401,9 +2438,9 @@ async def billing_webhook(request: Request):
                 from apps.core.observability.metrics import get_metrics
 
                 amount_total_cents = obj.get("amount_total") or 0
-                get_metrics().record_income_cycle(
-                    success=True, revenue_usd=amount_total_cents / 100
-                )
+                amount_usd = amount_total_cents / 100
+                get_metrics().record_income_cycle(success=True, revenue_usd=amount_usd)
+                asyncio.create_task(owner_alerts.notify_plan_purchased(email, tier, amount_usd))
     except Exception as e:
         logger.error(f"Stripe webhook handling error: {e}")
 
@@ -2465,8 +2502,7 @@ async def connectors_status(request: Request):
 
 def _shopify_connect_form(error: str = "") -> HTMLResponse:
     err_html = f'<p style="color:#d33">{error}</p>' if error else ""
-    return HTMLResponse(
-        f"""
+    return HTMLResponse(f"""
     <html><body style="font-family:sans-serif;max-width:420px;margin:80px auto">
       <h2>Connect your Shopify store</h2>
       <p>Enter your shop's domain to continue to Shopify's consent screen.</p>
@@ -2476,8 +2512,7 @@ def _shopify_connect_form(error: str = "") -> HTMLResponse:
         <button type="submit" style="margin-top:12px;padding:8px 16px">Continue</button>
       </form>
     </body></html>
-    """
-    )
+    """)
 
 
 @app.get("/connectors/{pid}/connect")

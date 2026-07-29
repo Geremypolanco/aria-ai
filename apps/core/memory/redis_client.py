@@ -93,6 +93,15 @@ class AriaCache:
     async def increment(self, key: str) -> int:
         return await self._cmd("INCR", key) or 0
 
+    async def increment_by(self, key: str, amount: float) -> float:
+        """Atomically add `amount` (may be fractional, e.g. a dollar figure)
+        to `key` — INCR only supports whole integers by 1."""
+        result = await self._cmd("INCRBYFLOAT", key, amount)
+        try:
+            return float(result)
+        except (TypeError, ValueError):
+            return 0.0
+
     async def scan_keys(self, pattern: str, limit: int = 1000) -> list[str]:
         """Enumerates keys matching a glob pattern (e.g. "aria:semantic:*")
         via Redis SCAN — safe for production use (unlike KEYS, it doesn't
