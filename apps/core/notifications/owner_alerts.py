@@ -50,19 +50,25 @@ _LOOP_CHECK_INTERVAL_SECONDS = 3600  # hourly — cheap, and see the docstring
 
 
 async def notify_owner(subject: str, body: str) -> None:
-    """Best-effort email to the owner. Never raises — a notification
-    failure must never break the login/checkout/webhook flow that
-    triggered it."""
+    """Best-effort email to every configured owner address. Never raises —
+    a notification failure must never break the login/checkout/webhook
+    flow that triggered it. auth.owner_emails() can hold more than one
+    address (the hardcoded owner plus an optional settings.OWNER_EMAIL
+    override) — notify all of them, not an arbitrary single pick."""
     try:
         from apps.core import auth
         from apps.core.tools.publishing_tools import PublishingTools
 
-        to = next(iter(auth.owner_emails()), None)
-        if not to:
+        recipients = auth.owner_emails()
+        if not recipients:
             return
-        result = await PublishingTools().send_newsletter(subject, body, to_override=to)
-        if not result.get("success"):
-            logger.warning("notify_owner('%s') send failed: %s", subject, result.get("error"))
+        publisher = PublishingTools()
+        for to in recipients:
+            result = await publisher.send_newsletter(subject, body, to_override=to)
+            if not result.get("success"):
+                logger.warning(
+                    "notify_owner('%s') send to %s failed: %s", subject, to, result.get("error")
+                )
     except Exception as exc:
         logger.warning("notify_owner('%s') failed: %s", subject, exc)
 

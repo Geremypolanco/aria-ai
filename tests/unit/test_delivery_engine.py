@@ -126,13 +126,17 @@ async def test_deliver_refuses_concurrent_send_for_the_same_order_ref(engine):
     lock must not send — the check-then-send sequence itself is protected,
     not just the after-the-fact dedup check."""
     await engine.register_deliverable(sku="x", name="X", content="https://example.com")
-    with patch("apps.acquisition.delivery.delivery_engine.get_cache") as get_cache_mock:
-        locked_cache = MagicMock()
-        locked_cache.set_if_not_exists = AsyncMock(return_value=False)
-        get_cache_mock.return_value = locked_cache
+    locked_cache = _mock_cache()
+    locked_cache.set_if_not_exists = AsyncMock(return_value=False)
+    send = AsyncMock(return_value={"success": True, "provider": "resend"})
+    with (
+        patch("apps.acquisition.delivery.delivery_engine.get_cache", return_value=locked_cache),
+        patch("apps.core.tools.publishing_tools.PublishingTools.send_newsletter", send),
+    ):
         record = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
 
     assert record.status == "in_progress"
+    send.assert_not_awaited()
 
 
 async def test_deliver_is_idempotent_for_the_same_order_ref(engine):

@@ -71,6 +71,24 @@ async def test_notify_owner_sends_to_the_single_source_of_truth_owner_email():
     send.assert_awaited_once_with("subject", "body", to_override="geremypolancod@gmail.com")
 
 
+async def test_notify_owner_reaches_every_configured_owner_email():
+    """auth.owner_emails() can hold more than one address (the hardcoded
+    owner plus an optional settings.OWNER_EMAIL override) — a real second
+    owner must not be silently skipped."""
+    send = AsyncMock(return_value={"success": True})
+    with (
+        patch(
+            "apps.core.auth.owner_emails",
+            return_value={"geremypolancod@gmail.com", "second-owner@example.com"},
+        ),
+        patch("apps.core.tools.publishing_tools.PublishingTools.send_newsletter", send),
+    ):
+        await owner_alerts.notify_owner("subject", "body")
+
+    sent_to = {call.kwargs["to_override"] for call in send.await_args_list}
+    assert sent_to == {"geremypolancod@gmail.com", "second-owner@example.com"}
+
+
 async def test_notify_owner_never_raises_on_send_failure():
     with (
         patch("apps.core.auth.owner_emails", return_value={"geremypolancod@gmail.com"}),
