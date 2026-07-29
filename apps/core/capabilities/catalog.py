@@ -78,12 +78,19 @@ def seed_registry(reg: CapabilityRegistry) -> None:
             Capability(
                 key="fulfillment.digital_delivery",
                 category="fulfillment",
-                provider="app:/access",
+                provider="apps.acquisition.delivery.delivery_engine",
                 description="Deliver purchased digital products automatically post-payment.",
                 status=CapabilityStatus.ACTIVE,
-                quality=Quality.HIGH,
+                quality=Quality.MEDIUM,
                 verified=True,
-                notes="Stripe redirect → /access/{key} serves the real product. Anti-fraud.",
+                notes=(
+                    "Corrected: no /access/{key} route exists in this codebase (prior entry "
+                    "was aspirational, not real) — register_deliverable + deliver_purchase "
+                    "(Aria Revenue Engine Phase 1) is the real, tested mechanism: emails the "
+                    "buyer their link/content via the same provider stack send_email uses. "
+                    "Not yet wired to a live Stripe webhook — currently triggered by asking "
+                    "ARIA to deliver, not automatically on payment. No anti-fraud key gate."
+                ),
             ),
             # ── Distribution / publishing ─────────────────────────────────────
             Capability(

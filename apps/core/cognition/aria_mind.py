@@ -207,6 +207,8 @@ AVAILABLE TOOLS (you execute them, not the user):
 - shopify_live_analytics → REAL revenue/orders/AOV/top-products from the connected Shopify store's Admin API for the trailing N days — not an estimate. Only works if shopify_store_status shows configured. Args: {{"days": 30}}
 - discover_leads    → finds B2B leads in a niche via real web search, padded with clearly-labeled illustrative examples when live results run short (never presents synthetic leads as real). Args: {{"niche": "...", "count": 10, "location": "US"}}
 - generate_sales_proposal → drafts a personalized outreach proposal (subject, hook, pain point, solution, social proof, CTA) for a named company. Args: {{"company_name": "...", "niche": "...", "pain_points": ["..."], "services_needed": ["..."], "estimated_value_usd": 0}}
+- register_deliverable → registers what a SKU actually sends a buyer once it's sold (a link or a text body) — runs the content-safety firewall once, at registration. Must be called before deliver_purchase can ever send anything for that sku. Args: {{"sku": "...", "name": "...", "content": "...", "delivery_type": "link|text", "price_usd": 0}}
+- deliver_purchase   → sends whatever was registered for a sku to the buyer's real email and logs the outcome (sent/failed/no_deliverable). Never invents content for an unregistered sku — register_deliverable must run first. Args: {{"sku": "...", "buyer_email": "...", "buyer_name": "...", "order_ref": "..."}}
 - add_linkedin_prospect → adds a prospect to the LinkedIn outreach pipeline. Args: {{"name": "...", "title": "...", "company": "...", "industry": "...", "profile_url": "..."}}
 - score_linkedin_prospect → AI-scores a LinkedIn prospect's relevance (0-1) and likely pain point against a service you're offering. Args: {{"prospect_id": "...", "service_offered": "..."}}
 - generate_linkedin_connection_request → a single personalized connection note under 300 characters. Args: {{"prospect_id": "...", "service": "..."}}
@@ -302,6 +304,7 @@ REASONING RULES:
 18. For an existing Shopify store's revenue optimization (not creating new products — that's run_business_agent with agent="ecommerce") → recover_abandoned_cart for cart abandoners, create_flash_sale or create_product_bundle to move underperforming or complementary inventory, recommend_products for on-site placements, optimize_product_seo/audit_seo_keywords for organic traffic, create_upsell_offer/optimize_shopify_checkout/create_post_purchase_flow for the rest of the funnel, and shopify_revenue_dashboard for a quick health check across all of them.
 18a. shopify_store_status tells you whether a real Shopify Admin API connection exists (SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN). If it's configured, prefer shopify_live_analytics for actual revenue/orders/top-products over the estimated figures in shopify_revenue_dashboard when the user asks "how is my store actually doing" — the dashboard's numbers are ARIA's own tracked activity (cart recoveries attempted, sales created), not store-wide truth. If shopify_store_status shows not configured, say so plainly rather than presenting dashboard estimates as real sales data.
 19. For B2B lead generation → discover_leads first, then generate_sales_proposal for a specific one worth pursuing. Always be explicit about which leads came from a real web search vs. the illustrative examples used to pad a short result — never present a synthetic example as a real, contactable business. For LinkedIn specifically → add_linkedin_prospect, score_linkedin_prospect to prioritize, then generate_linkedin_connection_request (single note) or generate_linkedin_outreach_sequence (full 4-message sequence) once you know the fit is good. Check linkedin_outreach_pipeline before suggesting who to follow up with next.
+19a. Once a sale actually closes (any product, not just B2B leads) → register_deliverable once per SKU (what this sale sends the buyer), then deliver_purchase per sale to actually send it. Don't call deliver_purchase for a sku that was never registered — it will refuse rather than guess what to send. This is the fulfillment step after the money moves; it has nothing to do with discover_leads/generate_sales_proposal, which are about winning the deal, not delivering it.
 20. create_landing_page generates copy with placeholder social-proof numbers ("2,000+ customers", "47 spots remaining") — flag these as templates to replace with real figures before publishing, the same rule as persuasion copy. Use generate_landing_headlines to A/B test the headline specifically. Before recommending a price → analyze_pricing (real competitor data beats an AI estimate — ask for it if the user has it) or build_pricing_strategy for a brand-new product line; use suggest_dynamic_price only for an already-analyzed product reacting to inventory/demand.
 21. For freelance platform work → create_fiverr_gig or evaluate_upwork_job first (Upwork jobs need a fit score before writing a proposal — don't skip straight to write_upwork_proposal). Fiverr package prices and Upwork bid suggestions are starting points based on general market patterns, not researched-for-this-gig numbers — say so if the user might treat them as precise. optimize_fiverr_title and optimize_upwork_profile are standalone touch-ups, not full gig/job flows.
 22. For a known, named customer/client (not an anonymous ad audience or cold lead) → upsert_client_profile once, then record_client_interaction as things happen so segment_client and personalize_client_offer reflect reality. This is CRM memory for people you already have a relationship with — different from AudienceSegmenter (ad targeting) or LeadEngine/LinkedInOutreach (prospects not yet clients). Check client_memory_dashboard before flagging who's VIP or at risk of churning.
@@ -3330,6 +3333,46 @@ class AriaMind:
                     f"Social proof: {brief.social_proof}\n"
                     f"CTA: {brief.cta}"
                 ), {}
+
+            # ── POST-SALE DELIVERY ──────────────────────────────────────────
+            elif tool == "register_deliverable":
+                sku = args.get("sku", "")
+                name = args.get("name", "")
+                content = args.get("content", "")
+                delivery_type = args.get("delivery_type", "link")
+                price_usd = float(args.get("price_usd", 0) or 0)
+                if not sku or not name or not content:
+                    return "I need a sku, a name, and the content (link or text) to register.", {}
+                from apps.acquisition.delivery.delivery_engine import get_delivery_engine
+
+                result = await get_delivery_engine().register_deliverable(
+                    sku, name, content, delivery_type, price_usd
+                )
+                if result.get("success"):
+                    return f"**Registered deliverable '{name}'** for sku `{sku}`.", {}
+                return f"Couldn't register that deliverable: {result.get('error')}", {}
+
+            elif tool == "deliver_purchase":
+                sku = args.get("sku", "")
+                buyer_email = args.get("buyer_email", "")
+                buyer_name = args.get("buyer_name", "")
+                order_ref = args.get("order_ref", "")
+                if not sku or not buyer_email:
+                    return "I need a sku and the buyer's email to deliver a purchase.", {}
+                from apps.acquisition.delivery.delivery_engine import get_delivery_engine
+
+                record = await get_delivery_engine().deliver(
+                    sku, buyer_email, buyer_name, order_ref
+                )
+                if record.status == "sent":
+                    return f"**Delivered '{sku}' to {buyer_email}** ({record.detail}).", {}
+                if record.status == "no_deliverable":
+                    return (
+                        f"No deliverable is registered for sku `{sku}` — "
+                        "call register_deliverable first, I won't guess what to send.",
+                        {},
+                    )
+                return f"**Delivery to {buyer_email} failed:** {record.detail}", {}
 
             # ── LINKEDIN OUTREACH ────────────────────────────────────────────
             elif tool == "add_linkedin_prospect":
