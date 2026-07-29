@@ -33,6 +33,7 @@ def _mock_cache():
     c.delete = AsyncMock(return_value=True)
     c.acquire_lock = AsyncMock(return_value=True)
     c.release_lock = AsyncMock(return_value=True)
+    c.compare_and_delete = AsyncMock(return_value=True)
     return c
 
 

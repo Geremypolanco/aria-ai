@@ -225,6 +225,25 @@ class AriaCache:
     async def release_lock(self, resource: str) -> bool:
         return await self.delete(f"lock:{resource}")
 
+    async def compare_and_delete(self, key: str, expected_value: str) -> bool:
+        """Atomically delete `key` only if its current value still equals
+        `expected_value` — the standard fenced-lock release pattern. A plain
+        get()-then-delete() has a real TOCTOU race: the lease can expire and
+        a different holder can acquire the same key between the two calls,
+        and the stale holder's delete would remove the new holder's lock.
+        Runs as a single Lua script server-side so the check and the delete
+        can't be interleaved with anything else. Returns False (does NOT
+        delete) on any error, script-support issue, or value mismatch — a
+        lock that isn't confirmably ours is safer left alone; it still
+        expires on its own via the key's TTL."""
+        script = (
+            'if redis.call("GET", KEYS[1]) == ARGV[1] then '
+            'return redis.call("DEL", KEYS[1]) '
+            "else return 0 end"
+        )
+        result = await self._cmd("EVAL", script, "1", key, expected_value)
+        return result == 1
+
     # ── REAL-TIME METRICS ──────────────────────────────────
     async def increment_metric(self, metric: str) -> int:
         return await self.increment(f"metric:{metric}") or 0

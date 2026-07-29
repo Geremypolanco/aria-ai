@@ -190,9 +190,12 @@ at all (§1.6 / Phase 1).
   idempotent per `(sku, order_ref)` — a repeat call for an order already
   `sent` or `ambiguous` returns the stored record rather than acting again.
   The check-then-send-then-record sequence runs under a Redis lock fenced
-  with a per-call token (release only deletes the lock if it still holds
-  *this* call's token), so two genuinely concurrent calls can't both pass
-  the dedup check and both send. A provider call that raises instead of
+  with a per-call token, released via a new `AriaCache.compare_and_delete()`
+  (a single atomic Lua-script check-and-delete, added because a plain
+  `get()`-then-`delete()` pair still races: a stale lease-holder's delete
+  could remove a different call's freshly-acquired lock in the window
+  between the two calls — caught in review, not assumed safe), so two
+  genuinely concurrent calls can't both pass the dedup check and both send. A provider call that raises instead of
   cleanly failing is recorded as `"ambiguous"` (outcome genuinely unknown),
   never `"failed"` — the dispatcher phrases that outcome to deliberately
   avoid every substring `AriaMind._FAILURE_SIGNALS` matches on, so the

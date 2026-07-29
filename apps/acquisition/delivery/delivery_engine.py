@@ -182,13 +182,14 @@ class DeliveryEngine:
 
         When order_ref is given, the check-then-send-then-record sequence
         below runs under a Redis lock keyed on (sku, order_ref) and fenced
-        with a per-call token — release only deletes the lock if it still
-        holds *this* call's token, so a call whose lease already expired
-        can't delete a different call's active lock. If the lock itself is
-        unavailable (no order_ref, or the cache is down), this narrows to
-        the sequential protection above only — still correct for the common
-        case (a retry after this call has already returned), just not
-        against a true race.
+        with a per-call token, released via compare_and_delete() — a single
+        atomic Lua-script check-and-delete server-side, not a separate
+        get()-then-delete() pair (that would itself race: a stale holder's
+        delete could remove a different call's freshly-acquired lock in the
+        window between the two calls). If the lock itself is unavailable (no
+        order_ref, or the cache is down), this narrows to the sequential
+        protection above only — still correct for the common case (a retry
+        after this call has already returned), just not against a true race.
 
         Two things this does NOT fully close, documented rather than
         silently assumed away:
@@ -297,9 +298,7 @@ class DeliveryEngine:
         finally:
             if lock_key and cache:
                 with suppress(Exception):
-                    stored_token = await cache.get(lock_key)
-                    if stored_token == lock_token:
-                        await cache.delete(lock_key)
+                    await cache.compare_and_delete(lock_key, lock_token)
 
     def get_deliverable(self, sku: str) -> dict | None:
         return self._deliverables.get(sku)
