@@ -25,8 +25,9 @@ minutes" while INTERVAL_SECONDS was actually 1200s/20min).
 
 from __future__ import annotations
 
-import inspect
-import re
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from apps.core.tools.income_loop import INTERVAL_SECONDS, STRATEGIES, IncomeLoop
 
@@ -62,6 +63,14 @@ TRAFFIC_STRATEGIES = {
     "multilingual_content",
 }
 
+# Explicit expected acceptable range for the rebalance — tight enough that an
+# accidental swing (e.g. one edit multiplying every traffic weight by 10x,
+# or a later PR quietly deleting a chunk of the niche side so the fraction
+# balloons without any weight actually changing) fails a test instead of
+# silently drifting.
+_MIN_TRAFFIC_FRACTION = 0.45
+_MAX_TRAFFIC_FRACTION = 0.65
+
 
 def test_every_traffic_strategy_is_still_in_the_roster():
     """Nothing was accidentally removed while reweighting."""
@@ -70,13 +79,16 @@ def test_every_traffic_strategy_is_still_in_the_roster():
     assert not missing, f"traffic strategies missing from STRATEGIES: {missing}"
 
 
-def test_traffic_strategies_now_carry_the_majority_of_selection_weight():
+def test_traffic_strategies_carry_the_intended_share_of_selection_weight():
     total_weight = sum(weight for _name, weight in STRATEGIES)
     traffic_weight = sum(weight for name, weight in STRATEGIES if name in TRAFFIC_STRATEGIES)
+    fraction = traffic_weight / total_weight
 
-    assert traffic_weight / total_weight > 0.5, (
-        f"traffic strategies only account for {traffic_weight}/{total_weight} "
-        "of total selection weight — the rebalance regressed"
+    assert _MIN_TRAFFIC_FRACTION < fraction < _MAX_TRAFFIC_FRACTION, (
+        f"traffic strategies account for {traffic_weight}/{total_weight} "
+        f"({fraction:.0%}) of total selection weight — expected roughly "
+        f"{_MIN_TRAFFIC_FRACTION:.0%}-{_MAX_TRAFFIC_FRACTION:.0%}; either the "
+        "rebalance regressed or something else moved unexpectedly"
     )
 
 
@@ -89,57 +101,154 @@ def test_no_traffic_strategy_regressed_to_the_weight_one_floor():
         assert weights[name] > 1, f"{name} is back at the weight-1 floor"
 
 
-def test_niche_product_strategies_are_untouched_and_still_present():
-    """The rebalance must not have deleted or zeroed out the
-    revenue-diversification strategies — they still run, just don't
-    dominate selection anymore."""
+# A hardcoded, independent snapshot of the niche/product-diversification
+# side of the roster as it existed right before this rebalance — NOT
+# derived from STRATEGIES, specifically so this test can't become a
+# tautology that compares the roster to itself. Only 4 of these were
+# checked before (CodeRabbit, PR #154); a regression deleting or zeroing
+# any of the other ~70+ would previously have passed silently.
+NICHE_STRATEGY_NAMES = {
+    "niche_rotator", "product_factory", "course_builder", "affiliate_network",
+    "opportunity_scan", "micro_saas", "shopify_listing", "email_campaign",
+    "affiliate_content", "ebook_factory", "lead_magnet", "hf_spaces_demo",
+    "gist_blitz", "product_bundle", "waitlist_builder", "challenge_campaign",
+    "partner_outreach", "newsletter_issue", "job_board_listing",
+    "github_sponsors_setup", "premium_offer", "viral_thread", "twitter_thread",
+    "linkedin_post", "reddit_organic", "stripe_checkout", "tiktok_script",
+    "linkedin_outreach", "youtube_strategy", "cold_email_outreach",
+    "pinterest_pins", "substack_publish", "freelance_gig", "ab_content_test",
+    "smart_pricing", "voice_of_aria", "referral_engine", "digital_agency",
+    "crowdfunding_kit", "newsletter_monetize", "community_launch",
+    "testimonial_collector", "lead_closer", "retargeting_campaign",
+    "marketplace_lister", "daily_goal_tracker", "knowledge_synthesizer",
+    "competitor_copy", "price_ladder", "auto_responder", "affiliate_injector",
+    "social_dm_outreach", "upsell_engine", "podcast_producer",
+    "saas_waitlist_blitz", "vc_pitch_deck", "job_posting_scout",
+    "micro_grant_hunter", "notion_template_seller", "chrome_extension_builder",
+    "api_marketplace_lister", "white_label_kit", "data_product_seller",
+    "b2b_saas_pitch", "email_list_builder", "joint_venture_pitch",
+    "product_review_outreach", "price_anchoring", "social_proof_automation",
+    "influencer_collab", "content_licensing", "micro_consulting",
+    "saas_upsell_sequence", "community_monetize", "token_economy",
+    "api_product_launch", "app_store_listing", "catalog_repromoter",
+    "stripe_subscription",
+}  # fmt: skip
+
+
+def test_every_niche_strategy_in_the_hardcoded_snapshot_is_still_present():
+    """Catches a future edit that deletes or zeroes a niche strategy while
+    only intending to touch the traffic side — checked against the
+    independent snapshot above, not against STRATEGIES itself."""
     weights = dict(STRATEGIES)
-    for name in ("niche_rotator", "product_factory", "ebook_factory", "shopify_listing"):
-        assert name in weights
-        assert weights[name] >= 1
+    missing = NICHE_STRATEGY_NAMES - set(weights)
+    assert not missing, f"niche strategies missing from STRATEGIES: {missing}"
+    for name in NICHE_STRATEGY_NAMES:
+        assert weights[name] >= 1, f"{name} was zeroed out"
 
 
-def test_content_pipeline_fallback_articles_use_the_real_interval_dynamically():
-    """Regression: the fallback article text used to hardcode "30 Minutes"
-    while INTERVAL_SECONDS was already 1200s (20 min) — a published article
-    describing ARIA's own product inaccurately. Must now reference the
-    constant, not a literal number, so it can never drift again."""
-    source = inspect.getsource(IncomeLoop._exec_content_pipeline)
-    assert "INTERVAL_SECONDS // 60" in source
-    assert "30 Minutes" not in source
-    assert f"Every {INTERVAL_SECONDS // 60} Minutes" not in source  # only via f-string, not literal
+def test_roster_names_are_exactly_traffic_plus_niche_snapshot():
+    """The two hardcoded sets above must partition the full roster with no
+    gaps — if this fails, a strategy exists that this test file doesn't
+    know how to classify (likely a new one added without updating either
+    set), which would otherwise silently escape both coverage checks."""
+    all_names = {name for name, _weight in STRATEGIES}
+    assert all_names == TRAFFIC_STRATEGIES | NICHE_STRATEGY_NAMES
 
 
-def test_content_pipeline_fallback_articles_no_longer_contain_fabricated_stats():
-    """The old fallback copy invented specific, unverifiable percentages
-    ("70% of customer inquiries", "85% accuracy", "$5K-$50K/month") framed
-    as real industry findings. None of that belongs in content ARIA
-    publishes under its own name."""
-    source = inspect.getsource(IncomeLoop._exec_content_pipeline)
-    fabricated_markers = [
+@pytest.mark.asyncio
+async def test_content_pipeline_fallback_articles_behaviorally_use_the_real_interval():
+    """Behavior-level, not source-inspection: force the "AI generated no
+    articles" path and capture the actual fallback payload passed onward,
+    so a bug in the f-string itself (not just its presence in the source)
+    would fail this test."""
+    loop = IncomeLoop.__new__(IncomeLoop)
+    captured = {}
+
+    async def fake_github_blog(articles, cp=None):
+        captured["articles"] = articles
+        return {"success": True, "summary": "published", "revenue_potential": 1.0, "urls": []}
+
+    fake_cp = AsyncMock()
+    fake_cp.run_pipeline = AsyncMock(return_value={"success": False, "articles": []})
+
+    with (
+        patch("apps.core.tools.content_pipeline.ContentPipeline", return_value=fake_cp),
+        patch("apps.core.tools.income_loop.settings") as mock_settings,
+        patch.object(loop, "_exec_github_blog", fake_github_blog),
+    ):
+        mock_settings.GITHUB_TOKEN = "fake-token"
+        await loop._exec_content_pipeline()
+
+    assert "articles" in captured, "fallback path never ran — test setup didn't reach it"
+    bodies = " ".join(a["body"] for a in captured["articles"])
+    titles = " ".join(a["title"] for a in captured["articles"])
+
+    expected_minutes = INTERVAL_SECONDS // 60
+    assert f"Every {expected_minutes} Minutes" in titles
+    assert "Every 30 Minutes" not in titles
+    assert "Every 30 Minutes" not in bodies
+
+
+@pytest.mark.asyncio
+async def test_content_pipeline_fallback_articles_behaviorally_exclude_fabricated_stats():
+    loop = IncomeLoop.__new__(IncomeLoop)
+    captured = {}
+
+    async def fake_github_blog(articles, cp=None):
+        captured["articles"] = articles
+        return {"success": True, "summary": "published", "revenue_potential": 1.0, "urls": []}
+
+    fake_cp = AsyncMock()
+    fake_cp.run_pipeline = AsyncMock(return_value={"success": False, "articles": []})
+
+    with (
+        patch("apps.core.tools.content_pipeline.ContentPipeline", return_value=fake_cp),
+        patch("apps.core.tools.income_loop.settings") as mock_settings,
+        patch.object(loop, "_exec_github_blog", fake_github_blog),
+    ):
+        mock_settings.GITHUB_TOKEN = "fake-token"
+        await loop._exec_content_pipeline()
+
+    bodies = " ".join(a["body"] for a in captured["articles"])
+    for fabricated in (
         "70% of customer inquiries",
         "1,000+ AI-powered businesses",
         "average 3x improvement",
-    ]
-    for marker in fabricated_markers:
-        assert marker not in source, f"stale fabricated stat still present: {marker!r}"
+    ):
+        assert fabricated not in bodies, f"stale fabricated stat still present: {fabricated!r}"
 
 
-def test_content_pipeline_fallback_articles_describe_real_current_features():
-    """The replacement copy must actually reference verifiable, current ARIA
-    capabilities — not just swap one set of generic filler for another."""
-    source = inspect.getsource(IncomeLoop._exec_content_pipeline)
+@pytest.mark.asyncio
+async def test_content_pipeline_fallback_articles_behaviorally_describe_real_features():
+    loop = IncomeLoop.__new__(IncomeLoop)
+    captured = {}
+
+    async def fake_github_blog(articles, cp=None):
+        captured["articles"] = articles
+        return {"success": True, "summary": "published", "revenue_potential": 1.0, "urls": []}
+
+    fake_cp = AsyncMock()
+    fake_cp.run_pipeline = AsyncMock(return_value={"success": False, "articles": []})
+
+    with (
+        patch("apps.core.tools.content_pipeline.ContentPipeline", return_value=fake_cp),
+        patch("apps.core.tools.income_loop.settings") as mock_settings,
+        patch.object(loop, "_exec_github_blog", fake_github_blog),
+    ):
+        mock_settings.GITHUB_TOKEN = "fake-token"
+        await loop._exec_content_pipeline()
+
+    bodies = " ".join(a["body"] for a in captured["articles"])
     for marker in ("four independent safety layers", "sandbox", "clarifying question"):
-        assert marker in source, f"expected real-feature copy missing: {marker!r}"
+        assert marker in bodies, f"expected real-feature copy missing: {marker!r}"
 
 
 def test_module_docstring_does_not_hardcode_a_stale_cycle_interval():
-    module_source = inspect.getsource(__import__("apps.core.tools.income_loop", fromlist=["x"]))
-    docstring_end = module_source.index('"""', module_source.index('"""') + 3)
-    docstring = module_source[: docstring_end + 3]
-    assert not re.search(
-        r"\b30[- ]min", docstring
+    import apps.core.tools.income_loop as income_loop_module
+
+    docstring = income_loop_module.__doc__ or ""
+    assert docstring, "module docstring is missing entirely"
+    assert (
+        "30-min" not in docstring and "30 min" not in docstring
     ), "docstring still hardcodes the old 30-min interval"
-    assert not re.search(
-        r"\b48 cycles", docstring
-    ), "docstring still hardcodes the old 48-cycles/day figure"
+    assert "48 cycles" not in docstring, "docstring still hardcodes the old 48-cycles/day figure"
