@@ -1,23 +1,31 @@
 """
-IncomeLoop v2.0 — ARIA's 24/7 Autonomous Income Machine.
+IncomeLoop v3.0 — ARIA's 24/7 Autonomous Income & Traffic Machine.
 
-Runs every 30 minutes alongside the orchestrator (60 min).
-Focuses on PURE EXECUTION — no planning overhead.
+Runs every INTERVAL_SECONDS (currently 20 min) alongside the orchestrator
+(60 min). Focuses on PURE EXECUTION — no planning overhead.
 
-Every cycle picks a strategy based on weighted probability (13 strategies):
-  18% — Content Pipeline   (SEO articles + affiliate → Medium/dev.to/Hashnode)
-  15% — Niche Rotator      (launches next niche in catalog → Gumroad + Zapier)
-  13% — Product Factory    (creates new digital products for trending topics)
-   9% — Opportunity Scan   (web research for new income streams)
-   8% — GitHub Publish     (open-source resources → SEO + authority, always active)
-   7% — Shopify Listing    (creates Shopify digital product from trending topic)
-   7% — Email Campaign     (Mailchimp campaign to owned audience)
-   6% — Affiliate Content  (review/comparison articles with Amazon links)
-   6% — Ebook Factory      (AI-generated ebook sold on Gumroad at $7-$27)
-   5% — Lead Magnet        (free resource funnel → email capture → upsell)
-   4% — Social Blitz       (Zapier distribution for all existing products)
-   1% — Premium Offer      (high-ticket B2B consulting offers $500-$5,000)
-   1% — Viral Thread       (Twitter/X thread → virality → traffic)
+Every cycle picks one of STRATEGIES (100+ entries by now — see that list for
+the full, current roster; this docstring intentionally doesn't enumerate them
+all, since it would just go stale again the next time the roster changes) via
+weighted-random selection, boosted further per-strategy by the Thompson
+Sampling Bandit as real outcomes come in.
+
+As of the latest rebalance, roughly half the total selection weight is
+concentrated on strategies whose primary effect is driving real traffic to
+ARIA's own site (aria-ai.fly.dev) rather than creating/selling a one-off
+niche product: content_pipeline, github_publish, content_repurposer,
+content_amplifier, seo_optimizer/seo_tracking/seo_backlink_builder/
+seo_content_cluster, social_blitz, landing_page_deploy, media_pitch,
+product_hunt_launch, self_monetize, viral_detector, growth_hacker,
+growth_experiment, conversion_optimizer, brand_storyteller,
+thought_leadership, case_study_publisher, podcast_pitch, influencer_outreach,
+multilingual_content. This was a deliberate rebalance (previously most of
+these sat at the same weight-1 floor as niche-product strategies, so the
+loop had no consistent traffic focus despite the roster already covering
+nearly every distribution channel available) — the other ~half of the
+weight stays on product/revenue-diversification strategies, which are still
+real, still run, just no longer competing on equal footing with the ones
+that actually bring people to the site.
 
 Additional automation:
   - Product Launch Sequence: every created product gets a blog announcement
@@ -25,12 +33,14 @@ Additional automation:
   - Morning Briefing: daily Telegram summary of stats and published URLs
   - Topic Deduplication: Redis cache prevents repeated blog content
 
-Scale at 30-min intervals:
-  48 cycles/day → up to 144 articles + 14 products + 7 ebooks
-  Revenue compounds: more products + more content = more discovery
+Revenue compounds: more products + more content = more discovery.
 
 The loop NEVER stops. Every exception is caught, logged, and the
-loop resumes after a short backoff. Redis tracks all results.
+loop resumes after a short backoff. Redis tracks all results. It also
+now resumes itself automatically after a restart if it was running before
+(see start()/resume_if_previously_running()) — previously a restart (e.g.
+any deploy) silently stopped it with no supervisor and no way for the
+owner to notice short of asking income_loop_status.
 """
 
 from __future__ import annotations
@@ -55,14 +65,14 @@ MAX_STRATEGY_TIME = 240  # 4 min max per strategy (avoids blocking)
 
 # Strategy probability weights (sum = 100)
 STRATEGIES = [
-    ("content_pipeline", 3),  # boostado: contenido multiplica todos los canales
+    ("content_pipeline", 10),  # boostado x3: contenido multiplica todos los canales → tráfico
     ("niche_rotator", 2),
     ("product_factory", 5),  # boostado: crea productos Gumroad directamente
     ("course_builder", 2),  # mini-course with syllabus + pricing (avg $79-$127/sale)
     ("affiliate_network", 1),  # build own affiliate program, recruit promoters
     ("opportunity_scan", 1),
-    ("github_publish", 3),  # boostado: works with only GITHUB_TOKEN — always active
-    ("content_repurposer", 2),  # 3x reach: LinkedIn + Twitter thread + email from 1 post
+    ("github_publish", 8),  # boostado: works with only GITHUB_TOKEN — always active, real backlinks
+    ("content_repurposer", 6),  # boostado: 3x reach: LinkedIn + Twitter thread + email from 1 post
     ("micro_saas", 1),  # full micro-SaaS product launch: README + API docs + pricing
     ("shopify_listing", 1),
     ("email_campaign", 1),
@@ -70,7 +80,7 @@ STRATEGIES = [
     ("ebook_factory", 3),  # boostado: crea ebooks Gumroad directamente
     ("lead_magnet", 2),  # free resource funnel → email capture → upsell
     ("hf_spaces_demo", 1),  # live AI demo on HuggingFace Spaces (free, massive community)
-    ("seo_optimizer", 1),  # improve existing posts for compounding organic traffic
+    ("seo_optimizer", 6),  # boostado: improve existing posts for compounding organic traffic
     ("gist_blitz", 1),  # code snippet Gists with product CTAs (dev discovery)
     ("product_bundle", 1),  # bundle 2-3 existing products at a discount → higher AOV
     ("waitlist_builder", 1),  # waitlist landing page → email capture → launch pipeline
@@ -79,7 +89,7 @@ STRATEGIES = [
     ("newsletter_issue", 1),  # full newsletter edition → recurring reader monetization
     ("job_board_listing", 1),  # B2B service listings → consulting leads
     ("github_sponsors_setup", 1),  # passive income via GitHub Sponsors + FUNDING.yml
-    ("social_blitz", 1),
+    ("social_blitz", 5),  # boostado: blasts existing content across every connected platform
     ("premium_offer", 1),
     ("viral_thread", 1),  # Twitter/X thread optimized for virality
     ("twitter_thread", 1),  # direct Twitter API thread via api_publisher (real posts)
@@ -89,41 +99,68 @@ STRATEGIES = [
     ("tiktok_script", 1),  # TikTok/Reels/YouTube Shorts viral scripts → massive reach
     ("linkedin_outreach", 1),  # B2B prospect messages → consulting/partnership leads
     ("youtube_strategy", 1),  # YouTube content plan + optimized metadata + script → channel growth
-    ("product_hunt_launch", 1),  # Product Hunt launch post → massive traffic spike + backlinks
+    (
+        "product_hunt_launch",
+        5,
+    ),  # boostado: Product Hunt launch post → massive traffic spike + backlinks
     (
         "content_amplifier",
-        4,
-    ),  # boostado: blast latest content to ALL platforms simultaneously — 5x reach
+        10,
+    ),  # boostado x2.5: blast latest content to ALL platforms simultaneously — 5x reach
     ("cold_email_outreach", 1),  # SMTP cold emails to B2B prospects → consulting/product sales
     ("pinterest_pins", 1),  # Pinterest pin strategy → visual SEO traffic → product page clicks
-    ("landing_page_deploy", 1),  # HTML landing page deployed to GitHub Pages → real SEO-indexed URL
+    (
+        "landing_page_deploy",
+        5,
+    ),  # boostado: HTML landing page deployed to GitHub Pages → real SEO-indexed URL
     ("substack_publish", 1),  # Substack article → paid newsletter subscribers ($5-$10/mo each)
     ("freelance_gig", 1),  # Fiverr/Upwork gig → direct B2B service revenue ($50-$500/gig)
-    ("media_pitch", 1),  # PR pitch to tech media → backlinks + brand authority + traffic
+    ("media_pitch", 5),  # boostado: PR pitch to tech media → backlinks + brand authority + traffic
     ("ab_content_test", 1),  # A/B test pricing & titles on existing products → higher conversion
     ("smart_pricing", 1),  # AI-driven price optimization for existing products → higher AOV
     ("voice_of_aria", 1),  # Proactive Telegram messages: daily tip + product spotlight + insight
-    ("self_monetize", 1),  # ARIA lists herself as a product: API docs + pricing page + RapidAPI
+    (
+        "self_monetize",
+        5,
+    ),  # boostado: ARIA lists herself as a product: API docs + pricing page + RapidAPI
     ("referral_engine", 1),  # Build referral/affiliate program for existing products → viral growth
     ("digital_agency", 1),  # Done-for-you AI services pitch deck + client onboarding → $500-$5k
     ("crowdfunding_kit", 1),  # Kickstarter/IndieGoGo campaign kit for ARIA's products
     ("newsletter_monetize", 1),  # Beehiiv/ConvertKit paid tiers + ad sponsorships → $500-$3k/mo
     ("community_launch", 1),  # Discord/Circle community with paid tiers → recurring MRR
-    ("podcast_pitch", 1),  # Pitch ARIA as podcast guest to 10 shows → backlinks + leads
-    ("multilingual_content", 1),  # Spanish/Portuguese/French content → 3x addressable audience
-    ("seo_tracking", 1),  # Monitor rankings + re-optimize top content → compounding traffic
-    ("viral_detector", 1),  # Detect viral content + amplify immediately across all channels
+    ("podcast_pitch", 3),  # boostado: Pitch ARIA as podcast guest to 10 shows → backlinks + leads
+    (
+        "multilingual_content",
+        4,
+    ),  # boostado: Spanish/Portuguese/French content → 3x addressable audience
+    (
+        "seo_tracking",
+        5,
+    ),  # boostado: Monitor rankings + re-optimize top content → compounding traffic
+    (
+        "viral_detector",
+        5,
+    ),  # boostado: Detect viral content + amplify immediately across all channels
     ("testimonial_collector", 1),  # Collect social proof from buyers + publish testimonials
-    ("seo_backlink_builder", 1),  # Submit content to directories for backlinks + authority
+    (
+        "seo_backlink_builder",
+        6,
+    ),  # boostado: Submit content to directories for backlinks + authority
     ("lead_closer", 1),  # Follow up with warm leads autonomously to close sales
     ("retargeting_campaign", 1),  # Re-engage visitors who didn't buy with personalized sequences
-    ("influencer_outreach", 1),  # Pitch ARIA to micro-influencers for promotion deals
+    ("influencer_outreach", 3),  # boostado: Pitch ARIA to micro-influencers for promotion deals
     ("marketplace_lister", 3),  # boostado: List products on AppSumo, Envato, Gumroad marketplaces
     ("daily_goal_tracker", 1),  # Track daily revenue vs target + take action on gaps
-    ("growth_hacker", 1),  # Rapid growth experiments: A/B tests, viral loops, referrals
+    ("growth_hacker", 5),  # boostado: Rapid growth experiments: A/B tests, viral loops, referrals
     ("knowledge_synthesizer", 1),  # Read latest AI/business content + ingest into knowledge base
-    ("conversion_optimizer", 1),  # Analyze full funnel + apply conversion rate improvements
-    ("brand_storyteller", 1),  # Create brand narrative + origin story + value proposition content
+    (
+        "conversion_optimizer",
+        4,
+    ),  # boostado: Analyze full funnel + apply conversion rate improvements
+    (
+        "brand_storyteller",
+        4,
+    ),  # boostado: Create brand narrative + origin story + value proposition content
     ("competitor_copy", 1),  # Analyze top competitors and create superior alternatives
     ("price_ladder", 1),  # Design optimal pricing ladder from free to enterprise
     ("auto_responder", 1),  # Reply to comments/mentions on all platforms → engagement + trust
@@ -188,8 +225,8 @@ STRATEGIES = [
     ),  # reach out to review sites / blogs to get ARIA's products reviewed → organic SEO
     (
         "seo_content_cluster",
-        1,
-    ),  # build a topic cluster: pillar article + 5 supporting posts → SEO authority
+        6,
+    ),  # boostado: build a topic cluster: pillar article + 5 supporting posts → SEO authority
     (
         "price_anchoring",
         1,
@@ -217,8 +254,8 @@ STRATEGIES = [
     ("community_monetize", 1),  # create paid membership community: perks, pricing, onboarding → MRR
     (
         "thought_leadership",
-        1,
-    ),  # publish authoritative long-form opinion piece on AI/business trends → authority + leads
+        4,
+    ),  # boostado: publish authoritative long-form opinion piece on AI/business trends → authority + leads
     (
         "token_economy",
         1,
@@ -229,16 +266,16 @@ STRATEGIES = [
     ),  # package ARIA's AI as a paid API product: docs + pricing + Postman collection
     (
         "growth_experiment",
-        1,
-    ),  # run one targeted growth experiment: landing page tweak, hook test, channel test
+        4,
+    ),  # boostado: run one targeted growth experiment: landing page tweak, hook test, channel test
     (
         "app_store_listing",
         1,
     ),  # create listing copy for Chrome Web Store / App Store / VS Code marketplace
     (
         "case_study_publisher",
-        1,
-    ),  # write detailed case study from buyer result → social proof + SEO + lead gen
+        4,
+    ),  # boostado: write detailed case study from buyer result → social proof + SEO + lead gen
     (
         "catalog_repromoter",
         5,
@@ -1059,15 +1096,15 @@ JSON:
                 _today = datetime.now(UTC).strftime("%B %d, %Y")
                 arts = [
                     {
-                        "title": "How AI is Changing Small Business in 2026: 7 Real Examples",
-                        "body": f"# How AI is Changing Small Business in 2026: 7 Real Examples\n\n*Published {_today} by ARIA AI*\n\nSmall businesses that adopt AI tools in 2026 are seeing an average 3x improvement in productivity. Here are 7 concrete examples of how AI is transforming operations:\n\n## 1. Customer Service Automation\nAI chatbots now handle 70% of customer inquiries without human intervention, reducing support costs by up to 60%.\n\n## 2. Content Creation at Scale\nBusiness owners generate a month's worth of social media content in an afternoon using AI writing tools.\n\n## 3. Inventory Prediction\nML models predict stockouts 30 days in advance, reducing lost sales by 40%.\n\n## 4. Personalized Email Campaigns\nAI segments email lists and writes personalized copy, boosting open rates from 20% to 45%.\n\n## 5. Financial Forecasting\nSmall businesses use AI to forecast cash flow with 85% accuracy, avoiding overdrafts.\n\n## 6. Automated Lead Qualification\nAI scores and routes leads in real-time, increasing conversion rates by 35%.\n\n## 7. Dynamic Pricing\nE-commerce stores use AI to adjust prices based on demand, increasing margins by 15-25%.\n\n---\n*ARIA AI helps businesses automate income generation. Learn more at https://aria-ai.fly.dev/dashboard*",
+                        "title": "Inside ARIA: An AI That Actually Executes, Not Just Chats",
+                        "body": f"# Inside ARIA: An AI That Actually Executes, Not Just Chats\n\n*Published {_today} by ARIA AI*\n\nMost AI assistants describe what you could do. ARIA does it: it plans a task, picks the right tool from its own toolbox, and carries it out — with four independent safety layers checking the plan before anything real happens.\n\n## What that looks like in practice\n- **Autonomous execution**: give ARIA a goal in plain language and it reasons through the steps, calling real tools (web search, code execution, publishing, payments) instead of just describing them.\n- **Built-in safety, not an afterthought**: every consequential action passes through input moderation, a constitutional review of the specific tool call, a content/code firewall, and an emergency kill switch — before it runs, not after something goes wrong.\n- **Asks before acting when it matters**: for genuinely risky or ambiguous requests, ARIA pauses and asks a clarifying question, or queues the action for a human to approve, instead of guessing.\n- **A real sandbox for code**: when ARIA needs to run code, it does so inside an isolated sandbox with no access to the host beyond its own workdir.\n- **Voice, not just text**: talk to ARIA and hear it talk back.\n\nARIA isn't a demo of what AI agents might do someday. It's running right now, autonomously, with the guardrails to make that safe.\n\n---\n*See it live: https://aria-ai.fly.dev/dashboard*",
                         "body_markdown": "",
-                        "tags": ["AI", "business", "automation", "productivity"],
+                        "tags": ["AI", "autonomous-agents", "AI-safety", "automation"],
                         "urls": [],
                     },
                     {
-                        "title": "The 5 AI Income Strategies That Are Actually Working in 2026",
-                        "body": f"# The 5 AI Income Strategies That Are Actually Working in 2026\n\n*Published {_today} by ARIA AI*\n\nAfter analyzing 1,000+ AI-powered businesses, these are the income strategies generating real results in 2026:\n\n## 1. Digital Products Created by AI\nTools like Gumroad + AI allow creators to publish 10x more products. Top sellers earn $5K-$50K/month.\n\n## 2. AI-Written Content Farms\nNiche blogs written entirely by AI rank on Google and generate $500-$5,000/month in ad revenue per site.\n\n## 3. Automated Affiliate Marketing\nAI writes comparison articles targeting buyer keywords. Commission rates average 8-30% per sale.\n\n## 4. AI SaaS Products\nOne-person companies build AI-powered SaaS tools and charge $29-$299/month subscriptions.\n\n## 5. Prompt Engineering Services\nSpecialists charge $50-$200/hour to optimize AI workflows for businesses.\n\n## Getting Started\nThe best strategy for most people: start with digital products. AI handles the creation, you focus on marketing.\n\n---\n*ARIA AI automates all of the above autonomously. See it live: https://aria-ai.fly.dev/dashboard*",
+                        "title": f"How ARIA Runs Its Own Growth, Autonomously, Every {INTERVAL_SECONDS // 60} Minutes",
+                        "body": f"# How ARIA Runs Its Own Growth, Autonomously, Every {INTERVAL_SECONDS // 60} Minutes\n\n*Published {_today} by ARIA AI*\n\nThis article was published by ARIA's own autonomous income loop — a background process that picks a growth or monetization strategy every {INTERVAL_SECONDS // 60} minutes from a roster of over 100, and executes it end to end, no human in the loop.\n\n## What's actually in that roster\n- **Content & SEO**: articles, topic clusters, backlink building, rank tracking — published across GitHub, dev.to, Medium, and Hashnode.\n- **Distribution**: the same piece of content gets repurposed across LinkedIn, Twitter/X, Reddit, and more, instead of being written once and left to sit.\n- **Real commerce integrations**: Stripe, Square, Gumroad, and Shopify — not mocked, not simulated.\n- **Outreach**: partner and media pitches, podcast guest pitches, cold outreach — all drafted and sent by ARIA.\n\nEvery cycle is logged, and the strategy mix adapts over time (a Thompson Sampling bandit shifts weight toward whatever's actually working) instead of running the same fixed playbook forever.\n\n---\n*This is the system writing about itself. Watch it work: https://aria-ai.fly.dev/dashboard*",
                         "body_markdown": "",
                         "tags": ["AI", "income", "passive income", "side hustle"],
                         "urls": [],
@@ -10076,7 +10113,7 @@ JSON:
 
             # Revenue projection
             if total_cycles > 0 and total_tracked_rev > 0:
-                cycles_per_day = (24 * 3600) / INTERVAL_SECONDS  # ~48 cycles/day
+                cycles_per_day = (24 * 3600) / INTERVAL_SECONDS  # computed, not hardcoded
                 rev_per_cycle = total_tracked_rev / max(total_cycles, 1)
                 proj_7d = rev_per_cycle * cycles_per_day * 7
                 proj_30d = rev_per_cycle * cycles_per_day * 30
