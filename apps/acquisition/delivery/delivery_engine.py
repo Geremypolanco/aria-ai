@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass, field
 
 from apps.core.memory.redis_client import get_cache
@@ -171,62 +172,102 @@ class DeliveryEngine:
         sending again — an ambiguous or automated retry (e.g. aria_mind.py's
         generic failure-retry loop) must never risk a second real email for
         one purchase. A prior "failed"/"no_deliverable" outcome never sent
-        anything, so it doesn't block a fresh attempt."""
+        anything, so it doesn't block a fresh attempt.
+
+        When order_ref is given, the check-then-send-then-record sequence
+        below runs under a short Redis lock keyed on (sku, order_ref), so two
+        genuinely concurrent calls for the same order can't both pass the
+        dedup check and both send. If the lock itself is unavailable (no
+        order_ref, or the cache is down), this narrows to the sequential
+        protection above only — still correct for the common case (a retry
+        after this call has already returned), just not against a true race.
+        Residual, not fully closed: if the provider call itself times out
+        ambiguously (the email may have actually gone out despite us seeing
+        an error), a later retry can still double-send — closing that needs
+        an idempotency key on the provider side, which PublishingTools does
+        not expose today."""
         await self._load()
 
+        cache = None
+        lock_key = None
         if order_ref:
-            for existing in self._records:
-                if (
-                    existing.get("sku") == sku
-                    and existing.get("order_ref") == order_ref
-                    and existing.get("status") == "sent"
-                ):
-                    return DeliveryRecord(**existing)
-
-        record = DeliveryRecord(
-            sku=sku, buyer_email=buyer_email, buyer_name=buyer_name, order_ref=order_ref
-        )
-
-        if not buyer_email:
-            record.status = "failed"
-            record.detail = "No buyer_email provided"
-            self._records.append(record.to_dict())
-            await self._save()
-            return record
-
-        deliverable = self._deliverables.get(sku)
-        if not deliverable:
-            record.status = "no_deliverable"
-            record.detail = f"No deliverable registered for sku '{sku}'"
-            self._records.append(record.to_dict())
-            await self._save()
-            logger.warning("DeliveryEngine.deliver: %s", record.detail)
-            return record
-
-        greeting = f"Hi {buyer_name},\n\n" if buyer_name else "Hi,\n\n"
-        if deliverable["delivery_type"] == "link":
-            body = f"{greeting}Thanks for your purchase — here's your {deliverable['name']}:\n\n{deliverable['content']}"
-        else:
-            body = f"{greeting}Thanks for your purchase — here's your {deliverable['name']}:\n\n{deliverable['content']}"
-        subject = f"Your {deliverable['name']} is ready"
-
-        from apps.core.tools.publishing_tools import PublishingTools
+            try:
+                cache = get_cache()
+            except Exception:
+                cache = None
+            if cache:
+                lock_key = f"delivery:{sku}:{order_ref}"
+                try:
+                    locked = await cache.acquire_lock(lock_key, ttl_seconds=30)
+                except Exception:
+                    locked = False
+                if not locked:
+                    return DeliveryRecord(
+                        sku=sku,
+                        buyer_email=buyer_email,
+                        buyer_name=buyer_name,
+                        order_ref=order_ref,
+                        status="in_progress",
+                        detail="Another delivery attempt for this order is already in progress",
+                    )
 
         try:
-            result = await PublishingTools().send_newsletter(subject, body, to_override=buyer_email)
-        except Exception as exc:
-            result = {"success": False, "error": str(exc)}
+            if order_ref:
+                for existing in self._records:
+                    if (
+                        existing.get("sku") == sku
+                        and existing.get("order_ref") == order_ref
+                        and existing.get("status") == "sent"
+                    ):
+                        return DeliveryRecord(**existing)
 
-        if result.get("success"):
-            record.status = "sent"
-            record.detail = f"via {result.get('provider', 'email')}"
-        else:
-            record.status = "failed"
-            record.detail = result.get("error", "unknown error")
+            record = DeliveryRecord(
+                sku=sku, buyer_email=buyer_email, buyer_name=buyer_name, order_ref=order_ref
+            )
 
-        self._records.append(record.to_dict())
-        await self._save()
-        return record
+            if not buyer_email:
+                record.status = "failed"
+                record.detail = "No buyer_email provided"
+                self._records.append(record.to_dict())
+                await self._save()
+                return record
+
+            deliverable = self._deliverables.get(sku)
+            if not deliverable:
+                record.status = "no_deliverable"
+                record.detail = f"No deliverable registered for sku '{sku}'"
+                self._records.append(record.to_dict())
+                await self._save()
+                logger.warning("DeliveryEngine.deliver: %s", record.detail)
+                return record
+
+            greeting = f"Hi {buyer_name},\n\n" if buyer_name else "Hi,\n\n"
+            body = f"{greeting}Thanks for your purchase — here's your {deliverable['name']}:\n\n{deliverable['content']}"
+            subject = f"Your {deliverable['name']} is ready"
+
+            from apps.core.tools.publishing_tools import PublishingTools
+
+            try:
+                result = await PublishingTools().send_newsletter(
+                    subject, body, to_override=buyer_email
+                )
+            except Exception as exc:
+                result = {"success": False, "error": str(exc)}
+
+            if result.get("success"):
+                record.status = "sent"
+                record.detail = f"via {result.get('provider', 'email')}"
+            else:
+                record.status = "failed"
+                record.detail = result.get("error", "unknown error")
+
+            self._records.append(record.to_dict())
+            await self._save()
+            return record
+        finally:
+            if lock_key and cache:
+                with suppress(Exception):
+                    await cache.release_lock(lock_key)
 
     def get_deliverable(self, sku: str) -> dict | None:
         return self._deliverables.get(sku)

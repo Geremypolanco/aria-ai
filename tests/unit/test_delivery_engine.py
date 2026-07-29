@@ -29,6 +29,8 @@ def _mock_cache():
     c = MagicMock()
     c.get = AsyncMock(return_value=None)
     c.set = AsyncMock(return_value=True)
+    c.acquire_lock = AsyncMock(return_value=True)
+    c.release_lock = AsyncMock(return_value=True)
     return c
 
 
@@ -114,6 +116,20 @@ async def test_deliver_sends_registered_deliverable(engine):
     assert record.status == "sent"
     assert "resend" in record.detail
     assert engine.recent_deliveries()[0]["sku"] == "playbook-v1"
+
+
+async def test_deliver_refuses_concurrent_send_for_the_same_order_ref(engine):
+    """A second call while the first is still holding the (sku, order_ref)
+    lock must not send — the check-then-send sequence itself is protected,
+    not just the after-the-fact dedup check."""
+    await engine.register_deliverable(sku="x", name="X", content="https://example.com")
+    with patch("apps.acquisition.delivery.delivery_engine.get_cache") as get_cache_mock:
+        locked_cache = MagicMock()
+        locked_cache.acquire_lock = AsyncMock(return_value=False)
+        get_cache_mock.return_value = locked_cache
+        record = await engine.deliver("x", "buyer@example.com", order_ref="order-1")
+
+    assert record.status == "in_progress"
 
 
 async def test_deliver_is_idempotent_for_the_same_order_ref(engine):
