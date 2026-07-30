@@ -1,0 +1,11 @@
+# Lingua — standalone language-learning app.
+# Intentionally separate from the root/apps/core requirements: this app ships
+# and deploys independently of ARIA.
+fastapi==0.135.0
+uvicorn[standard]==0.30.6
+pydantic==2.8.2
+httpx==0.27.2
+python-multipart==0.0.32
+
+# Test suite
+pytest==8.3.3

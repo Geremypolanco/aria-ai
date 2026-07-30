@@ -42,3 +42,10 @@ pip install -r requirements.txt
 
 ---
 *Aria ya no solo ejecuta tareas; Aria opera negocios.*
+
+## 🗣️ Otros productos en este repositorio
+
+- **[Lingua](language-app/)** — app de aprendizaje de idiomas (beginner → native
+  speaker), independiente de Aria, inspirada en Duolingo y Rosetta Stone, con
+  IA de Hugging Face para lecciones personalizadas, imágenes, audio y
+  conversación de voz en vivo. Ver `language-app/README.md`.

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lingua — Learn a language, talk like a native</title>
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- Onboarding -->
+    <section id="screen-onboarding" class="screen">
+      <div class="card onboarding-card">
+        <h1>🗣️ Lingua</h1>
+        <p class="subtitle">Beginner to native — personalized lessons, real conversations.</p>
+        <form id="onboarding-form">
+          <label>Your name
+            <input type="text" id="ob-name" required placeholder="Alex" />
+          </label>
+          <label>I already speak
+            <select id="ob-native"></select>
+          </label>
+          <label>I want to learn
+            <select id="ob-target"></select>
+          </label>
+          <label>My current level
+            <select id="ob-level">
+              <option value="A1">Beginner (A1)</option>
+              <option value="A2">Elementary (A2)</option>
+              <option value="B1">Intermediate (B1)</option>
+              <option value="B2">Upper-intermediate (B2)</option>
+              <option value="C1">Advanced (C1)</option>
+              <option value="C2">Proficient (C2)</option>
+              <option value="NATIVE">Native-level polish</option>
+            </select>
+          </label>
+          <label>Interests (comma-separated, personalizes your lessons)
+            <input type="text" id="ob-interests" placeholder="football, cooking, movies" />
+          </label>
+          <button type="submit" class="btn btn-primary">Start learning</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Main app -->
+    <section id="screen-main" class="screen hidden">
+      <header class="topbar">
+        <div class="brand">🗣️ Lingua</div>
+        <div class="stats">
+          <span title="XP">⭐ <b id="stat-xp">0</b></span>
+          <span title="Streak">🔥 <b id="stat-streak">0</b></span>
+          <span title="Hearts">❤️ <b id="stat-hearts">5</b></span>
+          <span title="Level" id="stat-level">A1</span>
+        </div>
+        <nav class="tabs">
+          <button class="tab-btn active" data-tab="path">Path</button>
+          <button class="tab-btn" data-tab="talk">Talk Live</button>
+          <button class="tab-btn" data-tab="progress">Progress</button>
+          <button class="tab-btn" id="switch-user-btn" title="Switch profile">⇄</button>
+        </nav>
+      </header>
+
+      <main>
+        <div id="tab-path" class="tab-panel">
+          <div id="skill-path" class="skill-path"></div>
+        </div>
+
+        <div id="tab-talk" class="tab-panel hidden">
+          <div class="call-frame">
+            <div class="avatar-tile">
+              <div id="avatar" class="avatar">🧑‍🏫</div>
+              <div id="call-status" class="call-status">Connecting…</div>
+            </div>
+            <div id="transcript" class="transcript"></div>
+            <div class="call-controls">
+              <button id="mic-btn" class="mic-btn">🎙️ Hold to talk</button>
+              <form id="text-fallback-form" class="text-fallback">
+                <input type="text" id="text-fallback-input" placeholder="…or type instead" />
+                <button type="submit">Send</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-progress" class="tab-panel hidden">
+          <div class="card">
+            <h2>Your progress</h2>
+            <div id="progress-grid" class="progress-grid"></div>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- Lesson overlay -->
+    <section id="screen-lesson" class="screen hidden overlay">
+      <div class="lesson-frame">
+        <div class="lesson-header">
+          <button id="lesson-exit" class="btn-icon">✕</button>
+          <div id="lesson-progress" class="lesson-progress"><div id="lesson-progress-bar"></div></div>
+          <div id="lesson-hearts">❤️ <span id="lesson-hearts-count">5</span></div>
+        </div>
+        <div id="exercise-container" class="exercise-container"></div>
+      </div>
+    </section>
+
+    <!-- Lesson complete -->
+    <section id="screen-complete" class="screen hidden overlay">
+      <div class="card complete-card">
+        <h2 id="complete-title">Lesson complete! 🎉</h2>
+        <p id="complete-xp"></p>
+        <p id="complete-level"></p>
+        <button id="complete-continue" class="btn btn-primary">Continue</button>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
