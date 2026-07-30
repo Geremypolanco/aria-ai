@@ -101,9 +101,16 @@ class TestCatalog:
         reg = _fresh()
         gaps = reg.missing()
         gap_keys = {g["key"] for g in gaps}
-        # media.image_generation/media.video were corrected off this list: both
-        # are real, wired tools (aria_mind.py's generate_image/generate_video),
-        # verified directly against the dispatcher code, not aspirational.
+        # media.image_generation/media.video are real, wired tools
+        # (aria_mind.py's generate_image/generate_video, verified directly
+        # against the dispatcher code) — assert the promoted status
+        # directly rather than just their absence from gaps, so deleting
+        # either entry outright would still fail this test.
+        for key in ("media.image_generation", "media.video"):
+            capability = reg.get(key)
+            assert capability is not None
+            assert capability.status.value == "active"
+            assert key not in gap_keys
         assert "ads.paid_traffic" in gap_keys
         # every gap must be PLANNED
         assert all(g["status"] == "planned" for g in gaps)
