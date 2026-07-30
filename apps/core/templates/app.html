@@ -1234,6 +1234,9 @@ async function dispatchMission(){
   try{
     const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:goal, session_id:m.sid, persona:(activePersona&&activePersona.id)||null})});
     const d=await r.json();
+    // Signed-out or expired session (e.g. a cached app shell): send them to sign in
+    // instead of showing a dead "please sign in" line.
+    if(r.status===401 || d.model_used==='auth'){ location.href='/login'; return; }
     m.text=d.reply||'(no response)';
     if(d.media_base64){ m.imgs=['data:image/png;base64,'+d.media_base64]; log('Image generated ('+Math.round(d.media_base64.length*0.75/1024)+' KB)','ok'); }
     m.status='done';
