@@ -147,6 +147,10 @@ textarea{field-sizing:content}
 .micbtn:hover{background:var(--soft)}
 .micbtn.listening{background:var(--rose-soft);border-color:#f6c9d4;color:#b3123a;animation:bl 1.1s ease-in-out infinite}
 .micbtn:disabled{opacity:.4;cursor:not-allowed}
+.attach-chip{display:flex;align-items:center;gap:8px;max-width:fit-content;margin:0 auto 8px;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:5px 8px 5px 11px;font-size:12.5px;color:var(--ink)}
+.attach-chip .attach-x{border:0;background:0;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;padding:2px}
+.attach-chip .attach-x:hover{color:var(--ink)}
+.attach-name{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .composer-row{display:flex;align-items:center;gap:10px;padding:9px 4px 0;flex-wrap:wrap}
 .deep-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;transition:.15s;white-space:nowrap}
 .deep-chip.on{background:var(--neon-soft);border-color:#9fe9c6;color:var(--green-ink)}
@@ -744,7 +748,15 @@ h1.greet .g{background:linear-gradient(100deg,var(--green-ink),var(--teal));-web
           <span class="pb-txt">Working with <b id="pbName"></b> · <span id="pbTitle"></span></span>
           <button class="pb-x" onclick="clearPersona()" aria-label="Leave this specialist">✕</button>
         </div>
+        <div id="attachChip" class="attach-chip" hidden>
+          <span id="attachName" class="attach-name"></span>
+          <button onclick="clearAttachment()" class="attach-x" aria-label="Remove attachment">✕</button>
+        </div>
         <div class="composer-box">
+          <input type="file" id="attachInput" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime" hidden onchange="onAttachPicked(event)">
+          <button id="attachBtn" onclick="document.getElementById('attachInput').click()" class="micbtn" aria-label="Attach image or video" title="Attach an image or video for ARIA to analyze">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
           <button id="micBtn" onclick="toggleDictation()" class="micbtn" aria-label="Dictate message" aria-pressed="false" title="Speak your message">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"/></svg>
           </button>
@@ -1221,19 +1233,53 @@ function focusIgniter(){ toggleSide(false); const i=document.getElementById('ign
 function quickGoal(btn){ const i=document.getElementById('igniter'); i.value=btn.textContent.replace(/^[^\w]+\s*/,''); i.focus(); }
 function onIgniterKey(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); dispatchMission(); } }
 
+// ── File attachments (image / video for ARIA to analyze) ──
+let pendingAttachment=null; // {url, kind, name}
+async function onAttachPicked(ev){
+  const f=ev.target.files&&ev.target.files[0]; ev.target.value='';
+  if(!f) return;
+  if(f.size>25*1024*1024){ log('That file is over the 25 MB limit','err'); return; }
+  const chip=document.getElementById('attachChip'), nm=document.getElementById('attachName');
+  nm.textContent='Uploading '+f.name+'…'; chip.hidden=false;
+  try{
+    const fd=new FormData(); fd.append('file', f);
+    const r=await fetch('/api/v1/upload',{method:'POST',body:fd,credentials:'same-origin'});
+    if(r.status===401){ location.href='/login'; return; }
+    const d=await r.json();
+    if(!d||!d.ok||!d.url){ nm.textContent=''; chip.hidden=true; log((d&&d.message)||'Upload failed','err'); return; }
+    pendingAttachment={url:d.url, kind:d.kind, name:d.name||f.name};
+    nm.textContent=(d.kind==='video'?'🎬 ':'🖼️ ')+pendingAttachment.name;
+    document.getElementById('igniter').focus();
+  }catch(e){ document.getElementById('attachChip').hidden=true; log('Upload failed','err'); }
+}
+function clearAttachment(){ pendingAttachment=null; const c=document.getElementById('attachChip'); if(c) c.hidden=true; }
+
 async function dispatchMission(){
   const inp=document.getElementById('igniter'); const goal=inp.value.trim();
-  if(!goal||busy) return;
-  if(deepMode){ return dispatchWorkflow(goal, inp); }
+  const att=pendingAttachment;
+  if((!goal && !att)||busy) return;
+  // A file attachment routes through the normal chat path so ARIA's vision tools run.
+  if(deepMode && !att){ return dispatchWorkflow(goal, inp); }
   busy=true; document.getElementById('ignite').disabled=true;
-  const m={ id:uid(), goal, sid:'mission-'+uid(), status:'running', text:'', imgs:[], ts:Date.now() };
+  // What we send to ARIA: if a file is attached, point it at the URL so it uses
+  // analyze_image / analyze_video_url; keep the user's own question if they typed one.
+  let sendMsg=goal, displayGoal=goal;
+  if(att){
+    const ask=goal||('Analyze this '+att.kind+' and tell me what you see and how you can help.');
+    sendMsg='The user uploaded a '+att.kind+' at '+att.url+'\n\n'+ask;
+    displayGoal=(goal?goal+' ':'')+'['+att.kind+': '+att.name+']';
+  }
+  const m={ id:uid(), goal:displayGoal, sid:'mission-'+uid(), status:'running', text:'', imgs:[], ts:Date.now() };
   missions.push(m); saveMissions(); renderMissions();
-  inp.value='';
-  log('Message sent — <span class="lg-hi">'+esc(goal.slice(0,60))+'</span>');
+  inp.value=''; clearAttachment();
+  log('Message sent — <span class="lg-hi">'+esc(displayGoal.slice(0,60))+'</span>');
   log('· ARIA is thinking', 'dim');
   try{
-    const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:goal, session_id:m.sid, persona:(activePersona&&activePersona.id)||null})});
+    const r=await fetch('/api/v1/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:sendMsg, session_id:m.sid, persona:(activePersona&&activePersona.id)||null})});
     const d=await r.json();
+    // Signed-out or expired session (e.g. a cached app shell): send them to sign in
+    // instead of showing a dead "please sign in" line.
+    if(r.status===401 || d.model_used==='auth'){ location.href='/login'; return; }
     m.text=d.reply||'(no response)';
     if(d.media_base64){ m.imgs=['data:image/png;base64,'+d.media_base64]; log('Image generated ('+Math.round(d.media_base64.length*0.75/1024)+' KB)','ok'); }
     m.status='done';

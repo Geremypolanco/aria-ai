@@ -15,7 +15,16 @@ from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    File,
+    Form,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -2747,6 +2756,62 @@ async def _remember_turn(email: str, user_msg: str, aria_reply: str) -> None:
         await get_episodic_memory().store_conversation(email, user_msg, aria_reply)
     except Exception as exc:
         logger.warning(f"Memory store failed (non-fatal): {exc}")
+
+
+# ── FILE UPLOADS (image/video for ARIA to analyze) ────────────────────────
+# Saved under static/uploads (served via the /static mount) so ARIA's existing
+# vision tools (analyze_image, extract_text/OCR, analyze_video_url) can fetch the
+# URL. Signed-in + rate-limited; type/size-guarded; filenames are random so there
+# is no path traversal from the client-supplied name.
+_UPLOAD_DIR = os.path.join(_STATIC_DIR, "uploads")
+_UPLOAD_TYPES = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+}
+_MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+
+
+@app.post("/api/v1/upload")
+async def upload_media(request: Request, file: UploadFile = File(...)):
+    """Accept an image or video from a signed-in user and return a URL ARIA can
+    analyze. Fails cleanly on bad type / oversize; never trusts the filename."""
+    if not _current_user(request):
+        return JSONResponse({"error": "auth"}, status_code=401)
+    if not _rate_ok(request, "upload", 30, 300):
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
+    ext = _UPLOAD_TYPES.get((file.content_type or "").lower())
+    if not ext:
+        return JSONResponse(
+            {
+                "error": "unsupported",
+                "message": "Upload a PNG, JPG, WEBP or GIF image, or an MP4/WEBM/MOV video.",
+            },
+            status_code=415,
+        )
+    data = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(data) > _MAX_UPLOAD_BYTES:
+        return JSONResponse(
+            {"error": "too_large", "message": "That file is over the 25 MB limit."},
+            status_code=413,
+        )
+    try:
+        import uuid as _uuid
+
+        os.makedirs(_UPLOAD_DIR, exist_ok=True)
+        name = f"{_uuid.uuid4().hex}.{ext}"
+        with open(os.path.join(_UPLOAD_DIR, name), "wb") as fh:
+            fh.write(data)
+    except Exception as e:  # noqa: BLE001
+        logger.error("upload save failed: %s", e)
+        return JSONResponse({"error": "save_failed"}, status_code=500)
+    base = (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
+    kind = "video" if (file.content_type or "").startswith("video/") else "image"
+    return {"ok": True, "url": f"{base}/static/uploads/{name}", "kind": kind, "name": file.filename}
 
 
 @app.post("/api/v1/chat")
