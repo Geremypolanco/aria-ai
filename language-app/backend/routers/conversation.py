@@ -16,10 +16,10 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from .. import db
+from .. import auth, db
 from ..curriculum import build_conversation_system_prompt
 from ..hf_client import hf_client
-from .users import get_user
+from .users import get_user_by_id_or_404
 
 logger = logging.getLogger("lingua.conversation")
 
@@ -50,8 +50,15 @@ def _recent_history(user_id: str) -> list[dict[str, str]]:
 @router.websocket("/ws/conversation/{user_id}")
 async def conversation_socket(websocket: WebSocket, user_id: str) -> None:
     await websocket.accept()
+
+    session = auth.verify_session(websocket.cookies.get(auth.SESSION_COOKIE))
+    if not session or session["user_id"] != user_id:
+        await websocket.send_json({"type": "error", "message": "Sign in with Google first"})
+        await websocket.close(code=4401)
+        return
+
     try:
-        user = get_user(user_id)
+        user = get_user_by_id_or_404(user_id)
     except Exception:
         await websocket.send_json({"type": "error", "message": "Unknown user"})
         await websocket.close()

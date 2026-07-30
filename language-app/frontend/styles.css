@@ -208,3 +208,34 @@ main { max-width: 720px; margin: 0 auto; padding: 24px; }
 .feedback-banner.incorrect { background: rgba(255,75,75,0.15); color: var(--danger); }
 
 .complete-card { text-align: center; }
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fff;
+  color: #3c3c3c;
+  border: 2px solid var(--gray-border);
+  border-radius: 12px;
+  padding: 14px 20px;
+  font-weight: 700;
+  text-decoration: none;
+  margin-top: 24px;
+}
+.btn-google:hover { background: var(--gray-bg); }
+.g-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4285F4, #34A853, #FBBC05, #EA4335);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.8rem;
+}
+.auth-error { color: var(--danger); font-weight: 700; margin-top: 12px; }
+.dev-login { margin-top: 24px; border-top: 1px solid var(--gray-border); padding-top: 16px; }
+.dev-login form { display: flex; gap: 8px; margin-top: 8px; }
+.dev-login input { flex: 1; padding: 10px; border-radius: 10px; border: 2px solid var(--gray-border); }

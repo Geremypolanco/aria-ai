@@ -18,6 +18,7 @@ _lock = threading.Lock()
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
+    email TEXT,
     display_name TEXT NOT NULL,
     native_lang TEXT NOT NULL,
     target_lang TEXT NOT NULL,
@@ -80,6 +81,16 @@ def _connect() -> sqlite3.Connection:
 _conn: sqlite3.Connection | None = None
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Adds columns/indexes introduced after a table already existed on disk.
+    CREATE TABLE IF NOT EXISTS alone won't retrofit a pre-existing users.db."""
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "email" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL")
+    conn.commit()
+
+
 def get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
@@ -88,6 +99,7 @@ def get_conn() -> sqlite3.Connection:
                 _conn = _connect()
                 _conn.executescript(_SCHEMA)
                 _conn.commit()
+                _migrate(_conn)
     return _conn
 
 

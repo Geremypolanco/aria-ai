@@ -12,7 +12,7 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const state = {
-  userId: localStorage.getItem("lingua_user_id") || null,
+  userId: null,
   user: null,
   ws: null,
   mediaRecorder: null,
@@ -70,13 +70,55 @@ async function handleOnboardingSubmit(e) {
       }),
     });
     state.userId = user.id;
-    localStorage.setItem("lingua_user_id", user.id);
     await enterApp();
   } catch (err) {
     alert("Could not create profile: " + err.message);
   } finally {
     btn.disabled = false;
   }
+}
+
+// ---------- Sign-in (Google) ----------
+
+async function checkSession() {
+  const session = await api("/api/session");
+  if (session.authenticated) {
+    state.userId = session.user_id;
+    await enterApp();
+    return;
+  }
+  if (session.pending) {
+    showScreen("#screen-onboarding");
+    if (session.name) $("#ob-name").value = session.name;
+    return;
+  }
+  showScreen("#screen-login");
+  if (session.dev_login_enabled) {
+    $("#dev-login-block").classList.remove("hidden");
+  }
+  const params = new URLSearchParams(location.search);
+  if (params.get("auth_error")) {
+    const err = $("#auth-error");
+    err.textContent = "Sign-in failed — please try again.";
+    err.classList.remove("hidden");
+  }
+}
+
+function setupDevLogin() {
+  $("#dev-login-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const email = $("#dev-login-email").value.trim();
+    if (!email) return;
+    location.href = `/auth/dev-login?email=${encodeURIComponent(email)}`;
+  });
+}
+
+async function signOut() {
+  await fetch("/auth/logout", { method: "POST" });
+  state.userId = null;
+  state.user = null;
+  if (state.ws) state.ws.close();
+  location.href = "/";
 }
 
 // ---------- Main app shell ----------
@@ -592,13 +634,7 @@ function setupMic() {
   });
 }
 
-$("#switch-user-btn").addEventListener("click", () => {
-  localStorage.removeItem("lingua_user_id");
-  state.userId = null;
-  state.user = null;
-  if (state.ws) state.ws.close();
-  showScreen("#screen-onboarding");
-});
+$("#switch-user-btn").addEventListener("click", signOut);
 
 // ---------- Boot ----------
 
@@ -607,16 +643,8 @@ async function boot() {
   $("#onboarding-form").addEventListener("submit", handleOnboardingSubmit);
   setupTabs();
   setupMic();
-
-  if (state.userId) {
-    try {
-      await enterApp();
-      return;
-    } catch {
-      localStorage.removeItem("lingua_user_id");
-    }
-  }
-  showScreen("#screen-onboarding");
+  setupDevLogin();
+  await checkSession();
 }
 
 boot();

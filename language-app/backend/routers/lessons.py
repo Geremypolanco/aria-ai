@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import db, srs
+from .. import auth, db, srs
 from ..curriculum import LessonRequest, all_units, get_unit
 from ..hf_client import hf_client
 from ..models import CEFRLevel, Exercise
-from .users import get_user
+from .users import get_user_by_id_or_404
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
 
@@ -24,8 +24,8 @@ class UnitNode(BaseModel):
 
 
 @router.get("/{user_id}/path", response_model=list[UnitNode])
-def get_path(user_id: str) -> list[UnitNode]:
-    user = get_user(user_id)
+def get_path(user_id: str, session: dict = Depends(auth.require_owner)) -> list[UnitNode]:
+    user = get_user_by_id_or_404(user_id)
     with db.cursor() as cur:
         cur.execute("SELECT unit_id, best_score, mastered FROM unit_mastery WHERE user_id=?", (user_id,))
         mastery = {r["unit_id"]: r for r in cur.fetchall()}
@@ -49,8 +49,10 @@ def get_path(user_id: str) -> list[UnitNode]:
 
 
 @router.get("/{user_id}/unit/{unit_id}", response_model=list[Exercise])
-async def get_lesson_exercises(user_id: str, unit_id: str) -> list[Exercise]:
-    user = get_user(user_id)
+async def get_lesson_exercises(
+    user_id: str, unit_id: str, session: dict = Depends(auth.require_owner)
+) -> list[Exercise]:
+    user = get_user_by_id_or_404(user_id)
     unit = get_unit(unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="Unit not found")
@@ -79,8 +81,8 @@ class AnswerResult(BaseModel):
 
 
 @router.post("/{user_id}/answer", response_model=AnswerResult)
-def submit_answer(user_id: str, payload: AnswerRequest) -> AnswerResult:
-    get_user(user_id)
+def submit_answer(user_id: str, payload: AnswerRequest, session: dict = Depends(auth.require_owner)) -> AnswerResult:
+    get_user_by_id_or_404(user_id)
     hearts = None
     if not payload.correct:
         hearts = srs.lose_heart(user_id)
@@ -104,7 +106,7 @@ class CompleteLessonRequest(BaseModel):
 
 
 @router.post("/{user_id}/complete")
-def complete_lesson(user_id: str, payload: CompleteLessonRequest) -> dict:
-    get_user(user_id)
+def complete_lesson(user_id: str, payload: CompleteLessonRequest, session: dict = Depends(auth.require_owner)) -> dict:
+    get_user_by_id_or_404(user_id)
     srs.regen_hearts_if_due(user_id)
     return srs.record_lesson_result(user_id, payload.unit_id, max(0.0, min(1.0, payload.score)))

@@ -1,0 +1,32 @@
+# fly.toml for Lingua — a separate Fly.io app/domain from ARIA's `aria-ai`.
+# Deploy from inside this directory: `cd language-app && fly deploy`.
+#
+# If "lingua-ai-coach" is already taken on Fly, change `app` below to
+# whatever you get from `fly apps create <name>`, then update
+# LINGUA_PUBLIC_BASE_URL here AND the Google OAuth redirect URI in Google
+# Cloud Console to match the new <name>.fly.dev domain.
+
+app = "lingua-ai-coach"
+primary_region = "ord"
+
+[build]
+
+[env]
+  LINGUA_PORT = "8100"
+  LINGUA_PUBLIC_BASE_URL = "https://lingua-ai-coach.fly.dev"
+  LINGUA_DB_PATH = "/app/data/lingua.db"
+  LINGUA_CACHE_DIR = "/app/data/media_cache"
+
+[[mounts]]
+  # One-time setup before the first deploy: `fly volumes create lingua_data --size 1 --region ord`
+  # Without this, SQLite data (users, progress, conversation history) does not
+  # survive a redeploy — Fly machines get fresh ephemeral disk each deploy.
+  source = "lingua_data"
+  destination = "/app/data"
+
+[http_service]
+  internal_port = 8100
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1

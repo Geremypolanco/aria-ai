@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
+from .. import auth
 from ..hf_client import hf_client
 
-router = APIRouter(prefix="/api/content", tags=["content"])
+# Gated behind "signed in" (any account, not a specific user_id) — these calls
+# hit paid HF inference, so they shouldn't be reachable by anonymous traffic
+# on a public deployment.
+router = APIRouter(prefix="/api/content", tags=["content"], dependencies=[Depends(auth.require_session)])
 
 
 class TTSRequest(BaseModel):

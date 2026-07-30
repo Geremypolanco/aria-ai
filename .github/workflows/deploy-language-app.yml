@@ -1,0 +1,87 @@
+name: Deploy Lingua to Fly.io
+
+# Separate pipeline from ARIA's deploy.yml/deploy-core.yml: only touches the
+# `language-app/` Fly app (lingua-ai-coach.fly.dev), only runs when that
+# directory changes, and uses its own Fly API token secret so it can never
+# accidentally deploy over ARIA's own aria-ai app.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "language-app/**"
+      - ".github/workflows/deploy-language-app.yml"
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: Deploy strategy
+        required: false
+        default: rolling
+        type: choice
+        options: [rolling, bluegreen, immediate]
+
+concurrency:
+  group: deploy-lingua
+  cancel-in-progress: false
+
+env:
+  FLY_APP: lingua-ai-coach
+
+jobs:
+  deploy:
+    name: Deploy Lingua to Fly.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: language-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Set Fly secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_LINGUA }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.LINGUA_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.LINGUA_GOOGLE_CLIENT_SECRET }}
+          LINGUA_SESSION_SECRET: ${{ secrets.LINGUA_SESSION_SECRET }}
+        run: |
+          args=()
+          add() { if [ -n "$2" ]; then args+=("$1=$2"); fi; }
+          add HF_TOKEN "$HF_TOKEN"
+          add GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
+          add GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
+          add LINGUA_SESSION_SECRET "$LINGUA_SESSION_SECRET"
+          if [ ${#args[@]} -gt 0 ]; then
+            flyctl secrets set "${args[@]}" --app "$FLY_APP"
+          else
+            echo "No secrets configured yet — set them with 'fly secrets set' or add the GitHub secrets listed in language-app/README.md."
+          fi
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_LINGUA }}
+        run: |
+          flyctl deploy \
+            --app "$FLY_APP" \
+            --remote-only \
+            --strategy "${{ github.event.inputs.strategy || 'rolling' }}" \
+            --wait-timeout 300
+
+      - name: Health check
+        run: |
+          sleep 15
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -sf "https://$FLY_APP.fly.dev/api/health" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','fail'))" 2>/dev/null || echo "fail")
+            if [ "$STATUS" = "ok" ]; then
+              echo "Health check PASSED (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i failed — waiting 10s..."
+            sleep 10
+          done
+          echo "Health check FAILED after 5 attempts"
+          exit 1

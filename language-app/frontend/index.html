@@ -9,11 +9,30 @@
 <body>
   <div id="app">
 
-    <!-- Onboarding -->
-    <section id="screen-onboarding" class="screen">
+    <!-- Sign in -->
+    <section id="screen-login" class="screen">
       <div class="card onboarding-card">
         <h1>🗣️ Lingua</h1>
         <p class="subtitle">Beginner to native — personalized lessons, real conversations.</p>
+        <a id="google-login-btn" class="btn btn-google" href="/auth/google/login">
+          <span class="g-icon">G</span> Sign in with Google
+        </a>
+        <p id="auth-error" class="auth-error hidden"></p>
+        <div id="dev-login-block" class="dev-login hidden">
+          <p class="subtitle">Google Sign-In isn't configured on this deployment yet — dev login:</p>
+          <form id="dev-login-form">
+            <input type="email" id="dev-login-email" placeholder="you@example.com" required />
+            <button type="submit" class="btn btn-primary">Continue</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Onboarding -->
+    <section id="screen-onboarding" class="screen hidden">
+      <div class="card onboarding-card">
+        <h1>🗣️ Lingua</h1>
+        <p class="subtitle">Tell us about your goals — this personalizes every lesson.</p>
         <form id="onboarding-form">
           <label>Your name
             <input type="text" id="ob-name" required placeholder="Alex" />
@@ -57,7 +76,7 @@
           <button class="tab-btn active" data-tab="path">Path</button>
           <button class="tab-btn" data-tab="talk">Talk Live</button>
           <button class="tab-btn" data-tab="progress">Progress</button>
-          <button class="tab-btn" id="switch-user-btn" title="Switch profile">⇄</button>
+          <button class="tab-btn" id="switch-user-btn" title="Sign out">⏻</button>
         </nav>
       </header>
 
