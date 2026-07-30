@@ -106,12 +106,16 @@ const CHEVRON_ICON = `<svg class="h-4 w-4 flex-none text-stone-500 transition-tr
 class AriaPricing extends HTMLElement {
   connectedCallback() {
     this.className = 'block';
+    // Surface the live founding-member offer (if active) from the plans API.
+    this.loadFoundingOffer();
     this.innerHTML = `
       <div class="mx-auto max-w-2xl text-center" data-reveal>
         <span class="text-xs font-bold uppercase tracking-widest text-emerald-700">Pricing</span>
         <h2 class="mt-3 text-[clamp(1.9rem,3.6vw,2.75rem)] font-semibold tracking-tight text-stone-900">Simple, honest pricing.</h2>
         <p class="mt-4 text-lg text-stone-600">Start free. Upgrade when ARIA is doing real work for you. Cancel anytime.</p>
       </div>
+
+      <div id="aria-founder-banner" class="mx-auto mt-8 max-w-2xl"></div>
 
       <div class="mx-auto mt-14 grid max-w-6xl gap-5 sm:grid-cols-2 lg:grid-cols-5 lg:items-stretch">
         ${ARIA_PLANS.map((plan, i) => this.planCard(plan, i)).join('')}
@@ -124,6 +128,23 @@ class AriaPricing extends HTMLElement {
         </div>
       </div>
     `;
+  }
+
+  async loadFoundingOffer() {
+    try {
+      const r = await fetch('/api/v1/plans', { credentials: 'same-origin' });
+      const o = (await r.json()).founding_offer;
+      const el = this.querySelector('#aria-founder-banner');
+      if (!o || !el) return;
+      const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      el.innerHTML = `
+        <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 text-center text-[14.5px] text-emerald-800">
+          <span class="font-bold">${esc(o.headline)}</span>
+          <span>First ${esc(o.cap)} customers. Use code <code class="rounded-md bg-emerald-700 px-2 py-0.5 font-mono font-bold text-white">${esc(o.code)}</code> at checkout.</span>
+        </div>`;
+    } catch (e) {
+      /* offer is optional — never block the pricing section */
+    }
   }
 
   planCard(plan, i) {
