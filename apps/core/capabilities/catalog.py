@@ -171,10 +171,15 @@ def seed_registry(reg: CapabilityRegistry) -> None:
                 key="automation.browser",
                 category="infrastructure",
                 provider="human_browser",
-                description="Stealth browser automation (logins, posting, DMs).",
+                description="Stealth browser automation (logins, public posting).",
                 status=CapabilityStatus.ACTIVE,
                 quality=Quality.MEDIUM,
                 requires=["ARIA_EMAIL", "ARIA_PASSWORD"],
+                notes=(
+                    "Corrected: apps/core/tools/social_session.py exposes post_tweet/"
+                    "post_instagram_story_text/post_linkedin only — no direct-message/DM "
+                    "method exists anywhere. Public posting only."
+                ),
             ),
             Capability(
                 key="crm.pipeline",
@@ -196,22 +201,38 @@ def seed_registry(reg: CapabilityRegistry) -> None:
                 requires=["SHOPIFY_URL", "SHOPIFY_ADMIN_TOKEN"],
                 notes="Store is password-gated and lacks auto-delivery — use Stripe links to sell.",
             ),
-            # ── Known GAPS (status=PLANNED) — what ARIA does NOT have yet ──────
+            # ── Content generation (corrected — these were wrongly listed as
+            # PLANNED; both are real, wired, callable tools) ──────────────────
             Capability(
                 key="media.image_generation",
                 category="media",
-                provider="(none)",
+                provider="pollinations+huggingface",
                 description="Generate product/marketing images.",
-                status=CapabilityStatus.PLANNED,
-                notes="No image-gen integration wired into the app yet.",
+                status=CapabilityStatus.ACTIVE,
+                quality=Quality.MEDIUM,
+                verified=True,
+                notes=(
+                    "Corrected: aria_mind.py's generate_image tool calls the free, "
+                    "keyless Pollinations API first (image.pollinations.ai, FLUX model), "
+                    "falling back to HuggingFace FLUX.1-schnell. Real, no credentials "
+                    "required for the primary path."
+                ),
             ),
             Capability(
                 key="media.video",
                 category="media",
-                provider="(none)",
+                provider="video_ai+video_engine",
                 description="Generate/edit video for YouTube/TikTok.",
-                status=CapabilityStatus.PLANNED,
+                status=CapabilityStatus.ACTIVE,
+                quality=Quality.MEDIUM,
+                notes=(
+                    "Corrected: aria_mind.py's generate_video tool has a real fallback "
+                    "chain — rented-GPU AI video (LTX/Wan2.2) when a provider token is "
+                    "configured, else an in-house ffmpeg reel engine (FLUX stills + Ken "
+                    "Burns + voiceover), else the free Wan2.2 HF Space."
+                ),
             ),
+            # ── Known GAPS (status=PLANNED) — what ARIA does NOT have yet ──────
             Capability(
                 key="ads.paid_traffic",
                 category="growth",
