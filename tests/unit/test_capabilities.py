@@ -101,7 +101,9 @@ class TestCatalog:
         reg = _fresh()
         gaps = reg.missing()
         gap_keys = {g["key"] for g in gaps}
-        assert "media.image_generation" in gap_keys
+        # media.image_generation/media.video were corrected off this list: both
+        # are real, wired tools (aria_mind.py's generate_image/generate_video),
+        # verified directly against the dispatcher code, not aspirational.
         assert "ads.paid_traffic" in gap_keys
         # every gap must be PLANNED
         assert all(g["status"] == "planned" for g in gaps)
