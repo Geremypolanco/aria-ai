@@ -603,8 +603,6 @@ async def _fetch_image_bytes(url: str, timeout: float = 20.0) -> bytes:
 # below it — the strangler pattern applied at the function level.
 # ═══════════════════════════════════════════════════════════════════════════
 
-_ToolHandler = "Callable[[str, dict, int, str], Awaitable[tuple[str, dict]]]"
-
 
 async def _tool_generate_image(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
     prompt = args.get("prompt", "") or "professional high-end marketing graphic"
