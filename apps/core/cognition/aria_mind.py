@@ -581,6 +581,616 @@ async def _fetch_image_bytes(url: str, timeout: float = 20.0) -> bytes:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# TOOL HANDLERS (Tool Router extraction, Stage 1 — see AAS Fase 2 / ADR-005)
+#
+# Mechanical, behavior-preserving conversion of _execute_tool's if/elif
+# chain into a registry. Each function below is a verbatim extraction of one
+# former `elif tool == "...":` branch — same body, same lazy imports, same
+# return values — now a standalone module-level coroutine instead of an
+# inline block. No branch's business logic changed in this conversion.
+#
+# Batch 1 (this batch): the 25 tools with zero `self` coupling — verified by
+# grepping _execute_tool's full body for `self.` before starting this
+# extraction (see AAS reconnaissance report). Handlers therefore only need
+# (tool, args, attempt, email), never AriaMind instance state. The two tools
+# that DO need instance state (add_goal/update_goal via _load_goals/
+# _apply_goal_action; post_to_social via _cache_client) are deliberately
+# left inside _execute_tool's remaining if/elif chain for a later batch,
+# once a small `ctx` object exists to carry that state safely.
+#
+# _execute_tool checks this registry first; anything not found here falls
+# through to the (still large, shrinking batch by batch) if/elif chain
+# below it — the strangler pattern applied at the function level.
+# ═══════════════════════════════════════════════════════════════════════════
+
+_ToolHandler = "Callable[[str, dict, int, str], Awaitable[tuple[str, dict]]]"
+
+
+async def _tool_generate_image(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    prompt = args.get("prompt", "") or "professional high-end marketing graphic"
+    import urllib.parse as _url
+
+    import httpx
+
+    # Pollinations FIRST — HF's api-inference host is deprecated (DNS fails),
+    # so go straight to the reliable, keyless provider that actually works.
+    poll_url = (
+        "https://image.pollinations.ai/prompt/"
+        f"{_url.quote(prompt[:400])}?width=1024&height=1024&nologo=true&model=flux"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.get(poll_url)
+        if resp.status_code == 200 and resp.content:
+            logger.info("[AriaMind] Image generated via Pollinations")
+            # media dict is spread into MindResponse(**media), so it must
+            # only contain valid fields (image_bytes). URL stays in the text.
+            return (
+                f"Image generated: {prompt}\n{poll_url}",
+                {"image_bytes": resp.content},
+            )
+    except Exception as e:
+        logger.error("[AriaMind] Pollinations failed: %s", e)
+
+    # Secondary: HuggingFace FLUX (only if the host/token happen to work).
+    try:
+        from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+        r = await HuggingFaceSuite().generate_image(
+            prompt=prompt,
+            model="black-forest-labs/FLUX.1-schnell",
+            width=1024,
+            height=1024,
+            num_inference_steps=4,
+        )
+        if r.get("success") and r.get("image_bytes"):
+            return "Image generated with FLUX.1", {"image_bytes": r["image_bytes"]}
+    except Exception as e:
+        logger.error("[AriaMind] HF image failed: %s", e)
+
+    # Both providers failed to return bytes — degrade to a link in the
+    # text (media dict must only contain valid MindResponse fields).
+    return (
+        f"I couldn't embed the image right now, but you can open it here: {poll_url}",
+        {},
+    )
+
+
+async def _tool_generate_video(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    prompt = args.get("prompt", "")
+    import base64 as _b64
+
+    # Layer 2: real AI-generated footage on rented GPU (LTX/Wan2.2),
+    # when a provider token is configured. Otherwise → layer 1: our
+    # own ffmpeg reel engine (FLUX stills + Ken Burns + voiceover).
+    # Last resort: the free Wan2.2 HF Space.
+    from apps.core.tools.video_ai import get_ai_video
+
+    ai = get_ai_video()
+    r = await ai.generate(prompt) if ai.available() else {"success": False}
+    if not r.get("success"):
+        from apps.core.tools.video_engine import get_video_engine
+
+        r = await get_video_engine().generate(prompt)
+    if not r.get("success"):
+        from apps.core.tools.creative_engine import CreativeEngine
+
+        r = await CreativeEngine().generate_video(prompt)
+    if r.get("success"):
+        raw = r.get("video_bytes")
+        if not raw:
+            v64 = r.get("video_b64") or r.get("video_base64")
+            if v64:
+                raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
+        tag = r.get("provider") or (f"{r['scenes']} scenes" if r.get("scenes") else "")
+        if raw:
+            extra = f" · {tag}" if tag else ""
+            return f"Video generated ({len(raw)//1024}KB{extra})", {"video_bytes": raw}
+        if r.get("video_url"):
+            return f"Video generated: {r['video_url']}", {}
+    return (
+        f"I couldn't generate the video: {r.get('error', 'Provider not available')}",
+        {},
+    )
+
+
+async def _tool_generate_music(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    prompt = args.get("prompt", "")
+    dur = int(args.get("duration", 30))
+    from apps.core.tools.creative_engine import CreativeEngine
+
+    r = await CreativeEngine().generate_music(prompt, duration=dur)
+    if r.get("success"):
+        import base64 as _b64
+
+        ab64 = r.get("audio_base64") or r.get("audio_b64")
+        if ab64:
+            # If it's already bytes (for some reason) don't decode; if it's a str, decode it
+            audio_data = ab64 if isinstance(ab64, bytes) else _b64.b64decode(ab64)
+            return f"Music generated ({dur}s)", {"audio_bytes": audio_data}
+    return (
+        f"I couldn't generate the music: {r.get('error', 'Provider not available')}",
+        {},
+    )
+
+
+async def _tool_web_search(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    query = args.get("query", "")
+    from apps.core.tools.web_tools import WebTools
+
+    r = await WebTools().search_web(query, num_results=10)
+    if r.get("success") and r.get("results"):
+        source = r.get("source", "web")
+        lines = [f"[Source: {source} | Query: {query}]"]
+        for i, res in enumerate(r["results"][:8]):
+            title = res.get("title", "")
+            snippet = res.get("snippet", "")[:300]
+            url = res.get("url", "")
+            lines.append(f"{i+1}. **{title}**\n   {snippet}\n   {url}")
+        return "\n\n".join(lines), {}
+    return "No search results. Try rephrasing the query.", {}
+
+
+async def _tool_deep_search(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    query = args.get("query", "")
+    num_pages = min(int(args.get("num_pages", 3)), 5)
+    from apps.core.tools.web_tools import WebTools
+
+    wt = WebTools()
+    r = await wt.search_web(query, num_results=num_pages + 2)
+    if not r.get("success") or not r.get("results"):
+        return "No results found for the deep search.", {}
+    # Fetch content from top pages in parallel
+    urls = [res.get("url", "") for res in r["results"] if res.get("url")][:num_pages]
+    fetch_tasks = [wt.fetch_page(url, max_chars=2000) for url in urls]
+    pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+    parts = [f"[Deep Search: {query}]"]
+    for i, (res, page) in enumerate(zip(r["results"], pages, strict=False)):
+        title = res.get("title", f"Result {i+1}")
+        url = res.get("url", "")
+        if isinstance(page, dict) and page.get("success") and page.get("text"):
+            content = page["text"][:1500]
+        else:
+            content = res.get("snippet", "")[:400]
+        parts.append(f"### {title}\n{url}\n{content}")
+    return "\n\n---\n\n".join(parts), {}
+
+
+async def _tool_fetch_url(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    if not url:
+        return "I need a URL to read.", {}
+    from apps.core.tools.web_tools import WebTools
+
+    r = await WebTools().fetch_page(url, max_chars=4000)
+    if r.get("success") and r.get("text"):
+        return f"[Content from {url}]\n\n{r['text']}", {}
+    return f"I couldn't read the URL: {r.get('error', 'No response')}", {}
+
+
+async def _tool_get_trends(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.tools.web_tools import WebTools
+
+    wt = WebTools()
+    hn, rd = await asyncio.gather(
+        wt.get_hacker_news_trending(limit=5),
+        wt.get_reddit_trending(limit=5),
+        return_exceptions=True,
+    )
+    parts = []
+    if isinstance(hn, dict) and hn.get("success"):
+        hn_titles = [s.get("title", "")[:70] for s in hn.get("stories", [])[:4]]
+        parts.append("HN: " + " | ".join(hn_titles))
+    if isinstance(rd, dict) and rd.get("success"):
+        rd_titles = [p.get("title", "")[:70] for p in rd.get("posts", [])[:4]]
+        parts.append("Reddit: " + " | ".join(rd_titles))
+    return "\n".join(parts) if parts else "No trends available", {}
+
+
+async def _tool_get_status(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    try:
+        from apps.core.training.continuous_trainer import get_trainer
+
+        s = get_trainer().get_status()
+        skills = s.get("skill_scores", {})
+        skills_str = ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluating"
+        return (
+            f"Cycle #{s.get('cycle', 0)} | Skills: {skills_str} | "
+            f"Running: {s.get('running', False)}"
+        ), {}
+    except Exception as e:
+        return f"System active (error getting detail: {e})", {}
+
+
+async def _tool_run_income(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.agents.orchestrator import Orchestrator
+
+    r = await Orchestrator().run_cycle()
+    rev = r.get("revenue_summary", {}).get("total_revenue_usd", 0)
+    pub = r.get("revenue_summary", {}).get("items_published", 0)
+    t = r.get("cycle_time_s", 0)
+    return (f"Cycle completed in {t:.0f}s — " f"Revenue: ${rev:.2f} — Published: {pub}"), {}
+
+
+async def _tool_square_sell(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.integrations.square_engine import SquareEngine
+
+    engine = SquareEngine()
+    name = args.get("name", "Aria Product")
+    desc = args.get("description", "Generated by Aria AI")
+    price = int(args.get("price", 1000))  # cents
+    r = await engine.create_catalog_item(name, desc, price)
+    if r.get("success"):
+        link = await engine.create_payment_link(r["data"]["object"]["id"], name, price)
+        return (
+            f"Product created on Square: {name}. Payment link: {link.get('payment_link')}",
+            {},
+        )
+    return f"Error on Square: {r.get('error')}", {}
+
+
+async def _tool_speak(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    text_input = args.get("text", "")
+    voice = args.get("voice", "v2/es_speaker_1")
+    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+    r = await HuggingFaceSuite().text_to_speech_bark(text_input, voice_preset=voice)
+    if r.get("success") and r.get("audio_bytes"):
+        ab = r["audio_bytes"]
+        return f"Audio generated ({len(ab)//1024}KB, voice: {voice})", {"audio_bytes": ab}
+    return r.get("error", "TTS not available"), {}
+
+
+async def _tool_translate(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    text_input = args.get("text", "")
+    source = args.get("source", "es")
+    target = args.get("target", "en")
+    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+    r = await HuggingFaceSuite().translate(text_input, source=source, target=target)
+    if r.get("success"):
+        return f"[{source}→{target}] {r.get('translated', '')}", {}
+    return r.get("error", "Translation not available"), {}
+
+
+async def _tool_generate_pdf(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    title = args.get("title", "Document")
+    content = args.get("content", "")
+    sections = args.get("sections") or []
+    from apps.core.tools.pdf_generator import generate_pdf as _gen_pdf
+
+    r = await _gen_pdf(title=title, content=content, sections=sections)
+    if r.get("success") and r.get("pdf_bytes"):
+        fname = r.get("filename", "document.pdf")
+        size = r.get("size_kb", 0)
+        return (
+            f"PDF generated: {fname} ({size}KB)",
+            {"document_bytes": r["pdf_bytes"], "document_filename": fname},
+        )
+    return r.get("error", "I couldn't generate the PDF"), {}
+
+
+async def _tool_create_website(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.tools.website_engine import WebsiteEngine
+
+    r = await WebsiteEngine().generate_website(
+        name=args.get("name", "My Website"),
+        description=args.get("description", ""),
+        sections=args.get("sections", ["hero", "features", "cta", "footer"]),
+        template=args.get("template", "saas"),
+    )
+    if r.get("success") and r.get("html_bytes"):
+        fname = r.get("filename", "website.html")
+        size = len(r["html_bytes"]) // 1024
+        return (
+            f"Website generated: {fname} ({size}KB)",
+            {"document_bytes": r["html_bytes"], "document_filename": fname},
+        )
+    return r.get("error", "Website generation failed"), {}
+
+
+async def _tool_create_social_content(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    platforms = args.get("platforms", ["instagram", "linkedin", "twitter"])
+    tone = args.get("tone", "professional")
+    from apps.core.tools.social_engine import SocialContentEngine
+
+    r = await SocialContentEngine().create_content_pack(topic, platforms, tone)
+    if r.get("success"):
+        lines = [f"Content generated for {r.get('generated', 0)} platforms:\n"]
+        for plat, res in r.get("platforms", {}).items():
+            if res.get("success"):
+                lines.append(f"**{plat.upper()}**\n{res.get('content', '')[:500]}\n")
+        return "\n".join(lines), {}
+    return "I couldn't generate social content", {}
+
+
+async def _tool_build_software(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.tools.software_builder import SoftwareBuilder
+
+    r = await SoftwareBuilder().build_project(
+        name=args.get("name", "MyApp"),
+        description=args.get("description", ""),
+        stack=args.get("stack", "fastapi"),
+        requirements_text=args.get("requirements", ""),
+    )
+    if r.get("success") and r.get("zip_bytes"):
+        fname = r.get("filename", "project.zip")
+        size = r.get("size_kb", 0)
+        files = r.get("files", [])
+        obs = f"Project generated: {fname} ({size}KB) — {len(files)} files: {', '.join(files[:6])}"
+        return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
+    return r.get("error", "Software build failed"), {}
+
+
+async def _tool_build_game(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.tools.game_builder import GameBuilder
+
+    r = await GameBuilder().create_game(
+        name=args.get("name", "MyGame"),
+        genre=args.get("genre", "arcade"),
+        description=args.get("description", ""),
+        engine=args.get("engine", "pygame"),
+    )
+    if r.get("success") and r.get("zip_bytes"):
+        fname = r.get("filename", "game.zip")
+        size = r.get("size_kb", 0)
+        files = r.get("files", [])
+        obs = f"Game generated ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} files"
+        return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
+    return r.get("error", "Game build failed"), {}
+
+
+async def _tool_publish_article(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    title = args.get("title", "")
+    content = args.get("content", "")
+    tags = args.get("tags", [])
+    platforms = args.get("platforms", ["devto"])
+
+    # ── SAFETY LAYER 3: content firewall ─────────────────────
+    # Checks the AI-generated article itself, not the request
+    # that produced it — a phishing-shaped article can come from
+    # an innocuously-worded prompt, so Layer 1 (which only
+    # screens the raw chat message) can't be relied on here.
+    from apps.core.config import settings as _guardrail_settings
+    from apps.core.safety import guardrails
+
+    if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+        safety = guardrails.check_content_safety(f"{title}\n{content}")
+        if not safety.safe:
+            with suppress(Exception):
+                await guardrails.record_audit_event(
+                    "content_blocked",
+                    {"email": email, "tool": tool, "findings": safety.findings},
+                )
+            return (
+                "I'm not going to publish that — it matched a blocked pattern: "
+                f"{'; '.join(safety.findings)}.",
+                {},
+            )
+
+    from apps.core.tools.publishing_tools import PublishingTools
+
+    pt = PublishingTools()
+    article = {"title": title, "body": content, "body_html": content, "tags": tags}
+    results = {}
+    for plat in platforms:
+        if plat == "devto":
+            results["devto"] = await pt.publish_devto(article)
+        elif plat == "medium":
+            results["medium"] = await pt.publish_medium(article)
+        elif plat == "hashnode":
+            results["hashnode"] = await pt.publish_hashnode(article)
+    published = [p for p, r in results.items() if r.get("success")]
+    if published:
+        return f"Article published on: {', '.join(published)}", {}
+    errors = "; ".join(f"{p}: {r.get('error','?')}" for p, r in results.items())
+    return f"I couldn't publish: {errors}", {}
+
+
+async def _tool_send_email(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    subject = args.get("subject", "")
+    body = args.get("body", "")
+    to = args.get("to", "")
+
+    # ── SAFETY LAYER 3: content firewall ─────────────────────
+    # An email sent to a real recipient is unrecallable the
+    # instant it's out — checked here, not just via Layer 1 on
+    # the request text, for the same reason as publish_article.
+    from apps.core.config import settings as _guardrail_settings
+    from apps.core.safety import guardrails
+
+    if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+        safety = guardrails.check_content_safety(f"{subject}\n{body}")
+        if not safety.safe:
+            with suppress(Exception):
+                await guardrails.record_audit_event(
+                    "content_blocked",
+                    {"email": email, "tool": tool, "findings": safety.findings},
+                )
+            return (
+                "I'm not going to send that — it matched a blocked pattern: "
+                f"{'; '.join(safety.findings)}.",
+                {},
+            )
+
+    from apps.core.tools.publishing_tools import PublishingTools
+
+    r = await PublishingTools().send_newsletter(subject, body, to_override=to)
+    if r.get("success"):
+        return f"Email sent via {r.get('provider', 'email')}", {}
+    return r.get("error", "Email not available"), {}
+
+
+async def _tool_describe_image(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    if not url:
+        return "I need an image URL.", {}
+    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+    r = await HuggingFaceSuite().describe_image(image_url=url)
+    if r.get("success"):
+        return f"Description: {r.get('description', '')}", {}
+    return r.get("error", "I couldn't describe the image"), {}
+
+
+async def _tool_execute_code(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    code = args.get("code", "")
+    language = args.get("language", "python")
+
+    # ── SAFETY LAYER 3: deterministic code firewall ──────────
+    # Regex + (if installed) bandit static analysis — unlike
+    # Layers 1-2 this can't be reasoned around by clever phrasing.
+    from apps.core.config import settings as _guardrail_settings
+
+    if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+        from apps.core.safety import guardrails
+
+        safety = guardrails.check_code_safety(code)
+        if not safety.safe:
+            with suppress(Exception):
+                await guardrails.record_audit_event(
+                    "code_blocked",
+                    {"email": email, "findings": safety.findings},
+                )
+                await guardrails.get_kill_switch().record_and_check_anomaly(
+                    email=email, kind="code_blocked"
+                )
+            return (
+                "I can't run that code — it matched a blocked pattern: "
+                f"{'; '.join(safety.findings)}.",
+                {},
+            )
+
+    from apps.core.tools.code_runner import CodeRunner
+
+    r = await CodeRunner().run(code=code, language=language)
+    output = r.get("stdout", "") or r.get("stderr", "") or "(no output)"
+    status = "OK" if r.get("success") else "ERROR"
+    return f"[{language} {status}]\n{output[:2000]}", {}
+
+
+async def _tool_browse_page(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    take_shot = args.get("screenshot", False)
+    from apps.core.tools.browser_sandbox import get_sandbox
+
+    r = await get_sandbox().browse(url, extract=True, screenshot=take_shot)
+    content = r.get("content", "")[:3000]
+    title = r.get("title", url)
+    obs = f"[PAGE: {title}]\n{content}"
+    media: dict = {}
+    if take_shot and r.get("screenshot_bytes"):
+        media["image_bytes"] = r["screenshot_bytes"]
+    return obs, media
+
+
+async def _tool_interact_browser(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    steps = args.get("steps", [])
+    from apps.core.tools.browser_sandbox import get_sandbox
+
+    session = get_sandbox()._get_session()
+    r = await session.interact_with_page(steps)
+    summary = (
+        f"Steps executed: {r.get('steps_executed',0)}, succeeded: {r.get('steps_succeeded',0)}"
+    )
+    details = "\n".join(
+        f"  {s['action']}: {'OK' if s.get('result',{}).get('success') else 'FAIL'}"
+        for s in r.get("results", [])
+    )
+    return f"[BROWSER] {summary}\n{details}", {}
+
+
+async def _tool_computer_use(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    task = args.get("task", "")
+    if not task:
+        return "I need a task description to operate the computer for.", {}
+    start_url = args.get("start_url", "about:blank")
+    max_steps = int(args.get("max_steps", 15))
+    import base64
+
+    from apps.core.config import settings
+    from apps.core.integrations.computer_agent import (
+        BrowserComputer,
+        ComputerUseAgent,
+    )
+
+    if not settings.ANTHROPIC_API_KEY:
+        return (
+            "Computer Use needs ANTHROPIC_API_KEY configured — it isn't set.",
+            {},
+        )
+    computer = BrowserComputer(headless=True, start_url=start_url)
+    await computer.start()
+    try:
+        agent = ComputerUseAgent(computer, api_key=settings.ANTHROPIC_API_KEY)
+        run = await agent.run(task, max_steps=max_steps)
+        final_shot_b64 = await computer.screenshot_b64()
+    finally:
+        await computer.close()
+    media = {"image_bytes": base64.b64decode(final_shot_b64)}
+    summary = (
+        f"[COMPUTER USE] {len(run.steps)} steps, stop_reason={run.stop_reason}\n"
+        f"{run.final_text or '(no final text)'}"
+    )
+    return summary, media
+
+
+async def _tool_run_business_agent(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    agent_name = args.get("agent", "ceo")
+    mission = args.get("mission", "")
+    context = dict(args.get("context") or {})
+    from apps.core import auth
+    from apps.core.agents.business_hub import BusinessHub
+
+    # Threaded through so developer_agent.py can refuse to
+    # *execute* generated code for non-owners — auto-routing
+    # (agent="auto") can reach the developer agent from mission
+    # text alone, so this can't be gated by agent_name up front.
+    context["is_owner"] = auth.is_owner_email(email)
+    r = await BusinessHub().dispatch(agent_name, mission, context)
+    summary = r.get("summary", r.get("result", str(r))[:400])
+    return f"[{agent_name.upper()}] {summary}", {}
+
+
+_TOOL_HANDLERS: dict = {
+    "generate_image": _tool_generate_image,
+    "generate_video": _tool_generate_video,
+    "generate_music": _tool_generate_music,
+    "web_search": _tool_web_search,
+    "deep_search": _tool_deep_search,
+    "fetch_url": _tool_fetch_url,
+    "get_trends": _tool_get_trends,
+    "get_status": _tool_get_status,
+    "run_income": _tool_run_income,
+    "square_sell": _tool_square_sell,
+    "speak": _tool_speak,
+    "translate": _tool_translate,
+    "generate_pdf": _tool_generate_pdf,
+    "create_website": _tool_create_website,
+    "create_social_content": _tool_create_social_content,
+    "build_software": _tool_build_software,
+    "build_game": _tool_build_game,
+    "publish_article": _tool_publish_article,
+    "send_email": _tool_send_email,
+    "describe_image": _tool_describe_image,
+    "execute_code": _tool_execute_code,
+    "browse_page": _tool_browse_page,
+    "interact_browser": _tool_interact_browser,
+    "computer_use": _tool_computer_use,
+    "run_business_agent": _tool_run_business_agent,
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ARIA MIND
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1530,559 +2140,21 @@ class AriaMind:
                     "This action is reserved for ARIA's owner.",
                     {},
                 )
+
+        # Registry dispatch (Tool Router extraction, Stage 1 — Batch 1 of N).
+        # Anything not yet migrated falls through to the if/elif chain below,
+        # unchanged. Same try/except contract as the chain: never raises.
+        handler = _TOOL_HANDLERS.get(tool)
+        if handler is not None:
+            try:
+                return await handler(tool, args, attempt, email)
+            except Exception as exc:
+                logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
+                return f"I couldn't complete the '{tool}' action — please try again.", {}
+
         try:
-            # ── IMAGE ────────────────────────────────────────────────────
-            if tool == "generate_image":
-                prompt = args.get("prompt", "") or "professional high-end marketing graphic"
-                import urllib.parse as _url
-
-                import httpx
-
-                # Pollinations FIRST — HF's api-inference host is deprecated (DNS fails),
-                # so go straight to the reliable, keyless provider that actually works.
-                poll_url = (
-                    "https://image.pollinations.ai/prompt/"
-                    f"{_url.quote(prompt[:400])}?width=1024&height=1024&nologo=true&model=flux"
-                )
-                try:
-                    async with httpx.AsyncClient(timeout=45.0) as client:
-                        resp = await client.get(poll_url)
-                    if resp.status_code == 200 and resp.content:
-                        logger.info("[AriaMind] Image generated via Pollinations")
-                        # media dict is spread into MindResponse(**media), so it must
-                        # only contain valid fields (image_bytes). URL stays in the text.
-                        return (
-                            f"Image generated: {prompt}\n{poll_url}",
-                            {"image_bytes": resp.content},
-                        )
-                except Exception as e:
-                    logger.error("[AriaMind] Pollinations failed: %s", e)
-
-                # Secondary: HuggingFace FLUX (only if the host/token happen to work).
-                try:
-                    from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                    r = await HuggingFaceSuite().generate_image(
-                        prompt=prompt,
-                        model="black-forest-labs/FLUX.1-schnell",
-                        width=1024,
-                        height=1024,
-                        num_inference_steps=4,
-                    )
-                    if r.get("success") and r.get("image_bytes"):
-                        return "Image generated with FLUX.1", {"image_bytes": r["image_bytes"]}
-                except Exception as e:
-                    logger.error("[AriaMind] HF image failed: %s", e)
-
-                # Both providers failed to return bytes — degrade to a link in the
-                # text (media dict must only contain valid MindResponse fields).
-                return (
-                    f"I couldn't embed the image right now, but you can open it here: {poll_url}",
-                    {},
-                )
-
-            # ── VIDEO ────────────────────────────────────────────────────
-            if tool == "generate_video":
-                prompt = args.get("prompt", "")
-                import base64 as _b64
-
-                # Layer 2: real AI-generated footage on rented GPU (LTX/Wan2.2),
-                # when a provider token is configured. Otherwise → layer 1: our
-                # own ffmpeg reel engine (FLUX stills + Ken Burns + voiceover).
-                # Last resort: the free Wan2.2 HF Space.
-                from apps.core.tools.video_ai import get_ai_video
-
-                ai = get_ai_video()
-                r = await ai.generate(prompt) if ai.available() else {"success": False}
-                if not r.get("success"):
-                    from apps.core.tools.video_engine import get_video_engine
-
-                    r = await get_video_engine().generate(prompt)
-                if not r.get("success"):
-                    from apps.core.tools.creative_engine import CreativeEngine
-
-                    r = await CreativeEngine().generate_video(prompt)
-                if r.get("success"):
-                    raw = r.get("video_bytes")
-                    if not raw:
-                        v64 = r.get("video_b64") or r.get("video_base64")
-                        if v64:
-                            raw = v64 if isinstance(v64, bytes) else _b64.b64decode(v64)
-                    tag = r.get("provider") or (f"{r['scenes']} scenes" if r.get("scenes") else "")
-                    if raw:
-                        extra = f" · {tag}" if tag else ""
-                        return f"Video generated ({len(raw)//1024}KB{extra})", {"video_bytes": raw}
-                    if r.get("video_url"):
-                        return f"Video generated: {r['video_url']}", {}
-                return (
-                    f"I couldn't generate the video: {r.get('error', 'Provider not available')}",
-                    {},
-                )
-
-            # ── MUSIC ────────────────────────────────────────────────────
-            if tool == "generate_music":
-                prompt = args.get("prompt", "")
-                dur = int(args.get("duration", 30))
-                from apps.core.tools.creative_engine import CreativeEngine
-
-                r = await CreativeEngine().generate_music(prompt, duration=dur)
-                if r.get("success"):
-                    import base64 as _b64
-
-                    ab64 = r.get("audio_base64") or r.get("audio_b64")
-                    if ab64:
-                        # If it's already bytes (for some reason) don't decode; if it's a str, decode it
-                        audio_data = ab64 if isinstance(ab64, bytes) else _b64.b64decode(ab64)
-                        return f"Music generated ({dur}s)", {"audio_bytes": audio_data}
-                return (
-                    f"I couldn't generate the music: {r.get('error', 'Provider not available')}",
-                    {},
-                )
-
-            # ── WEB SEARCH ───────────────────────────────────────────────
-            if tool == "web_search":
-                query = args.get("query", "")
-                from apps.core.tools.web_tools import WebTools
-
-                r = await WebTools().search_web(query, num_results=10)
-                if r.get("success") and r.get("results"):
-                    source = r.get("source", "web")
-                    lines = [f"[Source: {source} | Query: {query}]"]
-                    for i, res in enumerate(r["results"][:8]):
-                        title = res.get("title", "")
-                        snippet = res.get("snippet", "")[:300]
-                        url = res.get("url", "")
-                        lines.append(f"{i+1}. **{title}**\n   {snippet}\n   {url}")
-                    return "\n\n".join(lines), {}
-                return "No search results. Try rephrasing the query.", {}
-
-            # ── DEEP SEARCH ──────────────────────────────────────────────
-            if tool == "deep_search":
-                query = args.get("query", "")
-                num_pages = min(int(args.get("num_pages", 3)), 5)
-                from apps.core.tools.web_tools import WebTools
-
-                wt = WebTools()
-                r = await wt.search_web(query, num_results=num_pages + 2)
-                if not r.get("success") or not r.get("results"):
-                    return "No results found for the deep search.", {}
-                # Fetch content from top pages in parallel
-                urls = [res.get("url", "") for res in r["results"] if res.get("url")][:num_pages]
-                fetch_tasks = [wt.fetch_page(url, max_chars=2000) for url in urls]
-                pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-                parts = [f"[Deep Search: {query}]"]
-                for i, (res, page) in enumerate(zip(r["results"], pages, strict=False)):
-                    title = res.get("title", f"Result {i+1}")
-                    url = res.get("url", "")
-                    if isinstance(page, dict) and page.get("success") and page.get("text"):
-                        content = page["text"][:1500]
-                    else:
-                        content = res.get("snippet", "")[:400]
-                    parts.append(f"### {title}\n{url}\n{content}")
-                return "\n\n---\n\n".join(parts), {}
-
-            # ── FETCH URL ────────────────────────────────────────────────
-            if tool == "fetch_url":
-                url = args.get("url", "")
-                if not url:
-                    return "I need a URL to read.", {}
-                from apps.core.tools.web_tools import WebTools
-
-                r = await WebTools().fetch_page(url, max_chars=4000)
-                if r.get("success") and r.get("text"):
-                    return f"[Content from {url}]\n\n{r['text']}", {}
-                return f"I couldn't read the URL: {r.get('error', 'No response')}", {}
-
-            # ── TRENDS ───────────────────────────────────────────────────
-            if tool == "get_trends":
-                from apps.core.tools.web_tools import WebTools
-
-                wt = WebTools()
-                hn, rd = await asyncio.gather(
-                    wt.get_hacker_news_trending(limit=5),
-                    wt.get_reddit_trending(limit=5),
-                    return_exceptions=True,
-                )
-                parts = []
-                if isinstance(hn, dict) and hn.get("success"):
-                    hn_titles = [s.get("title", "")[:70] for s in hn.get("stories", [])[:4]]
-                    parts.append("HN: " + " | ".join(hn_titles))
-                if isinstance(rd, dict) and rd.get("success"):
-                    rd_titles = [p.get("title", "")[:70] for p in rd.get("posts", [])[:4]]
-                    parts.append("Reddit: " + " | ".join(rd_titles))
-                return "\n".join(parts) if parts else "No trends available", {}
-
-            # ── SYSTEM STATUS ────────────────────────────────────────────
-            if tool == "get_status":
-                try:
-                    from apps.core.training.continuous_trainer import get_trainer
-
-                    s = get_trainer().get_status()
-                    skills = s.get("skill_scores", {})
-                    skills_str = (
-                        ", ".join(f"{k}:{v:.0f}%" for k, v in skills.items()) or "evaluating"
-                    )
-                    return (
-                        f"Cycle #{s.get('cycle', 0)} | Skills: {skills_str} | "
-                        f"Running: {s.get('running', False)}"
-                    ), {}
-                except Exception as e:
-                    return f"System active (error getting detail: {e})", {}
-
-            # ── INCOME CYCLE ─────────────────────────────────────────────
-            elif tool == "run_income":
-                from apps.core.agents.orchestrator import Orchestrator
-
-                r = await Orchestrator().run_cycle()
-                rev = r.get("revenue_summary", {}).get("total_revenue_usd", 0)
-                pub = r.get("revenue_summary", {}).get("items_published", 0)
-                t = r.get("cycle_time_s", 0)
-                return (
-                    f"Cycle completed in {t:.0f}s — " f"Revenue: ${rev:.2f} — Published: {pub}"
-                ), {}
-
-            # ── SQUARE ────────────────────────────────────────────────────
-            elif tool == "square_sell":
-                from apps.core.integrations.square_engine import SquareEngine
-
-                engine = SquareEngine()
-                name = args.get("name", "Aria Product")
-                desc = args.get("description", "Generated by Aria AI")
-                price = int(args.get("price", 1000))  # cents
-                r = await engine.create_catalog_item(name, desc, price)
-                if r.get("success"):
-                    link = await engine.create_payment_link(r["data"]["object"]["id"], name, price)
-                    return (
-                        f"Product created on Square: {name}. Payment link: {link.get('payment_link')}",
-                        {},
-                    )
-                return f"Error on Square: {r.get('error')}", {}
-
-            # ── TEXT-TO-SPEECH (BARK) ─────────────────────────────────────
-            elif tool == "speak":
-                text_input = args.get("text", "")
-                voice = args.get("voice", "v2/es_speaker_1")
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                r = await HuggingFaceSuite().text_to_speech_bark(text_input, voice_preset=voice)
-                if r.get("success") and r.get("audio_bytes"):
-                    ab = r["audio_bytes"]
-                    return f"Audio generated ({len(ab)//1024}KB, voice: {voice})", {
-                        "audio_bytes": ab
-                    }
-                return r.get("error", "TTS not available"), {}
-
-            # ── TRANSLATION ──────────────────────────────────────────────
-            elif tool == "translate":
-                text_input = args.get("text", "")
-                source = args.get("source", "es")
-                target = args.get("target", "en")
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                r = await HuggingFaceSuite().translate(text_input, source=source, target=target)
-                if r.get("success"):
-                    return f"[{source}→{target}] {r.get('translated', '')}", {}
-                return r.get("error", "Translation not available"), {}
-
-            # ── PDF GENERATION ───────────────────────────────────────────
-            elif tool == "generate_pdf":
-                title = args.get("title", "Document")
-                content = args.get("content", "")
-                sections = args.get("sections") or []
-                from apps.core.tools.pdf_generator import generate_pdf as _gen_pdf
-
-                r = await _gen_pdf(title=title, content=content, sections=sections)
-                if r.get("success") and r.get("pdf_bytes"):
-                    fname = r.get("filename", "document.pdf")
-                    size = r.get("size_kb", 0)
-                    return (
-                        f"PDF generated: {fname} ({size}KB)",
-                        {"document_bytes": r["pdf_bytes"], "document_filename": fname},
-                    )
-                return r.get("error", "I couldn't generate the PDF"), {}
-
-            # ── WEBSITE ───────────────────────────────────────────────────
-            elif tool == "create_website":
-                from apps.core.tools.website_engine import WebsiteEngine
-
-                r = await WebsiteEngine().generate_website(
-                    name=args.get("name", "My Website"),
-                    description=args.get("description", ""),
-                    sections=args.get("sections", ["hero", "features", "cta", "footer"]),
-                    template=args.get("template", "saas"),
-                )
-                if r.get("success") and r.get("html_bytes"):
-                    fname = r.get("filename", "website.html")
-                    size = len(r["html_bytes"]) // 1024
-                    return (
-                        f"Website generated: {fname} ({size}KB)",
-                        {"document_bytes": r["html_bytes"], "document_filename": fname},
-                    )
-                return r.get("error", "Website generation failed"), {}
-
-            # ── SOCIAL CONTENT ────────────────────────────────────────────
-            elif tool == "create_social_content":
-                topic = args.get("topic", "")
-                platforms = args.get("platforms", ["instagram", "linkedin", "twitter"])
-                tone = args.get("tone", "professional")
-                from apps.core.tools.social_engine import SocialContentEngine
-
-                r = await SocialContentEngine().create_content_pack(topic, platforms, tone)
-                if r.get("success"):
-                    lines = [f"Content generated for {r.get('generated', 0)} platforms:\n"]
-                    for plat, res in r.get("platforms", {}).items():
-                        if res.get("success"):
-                            lines.append(f"**{plat.upper()}**\n{res.get('content', '')[:500]}\n")
-                    return "\n".join(lines), {}
-                return "I couldn't generate social content", {}
-
-            # ── SOFTWARE / APP ───────────────────────────────────────────
-            elif tool == "build_software":
-                from apps.core.tools.software_builder import SoftwareBuilder
-
-                r = await SoftwareBuilder().build_project(
-                    name=args.get("name", "MyApp"),
-                    description=args.get("description", ""),
-                    stack=args.get("stack", "fastapi"),
-                    requirements_text=args.get("requirements", ""),
-                )
-                if r.get("success") and r.get("zip_bytes"):
-                    fname = r.get("filename", "project.zip")
-                    size = r.get("size_kb", 0)
-                    files = r.get("files", [])
-                    obs = f"Project generated: {fname} ({size}KB) — {len(files)} files: {', '.join(files[:6])}"
-                    return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
-                return r.get("error", "Software build failed"), {}
-
-            # ── VIDEO GAME ────────────────────────────────────────────────
-            elif tool == "build_game":
-                from apps.core.tools.game_builder import GameBuilder
-
-                r = await GameBuilder().create_game(
-                    name=args.get("name", "MyGame"),
-                    genre=args.get("genre", "arcade"),
-                    description=args.get("description", ""),
-                    engine=args.get("engine", "pygame"),
-                )
-                if r.get("success") and r.get("zip_bytes"):
-                    fname = r.get("filename", "game.zip")
-                    size = r.get("size_kb", 0)
-                    files = r.get("files", [])
-                    obs = f"Game generated ({r.get('engine', '')}): {fname} ({size}KB) — {len(files)} files"
-                    return obs, {"document_bytes": r["zip_bytes"], "document_filename": fname}
-                return r.get("error", "Game build failed"), {}
-
-            # ── PUBLISH ARTICLE ──────────────────────────────────────────
-            elif tool == "publish_article":
-                title = args.get("title", "")
-                content = args.get("content", "")
-                tags = args.get("tags", [])
-                platforms = args.get("platforms", ["devto"])
-
-                # ── SAFETY LAYER 3: content firewall ─────────────────────
-                # Checks the AI-generated article itself, not the request
-                # that produced it — a phishing-shaped article can come from
-                # an innocuously-worded prompt, so Layer 1 (which only
-                # screens the raw chat message) can't be relied on here.
-                from apps.core.config import settings as _guardrail_settings
-                from apps.core.safety import guardrails
-
-                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
-                    safety = guardrails.check_content_safety(f"{title}\n{content}")
-                    if not safety.safe:
-                        with suppress(Exception):
-                            await guardrails.record_audit_event(
-                                "content_blocked",
-                                {"email": email, "tool": tool, "findings": safety.findings},
-                            )
-                        return (
-                            "I'm not going to publish that — it matched a blocked pattern: "
-                            f"{'; '.join(safety.findings)}.",
-                            {},
-                        )
-
-                from apps.core.tools.publishing_tools import PublishingTools
-
-                pt = PublishingTools()
-                article = {"title": title, "body": content, "body_html": content, "tags": tags}
-                results = {}
-                for plat in platforms:
-                    if plat == "devto":
-                        results["devto"] = await pt.publish_devto(article)
-                    elif plat == "medium":
-                        results["medium"] = await pt.publish_medium(article)
-                    elif plat == "hashnode":
-                        results["hashnode"] = await pt.publish_hashnode(article)
-                published = [p for p, r in results.items() if r.get("success")]
-                if published:
-                    return f"Article published on: {', '.join(published)}", {}
-                errors = "; ".join(f"{p}: {r.get('error','?')}" for p, r in results.items())
-                return f"I couldn't publish: {errors}", {}
-
-            # ── SEND EMAIL / NEWSLETTER ───────────────────────────────────
-            elif tool == "send_email":
-                subject = args.get("subject", "")
-                body = args.get("body", "")
-                to = args.get("to", "")
-
-                # ── SAFETY LAYER 3: content firewall ─────────────────────
-                # An email sent to a real recipient is unrecallable the
-                # instant it's out — checked here, not just via Layer 1 on
-                # the request text, for the same reason as publish_article.
-                from apps.core.config import settings as _guardrail_settings
-                from apps.core.safety import guardrails
-
-                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
-                    safety = guardrails.check_content_safety(f"{subject}\n{body}")
-                    if not safety.safe:
-                        with suppress(Exception):
-                            await guardrails.record_audit_event(
-                                "content_blocked",
-                                {"email": email, "tool": tool, "findings": safety.findings},
-                            )
-                        return (
-                            "I'm not going to send that — it matched a blocked pattern: "
-                            f"{'; '.join(safety.findings)}.",
-                            {},
-                        )
-
-                from apps.core.tools.publishing_tools import PublishingTools
-
-                r = await PublishingTools().send_newsletter(subject, body, to_override=to)
-                if r.get("success"):
-                    return f"Email sent via {r.get('provider', 'email')}", {}
-                return r.get("error", "Email not available"), {}
-
-            # ── DESCRIBE IMAGE ────────────────────────────────────────────
-            elif tool == "describe_image":
-                url = args.get("url", "")
-                if not url:
-                    return "I need an image URL.", {}
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                r = await HuggingFaceSuite().describe_image(image_url=url)
-                if r.get("success"):
-                    return f"Description: {r.get('description', '')}", {}
-                return r.get("error", "I couldn't describe the image"), {}
-
-            # ── EXECUTE CODE (SANDBOX) ────────────────────────────────────
-            elif tool == "execute_code":
-                code = args.get("code", "")
-                language = args.get("language", "python")
-
-                # ── SAFETY LAYER 3: deterministic code firewall ──────────
-                # Regex + (if installed) bandit static analysis — unlike
-                # Layers 1-2 this can't be reasoned around by clever phrasing.
-                from apps.core.config import settings as _guardrail_settings
-
-                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
-                    from apps.core.safety import guardrails
-
-                    safety = guardrails.check_code_safety(code)
-                    if not safety.safe:
-                        with suppress(Exception):
-                            await guardrails.record_audit_event(
-                                "code_blocked",
-                                {"email": email, "findings": safety.findings},
-                            )
-                            await guardrails.get_kill_switch().record_and_check_anomaly(
-                                email=email, kind="code_blocked"
-                            )
-                        return (
-                            "I can't run that code — it matched a blocked pattern: "
-                            f"{'; '.join(safety.findings)}.",
-                            {},
-                        )
-
-                from apps.core.tools.code_runner import CodeRunner
-
-                r = await CodeRunner().run(code=code, language=language)
-                output = r.get("stdout", "") or r.get("stderr", "") or "(no output)"
-                status = "OK" if r.get("success") else "ERROR"
-                return f"[{language} {status}]\n{output[:2000]}", {}
-
-            # ── SANDBOX BROWSER ───────────────────────────────────────────
-            elif tool == "browse_page":
-                url = args.get("url", "")
-                take_shot = args.get("screenshot", False)
-                from apps.core.tools.browser_sandbox import get_sandbox
-
-                r = await get_sandbox().browse(url, extract=True, screenshot=take_shot)
-                content = r.get("content", "")[:3000]
-                title = r.get("title", url)
-                obs = f"[PAGE: {title}]\n{content}"
-                media: dict = {}
-                if take_shot and r.get("screenshot_bytes"):
-                    media["image_bytes"] = r["screenshot_bytes"]
-                return obs, media
-
-            elif tool == "interact_browser":
-                steps = args.get("steps", [])
-                from apps.core.tools.browser_sandbox import get_sandbox
-
-                session = get_sandbox()._get_session()
-                r = await session.interact_with_page(steps)
-                summary = f"Steps executed: {r.get('steps_executed',0)}, succeeded: {r.get('steps_succeeded',0)}"
-                details = "\n".join(
-                    f"  {s['action']}: {'OK' if s.get('result',{}).get('success') else 'FAIL'}"
-                    for s in r.get("results", [])
-                )
-                return f"[BROWSER] {summary}\n{details}", {}
-
-            # ── COMPUTER USE (visual, click-driven browser agent) ─────────
-            elif tool == "computer_use":
-                task = args.get("task", "")
-                if not task:
-                    return "I need a task description to operate the computer for.", {}
-                start_url = args.get("start_url", "about:blank")
-                max_steps = int(args.get("max_steps", 15))
-                import base64
-
-                from apps.core.config import settings
-                from apps.core.integrations.computer_agent import (
-                    BrowserComputer,
-                    ComputerUseAgent,
-                )
-
-                if not settings.ANTHROPIC_API_KEY:
-                    return (
-                        "Computer Use needs ANTHROPIC_API_KEY configured — it isn't set.",
-                        {},
-                    )
-                computer = BrowserComputer(headless=True, start_url=start_url)
-                await computer.start()
-                try:
-                    agent = ComputerUseAgent(computer, api_key=settings.ANTHROPIC_API_KEY)
-                    run = await agent.run(task, max_steps=max_steps)
-                    final_shot_b64 = await computer.screenshot_b64()
-                finally:
-                    await computer.close()
-                media = {"image_bytes": base64.b64decode(final_shot_b64)}
-                summary = (
-                    f"[COMPUTER USE] {len(run.steps)} steps, stop_reason={run.stop_reason}\n"
-                    f"{run.final_text or '(no final text)'}"
-                )
-                return summary, media
-
-            # ── BUSINESS AGENT ────────────────────────────────────────────
-            elif tool == "run_business_agent":
-                agent_name = args.get("agent", "ceo")
-                mission = args.get("mission", "")
-                context = dict(args.get("context") or {})
-                from apps.core import auth
-                from apps.core.agents.business_hub import BusinessHub
-
-                # Threaded through so developer_agent.py can refuse to
-                # *execute* generated code for non-owners — auto-routing
-                # (agent="auto") can reach the developer agent from mission
-                # text alone, so this can't be gated by agent_name up front.
-                context["is_owner"] = auth.is_owner_email(email)
-                r = await BusinessHub().dispatch(agent_name, mission, context)
-                summary = r.get("summary", r.get("result", str(r))[:400])
-                return f"[{agent_name.upper()}] {summary}", {}
-
             # ── GOAL MANAGEMENT ───────────────────────────────────────────
-            elif tool in ("add_goal", "update_goal"):
+            if tool in ("add_goal", "update_goal"):
                 # Delegate to the goal_action system properly
                 action = "add" if tool == "add_goal" else "update"
                 goal_action_dict: dict = {"action": action}
@@ -2100,7 +2172,7 @@ class AriaMind:
                 return f"Goal {'added' if action == 'add' else 'updated'} successfully", {}
 
             # ── EXTENDED REASONING ────────────────────────────────────────
-            elif tool == "deep_think":
+            if tool == "deep_think":
                 question = args.get("question", "")
                 depth = args.get("depth", "auto")
                 context = args.get("context", "")
@@ -2110,7 +2182,14 @@ class AriaMind:
                 obs = f"[DEEP THINK — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
                 return obs, {}
 
-            elif tool == "analyze_decision":
+            elif tool == "analyze_decision":  # noqa: RET505 — the preceding
+                # branch (deep_think) now unconditionally returns since it's the
+                # first branch in this shrunk chain, so ruff would suggest
+                # flattening every subsequent `elif` in turn. Left as `elif`
+                # deliberately: this whole remaining ~150-branch chain is out of
+                # scope for the Batch 1 Tool Router extraction (see AAS Fase 2 /
+                # ADR-005) — restructuring it is later batches' job, not a side
+                # effect of this one.
                 question = args.get("question", "")
                 options = args.get("options", [])
                 criteria = args.get("criteria", [])
