@@ -1159,6 +1159,964 @@ async def _tool_run_business_agent(
     return f"[{agent_name.upper()}] {summary}", {}
 
 
+# ── Batch 2 (50 tools: deep_think through retargeting_performance) ─────────
+# Same extraction contract as Batch 1: verbatim body, no logic changes,
+# verified by AST-diff against origin/main before commit.
+
+
+async def _tool_deep_think(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    question = args.get("question", "")
+    depth = args.get("depth", "auto")
+    context = args.get("context", "")
+    from apps.core.tools.deep_think import get_deep_think
+
+    result = await get_deep_think().think(question, context=context, depth=depth)
+    obs = f"[DEEP THINK — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
+    return obs, {}
+
+
+async def _tool_analyze_decision(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    question = args.get("question", "")
+    options = args.get("options", [])
+    criteria = args.get("criteria", [])
+    from apps.core.tools.deep_think import get_deep_think
+
+    result = await get_deep_think().analyze_decision(question, options, criteria)
+    return f"[DECISION]\n{result['recommendation']}", {}
+
+
+async def _tool_create_presentation(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    title = args.get("title", "Presentation")
+    topic = args.get("topic", title)
+    slide_count = int(args.get("slide_count", 10))
+    template = args.get("template", "dark")
+    from apps.core.tools.presentation_builder import PresentationBuilder
+
+    r = await PresentationBuilder().create_presentation(title, topic, slide_count, template)
+    if r.get("success") and r.get("html_bytes"):
+        fname = r.get("filename", "presentation.html")
+        obs = f"Presentation '{title}' generated: {r['slide_count']} slides"
+        return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
+    return "I couldn't generate the presentation", {}
+
+
+async def _tool_create_pitch_deck(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    company = args.get("company", "")
+    problem = args.get("problem", "")
+    solution = args.get("solution", "")
+    market = args.get("market", "")
+    traction = args.get("traction", "")
+    from apps.core.tools.presentation_builder import PresentationBuilder
+
+    r = await PresentationBuilder().create_pitch_deck(company, problem, solution, market, traction)
+    if r.get("success") and r.get("html_bytes"):
+        fname = r.get("filename", "pitch_deck.html")
+        obs = f"Pitch deck '{company}' generated: {r['slide_count']} slides"
+        return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
+    return "I couldn't generate the pitch deck", {}
+
+
+async def _tool_analyze_image(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    question = args.get("question", "Describe this image in detail.")
+    from apps.core.tools.multimodal import get_multimodal
+
+    r = await get_multimodal().analyze_image(image_url=url, question=question)
+    if r.get("success"):
+        return f"[IMAGE ANALYSIS]\n{r['analysis']}", {}
+    return f"I couldn't analyze the image: {r.get('error', 'unknown error')}", {}
+
+
+async def _tool_extract_text(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    from apps.core.tools.multimodal import get_multimodal
+
+    r = await get_multimodal().extract_text(image_url=url)
+    if r.get("success"):
+        return f"[OCR]\n{r['analysis']}", {}
+    return f"I couldn't extract text: {r.get('error', 'unknown error')}", {}
+
+
+async def _tool_edit_image(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    instruction = args.get("instruction", "")
+    from apps.core.tools.multimodal import get_multimodal
+
+    r = await get_multimodal().edit_image(image_url=url, instruction=instruction)
+    if r.get("success") and r.get("image_bytes"):
+        return f"Image edited: '{instruction}'", {"image_bytes": r["image_bytes"]}
+    return f"I couldn't edit the image: {r.get('error', 'unknown error')}", {}
+
+
+async def _tool_analyze_video(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    question = args.get("question", "Describe this video in detail.")
+    from apps.core.tools.multimodal import get_multimodal
+
+    r = await get_multimodal().analyze_video_url(url, question)
+    if r.get("success"):
+        frames = r.get("frames_analyzed", 0)
+        return f"[VIDEO ANALYSIS — {frames} frames]\n{r['analysis']}", {}
+    return f"I couldn't analyze the video: {r.get('error', 'unknown error')}", {}
+
+
+async def _tool_remove_background(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    url = args.get("url", "")
+    if not url:
+        return "I need an image URL.", {}
+    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+    try:
+        img_bytes = await _fetch_image_bytes(url)
+    except Exception as exc:
+        return f"I couldn't download the image: {exc}", {}
+    r = await HuggingFaceSuite().remove_background(img_bytes)
+    if r.get("success") and r.get("image_bytes"):
+        return "Background removed.", {"image_bytes": r["image_bytes"]}
+    return r.get("error", "I couldn't remove the background"), {}
+
+
+async def _tool_classify_image(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    if not url:
+        return "I need an image URL.", {}
+    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+    try:
+        img_bytes = await _fetch_image_bytes(url)
+    except Exception as exc:
+        return f"I couldn't download the image: {exc}", {}
+    r = await HuggingFaceSuite().classify_image(img_bytes)
+    if r.get("success"):
+        top = f"{r['top_label']} ({r['top_score'] * 100:.1f}%)"
+        others = ", ".join(f"{a['label']} ({a['score'] * 100:.1f}%)" for a in r.get("all", [])[1:5])
+        obs = f"[CLASSIFICATION] {top}" + (f"\nAlso: {others}" if others else "")
+        return obs, {}
+    return r.get("error", "I couldn't classify the image"), {}
+
+
+async def _tool_document_qa(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    url = args.get("url", "")
+    question = args.get("question", "")
+    if not url or not question:
+        return "I need a document URL and a question.", {}
+    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+    try:
+        img_bytes = await _fetch_image_bytes(url)
+    except Exception as exc:
+        return f"I couldn't download the document: {exc}", {}
+    r = await HuggingFaceSuite().document_qa(img_bytes, question)
+    if r.get("success"):
+        return (
+            f"[DOCUMENT] {r['answer']} (confidence: {r['confidence'] * 100:.0f}%)",
+            {},
+        )
+    return r.get("error", "I couldn't read the document"), {}
+
+
+async def _tool_create_product_pack(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product_name = args.get("product_name", "")
+    product_description = args.get("product_description", "")
+    niche = args.get("niche", "")
+    languages = args.get("languages") or None
+    from apps.core.tools.huggingface_suite import HuggingFaceSuite
+
+    r = await HuggingFaceSuite().create_product_content_pack(
+        product_name, product_description, niche, languages
+    )
+    media: dict = {}
+    product_bytes = (r.get("product_image") or {}).get("bytes")
+    if product_bytes:
+        media["image_bytes"] = product_bytes
+    translations = r.get("translations") or {}
+    langs_done = ", ".join(translations.keys()) if translations else "none"
+    extra_imgs = []
+    if (r.get("social_image") or {}).get("bytes"):
+        extra_imgs.append("social")
+    if (r.get("blog_thumbnail") or {}).get("bytes"):
+        extra_imgs.append("blog thumbnail")
+    obs = (
+        f"[PRODUCT PACK: {product_name}]\n"
+        f"Niche: {r.get('niche_classification', niche)}\n"
+        f"Summary: {r.get('summary', '')}\n"
+        f"Market sentiment: {r.get('market_sentiment', '')}\n"
+        f"Translations generated: {langs_done}\n"
+        f"Images generated: product" + (f", {', '.join(extra_imgs)}" if extra_imgs else "")
+    )
+    return obs, media
+
+
+async def _tool_run_background(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    task_name = args.get("task", "")
+    agent_name = args.get("agent", "ceo")
+    from apps.core.agents.business_hub import BusinessHub
+    from apps.core.tools.task_manager import get_task_manager
+
+    async def _bg():
+        return await BusinessHub().dispatch(agent_name, task_name, {})
+
+    mgr = get_task_manager()
+    task_id = await mgr.submit(
+        name=task_name,
+        coro_factory=_bg,
+        description=f"{agent_name}: {task_name}",
+        session_id=None,
+    )
+    return (
+        f"Task '{task_name}' started in the background (ID: {task_id}). I'll let you know when it's done.",
+        {},
+    )
+
+
+async def _tool_task_status(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    task_id = args.get("task_id", "")
+    from apps.core.tools.task_manager import get_task_manager
+
+    mgr = get_task_manager()
+    if task_id:
+        record = mgr.get_task(task_id)
+        if record:
+            return (
+                f"[Task {task_id}] {record.status.value}: {record.result or record.error or 'in progress'}",
+                {},
+            )
+        return f"Task {task_id} not found.", {}
+    tasks = mgr.list_tasks(limit=10)
+    if not tasks:
+        return "No background tasks.", {}
+    lines = [f"• [{t['id']}] {t['status']} — {t['name']}" for t in tasks]
+    return "[BACKGROUND TASKS]\n" + "\n".join(lines), {}
+
+
+async def _tool_learn(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    source = args.get("source", "")
+    category = args.get("category", "general")
+    is_url = args.get("is_url", source.startswith("http"))
+    from apps.core.tools.knowledge_base import get_knowledge_base
+
+    kb = get_knowledge_base()
+    if is_url:
+        r = await kb.ingest_url(source, category=category)
+    else:
+        r = await kb.ingest_text(source, source=category, category=category)
+    if r.get("success"):
+        return (
+            f"Learned: {r['chunks_added']} chunks from '{source[:60]}' "
+            f"(total in KB: {r['total_chunks']})"
+        ), {}
+    return f"I couldn't learn that source: {r.get('error', 'error')}", {}
+
+
+async def _tool_search_knowledge(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    query = args.get("query", "")
+    top_k = int(args.get("top_k", 5))
+    from apps.core.tools.knowledge_base import get_knowledge_base
+
+    formatted = await get_knowledge_base().search_formatted(query, top_k=top_k)
+    if formatted:
+        return formatted, {}
+    return (
+        "I didn't find relevant information in the knowledge base. Try using 'learn' first.",
+        {},
+    )
+
+
+async def _tool_forget_source(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    source = args.get("source", "")
+    from apps.core.tools.knowledge_base import get_knowledge_base
+
+    deleted = get_knowledge_base().delete_source(source)
+    return (
+        f"Removed {deleted} chunks of '{source}' from the knowledge base.",
+        {},
+    )
+
+
+async def _tool_create_research_project(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    name = args.get("name", "")
+    goal = args.get("goal", "")
+    category = args.get("category", "General/Innovation")
+    if not name or not goal:
+        return "I need both a project name and a goal to create it.", {}
+    from apps.core.intelligence.rd_wing import get_rd_wing
+
+    project = get_rd_wing().create_project(name, goal, category)
+    return (
+        f"R&D project created: **{project.name}** ({project.category})\n{project.goal}",
+        {},
+    )
+
+
+async def _tool_add_research_finding(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    project_name = args.get("project", "")
+    title = args.get("title", "")
+    content = args.get("content", "")
+    source = args.get("source", "unspecified")
+    if not project_name or not title or not content:
+        return "I need a project name, a finding title, and its content.", {}
+    from apps.core.intelligence.rd_wing import get_rd_wing
+
+    rd = get_rd_wing()
+    if not rd.get_project(project_name):
+        return f"No R&D project named '{project_name}' — create it first.", {}
+    rd.add_finding_to_project(project_name, title, content, source)
+    return f"Finding logged on **{project_name}**: {title}", {}
+
+
+async def _tool_list_research_projects(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.intelligence.rd_wing import get_rd_wing
+
+    projects = get_rd_wing().list_projects()
+    if not projects:
+        return "No R&D projects yet. Use create_research_project to start one.", {}
+    lines = ["**R&D projects:**"]
+    for p in projects:
+        lines.append(
+            f"  • {p['name']} ({p['category']}, {p['status']}) — {len(p['findings'])} findings"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_create_brand(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    name = args.get("name", "")
+    niche = args.get("niche", "")
+    tone_raw = args.get("tone", "professional")
+    if not name or not niche:
+        return "I need both a brand name and a niche to create a brand identity.", {}
+    from apps.branding.identity.brand_engine import BrandTone, get_brand_engine
+
+    try:
+        tone = BrandTone(tone_raw)
+    except ValueError:
+        tone = BrandTone.PROFESSIONAL
+    profile = await get_brand_engine().create_brand(name, niche, tone)
+    return (
+        f"Brand created: **{profile.name}** (id: `{profile.brand_id}`)\n"
+        f"Niche: {profile.niche} · Tone: {profile.voice.tone.value}\n"
+        f"Palette: {profile.palette.primary} / {profile.palette.secondary} / {profile.palette.accent}\n"
+        f"Use this brand_id with check_brand_consistency to keep future content on-brand."
+    ), {}
+
+
+async def _tool_check_brand_consistency(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    brand_id = args.get("brand_id", "")
+    content = args.get("content", "")
+    if not brand_id or not content:
+        return "I need a brand_id and the content to check.", {}
+    from apps.branding.identity.brand_engine import get_brand_engine
+
+    engine = get_brand_engine()
+    await engine._load()
+    result = engine.consistency_check(brand_id, content)
+    lines = [f"**Brand consistency: {result['score']}/100**"]
+    if result["violations"]:
+        lines.append("Violations:\n" + "\n".join(f"  • {v}" for v in result["violations"]))
+    if result["suggestions"]:
+        lines.append("Suggestions:\n" + "\n".join(f"  • {s}" for s in result["suggestions"]))
+    return "\n".join(lines), {}
+
+
+async def _tool_list_brands(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.branding.identity.brand_engine import get_brand_engine
+
+    brands = await get_brand_engine().list_brands()
+    if not brands:
+        return "No brands defined yet. Use create_brand to start one.", {}
+    lines = ["**Brands:**"]
+    for b in brands:
+        lines.append(f"  • {b.name} (id: `{b.brand_id}`) — {b.niche}, {b.voice.tone.value}")
+    return "\n".join(lines), {}
+
+
+async def _tool_create_style_profile(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    name = args.get("name", "")
+    niche = args.get("niche", "default")
+    base_style = args.get("base_style") or None
+    if not name:
+        return "I need a name for this style profile.", {}
+    from apps.creative.style.style_engine import get_style_engine
+
+    profile = await get_style_engine().create_profile(name, niche, base_style)
+    dims = ", ".join(f"{k.lower()}: {v}" for k, v in profile.dimensions.items())
+    return (
+        f"**Style profile '{profile.name}'** (id: `{profile.profile_id}`)\n{dims}",
+        {},
+    )
+
+
+async def _tool_evolve_style(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    profile_id = args.get("profile_id", "")
+    direction = args.get("direction", "bolder")
+    if not profile_id:
+        return "I need a profile_id (from create_style_profile) to evolve.", {}
+    from apps.creative.style.style_engine import get_style_engine
+
+    try:
+        profile = await get_style_engine().evolve_style(profile_id, direction)
+    except ValueError as e:
+        return str(e), {}
+    dims = ", ".join(f"{k.lower()}: {v}" for k, v in profile.dimensions.items())
+    return (
+        f"**Evolved '{profile.name}' ({direction}, evolution #{profile.evolution_count})**\n{dims}"
+    ), {}
+
+
+async def _tool_check_content_novelty(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    profile_id = args.get("profile_id", "")
+    content = args.get("content", "")
+    if not profile_id or not content:
+        return "I need both a profile_id and the content to check for novelty.", {}
+    from apps.creative.style.style_engine import get_style_engine
+
+    result = await get_style_engine().check_novelty(profile_id, content)
+    lines = [f"**Novelty score: {result['novelty_score']:.0%}**"]
+    if result["detected_cliches"]:
+        lines.append("Clichés found:\n" + "\n".join(f"  • {c}" for c in result["detected_cliches"]))
+    if result["freshness_tips"]:
+        lines.append("Freshness tips:\n" + "\n".join(f"  • {t}" for t in result["freshness_tips"]))
+    return "\n".join(lines), {}
+
+
+async def _tool_audit_style_consistency(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    profile_id = args.get("profile_id", "")
+    contents = args.get("contents", []) or []
+    if not profile_id or not contents:
+        return "I need a profile_id and at least one piece of content to audit.", {}
+    from apps.creative.style.style_engine import get_style_engine
+
+    result = await get_style_engine().style_consistency_audit(profile_id, contents)
+    lines = [f"**Consistency score: {result['consistency_score']:.0%}**"]
+    if result["inconsistencies"]:
+        lines.append(
+            "Inconsistencies:\n" + "\n".join(f"  • {i}" for i in result["inconsistencies"])
+        )
+    lines.append(f"Recommendation: {result['recommendation']}")
+    return "\n".join(lines), {}
+
+
+async def _tool_add_priority_action(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    title = args.get("title", "")
+    if not title:
+        return "I need at least a title for this action.", {}
+    from apps.strategy.prioritization.priority_engine import (
+        StrategyAction,
+        get_priority_engine,
+    )
+
+    action = StrategyAction(
+        title=title,
+        description=args.get("description", ""),
+        category=args.get("category", "content"),
+        estimated_roi=float(args.get("estimated_roi", 0.0)),
+        effort_score=float(args.get("effort_score", 5.0)),
+        time_to_result_days=int(args.get("time_to_result_days", 30)),
+        leverage_score=float(args.get("leverage_score", 0.5)),
+        compounding=bool(args.get("compounding", False)),
+    )
+    saved = await get_priority_engine().add_action(action)
+    return (
+        f"Added to the priority backlog: **{saved.title}** "
+        f"(priority score: {saved.priority_score:.1f}/100)"
+    ), {}
+
+
+async def _tool_top_priorities(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    limit = int(args.get("limit", 5))
+    from apps.strategy.prioritization.priority_engine import get_priority_engine
+
+    top = await get_priority_engine().top_priorities(limit=limit)
+    if not top:
+        return (
+            "No actions in the priority backlog yet. Use add_priority_action first.",
+            {},
+        )
+    lines = ["**Top priorities:**"]
+    for i, a in enumerate(top, 1):
+        lines.append(f"  {i}. {a.title} — score {a.priority_score:.1f}/100 ({a.category})")
+    return "\n".join(lines), {}
+
+
+async def _tool_allocate_resources(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    total_hours = int(args.get("total_hours", 40))
+    total_budget_usd = float(args.get("total_budget_usd", 0))
+    from apps.strategy.prioritization.priority_engine import get_priority_engine
+
+    result = await get_priority_engine().allocate_resources(total_hours, total_budget_usd)
+    if not result["allocations"]:
+        return "No actions to allocate against yet. Use add_priority_action first.", {}
+    lines = [f"**Resource allocation** ({total_hours}h, ${total_budget_usd:.0f}):"]
+    for a in result["allocations"]:
+        lines.append(
+            f"  • {a['title']}: {a['allocated_hours']}h, "
+            f"${a['allocated_budget_usd']:.0f} (score {a['priority_score']:.1f})"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_recommend_persuasion_tactics(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    context = args.get("context", "")
+    target_emotion = args.get("target_emotion", "desire")
+    if not context:
+        return "Tell me what you're trying to persuade someone to do.", {}
+    from apps.psychology.conversion.persuasion_engine import get_persuasion_engine
+
+    tactics = await get_persuasion_engine().recommend_tactics(context, target_emotion)
+    lines = ["**Recommended persuasion tactics:**"]
+    for t in tactics:
+        lines.append(f"  • **{t.title}** ({t.principle.value}): {t.copy_template}")
+    return "\n".join(lines), {}
+
+
+async def _tool_score_copy_persuasion(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    copy_text = args.get("copy", "")
+    if not copy_text:
+        return "I need the copy text to score.", {}
+    from apps.psychology.conversion.persuasion_engine import get_persuasion_engine
+
+    result = await get_persuasion_engine().score_copy(copy_text)
+    lines = [f"**Persuasion score: {result['persuasion_score']:.2f}/1.0**"]
+    if result["principles_detected"]:
+        lines.append(f"Principles detected: {', '.join(result['principles_detected'])}")
+    lines.append(result["improvement"])
+    return "\n".join(lines), {}
+
+
+async def _tool_optimize_cta(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    current_cta = args.get("cta", "")
+    principle_raw = args.get("principle", "scarcity")
+    if not current_cta:
+        return "I need the current CTA text to optimize.", {}
+    from apps.psychology.conversion.persuasion_engine import (
+        PersuasionPrinciple,
+        get_persuasion_engine,
+    )
+
+    try:
+        principle = PersuasionPrinciple(principle_raw)
+    except ValueError:
+        principle = PersuasionPrinciple.SCARCITY
+    variations = await get_persuasion_engine().optimize_cta(current_cta, principle)
+    lines = [f"**CTA variations ({principle.value}):**"]
+    for v in variations:
+        lines.append(f"  • {v}")
+    return "\n".join(lines), {}
+
+
+async def _tool_evaluate_ai_response(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content = args.get("content", "")
+    prompt = args.get("prompt", "")
+    if not content:
+        return "I need the content to evaluate.", {}
+    from apps.evaluation.phoenix.evaluator import get_ai_evaluator
+
+    result = get_ai_evaluator().evaluate(content, prompt)
+    lines = [f"**Overall quality: {result.overall_score:.0%}**"]
+    lines.append("Scores:\n" + "\n".join(f"  • {k}: {v:.0%}" for k, v in result.scores.items()))
+    if result.flags:
+        lines.append("Flags:\n" + "\n".join(f"  • {f}" for f in result.flags))
+    if result.recommendations:
+        lines.append("Recommendations:\n" + "\n".join(f"  • {r}" for r in result.recommendations))
+    return "\n".join(lines), {}
+
+
+async def _tool_ai_performance_report(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core import auth
+
+    if not auth.is_owner_email(email):
+        return "This action is reserved for ARIA's owner.", {}
+    from apps.evaluation.phoenix.tracer import get_cognition_tracer
+
+    stats = await get_cognition_tracer().analytics()
+    if stats.get("total_traces", 0) == 0:
+        return "No traced conversation turns yet.", {}
+    by_tool = ", ".join(f"{k}: {v}" for k, v in stats.get("by_task", {}).items())
+    return (
+        f"**AI performance ({stats['total_traces']} traces)**\n"
+        f"Avg latency: {stats['avg_latency_ms']:.0f}ms · "
+        f"Failure rate: {stats['failure_rate']:.0%}\n"
+        f"Avg quality: {stats['avg_quality_score']:.0%} · "
+        f"Avg hallucination risk: {stats['avg_hallucination_risk']:.0%}\n"
+        f"By tool: {by_tool}"
+    ), {}
+
+
+async def _tool_forecast_revenue(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    initial_revenue = float(args.get("initial_revenue", 0))
+    growth_rate = float(args.get("growth_rate", 0.1))
+    months = int(args.get("months", 12))
+    model_raw = args.get("model", "exponential")
+    name = args.get("name", "forecast")
+    if initial_revenue <= 0:
+        return "I need a starting monthly revenue greater than $0 to forecast from.", {}
+    from apps.strategy.forecasting.strategic_forecaster import (
+        GrowthModel,
+        get_strategic_forecaster,
+    )
+
+    try:
+        model = GrowthModel(model_raw)
+    except ValueError:
+        model = GrowthModel.EXPONENTIAL
+    scenario = await get_strategic_forecaster().forecast(
+        initial_revenue, growth_rate, months, model, name
+    )
+    breakeven = (
+        f"month {scenario.breakeven_month}"
+        if scenario.breakeven_month
+        else "not reached in this window"
+    )
+    return (
+        f"**Forecast '{scenario.name}'** ({model.value}, {months} months)\n"
+        f"Total projected revenue: ${scenario.total_projected_revenue:,.0f}\n"
+        f"Breakeven: {breakeven}"
+    ), {}
+
+
+async def _tool_find_growth_bottleneck(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    metrics = args.get("metrics", {}) or {}
+    from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
+
+    result = await get_leverage_analyzer().bottleneck_analysis(metrics)
+    lines = [
+        f"**Primary bottleneck: {result['primary_bottleneck']}**",
+        f"Impact score: {result['impact_score']}x · "
+        f"Estimated revenue lift: {result['estimated_revenue_lift_pct']}%",
+    ]
+    if result["fix_priority"]:
+        lines.append("Fix priority:\n" + "\n".join(f"  • {a}" for a in result["fix_priority"]))
+    return "\n".join(lines), {}
+
+
+async def _tool_growth_removal_plan(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    bottleneck = args.get("bottleneck", "")
+    if not bottleneck:
+        return (
+            "I need the bottleneck name (from find_growth_bottleneck) to plan around.",
+            {},
+        )
+    from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
+
+    plan = await get_leverage_analyzer().constraint_removal_plan(bottleneck)
+    lines = [f"**Removal plan for '{bottleneck}':**"]
+    for step in plan:
+        lines.append(
+            f"  {step['step']}. {step['action']} "
+            f"({step['timeframe_days']}d) → {step['expected_outcome']}"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_simulate_growth_lever(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    metrics = args.get("metrics", {}) or {}
+    lever = args.get("lever", "")
+    improvement_pct = float(args.get("improvement_pct", 10))
+    if not lever:
+        return (
+            "I need which lever to simulate (conversion, traffic, order_value, or retention).",
+            {},
+        )
+    from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
+
+    result = await get_leverage_analyzer().simulate_improvement(metrics, lever, improvement_pct)
+    return (
+        f"**Simulated {improvement_pct:.0f}% improvement in {lever}:**\n"
+        f"Monthly revenue: ${result['base_monthly_revenue_usd']:,.0f} → "
+        f"${result['projected_monthly_revenue_usd']:,.0f} "
+        f"({result['revenue_lift_pct']:+.1f}%)\n"
+        f"Annualized lift: ${result['annualized_lift_usd']:,.0f}"
+    ), {}
+
+
+async def _tool_analyze_user_behavior(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    user_id = args.get("user_id", "")
+    actions = args.get("actions", []) or []
+    if not user_id or not actions:
+        return (
+            "I need a user_id and their recent actions (e.g. view, add_to_cart, purchase) to analyze.",
+            {},
+        )
+    from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
+
+    profile = await get_behavior_analyzer().analyze_user(user_id, actions)
+    signals = ", ".join(s.value for s in profile.signals) or "none detected"
+    return (
+        f"**Behavior profile for {user_id}**\n"
+        f"Signals: {signals}\n"
+        f"Intent score: {profile.intent_score:.0%} · Churn risk: {profile.churn_probability:.0%} · "
+        f"Predicted LTV: ${profile.predicted_ltv_usd:.0f}\n"
+        f"Next best action: {profile.next_best_action}"
+    ), {}
+
+
+async def _tool_predict_customer_churn(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    user_id = args.get("user_id", "")
+    if not user_id:
+        return (
+            "I need a user_id (analyzed previously via analyze_user_behavior) to predict churn for.",
+            {},
+        )
+    from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
+
+    result = await get_behavior_analyzer().predict_churn(user_id)
+    lines = [f"**Churn risk for {user_id}: {result['churn_probability']:.0%}**"]
+    lines.append("Reasons:\n" + "\n".join(f"  • {r}" for r in result["reasons"]))
+    lines.append(
+        "Prevention actions:\n" + "\n".join(f"  • {p}" for p in result["prevention_actions"])
+    )
+    return "\n".join(lines), {}
+
+
+async def _tool_generate_audience_personas(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    niche = args.get("niche", "")
+    count = int(args.get("count", 3))
+    if not niche:
+        return "I need a niche to generate audience personas for.", {}
+    from apps.psychology.personas.persona_engine import get_persona_engine
+
+    personas = await get_persona_engine().generate_niche_personas(niche, count)
+    lines = [f"**{len(personas)} audience personas for '{niche}':**"]
+    for p in personas:
+        lines.append(
+            f"  • **{p.archetype.value}** (id: `{p.persona_id}`) — "
+            f"pain: {p.primary_pain}, desire: {p.primary_desire}"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_match_content_to_persona(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content = args.get("content", "")
+    persona_id = args.get("persona_id", "")
+    if not content or not persona_id:
+        return (
+            "I need the content and a persona_id (from generate_audience_personas) to check.",
+            {},
+        )
+    from apps.psychology.personas.persona_engine import get_persona_engine
+
+    result = await get_persona_engine().match_content_to_persona(content, persona_id)
+    lines = [f"**Persona match: {result['match_score']:.0%}**"]
+    if result["alignment_reasons"]:
+        lines.append("Aligned:\n" + "\n".join(f"  • {a}" for a in result["alignment_reasons"]))
+    if result["suggested_tweaks"]:
+        lines.append(
+            "Suggested tweaks:\n" + "\n".join(f"  • {t}" for t in result["suggested_tweaks"])
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_create_ad_audience(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    name = args.get("name", "")
+    criteria = args.get("criteria", {}) or {}
+    platforms = args.get("platforms") or ["meta"]
+    if not name:
+        return "I need a name for this ad audience.", {}
+    from apps.ads.audiences.audience_segmenter import get_audience_segmenter
+
+    segment = await get_audience_segmenter().create_segment(name, criteria, platforms)
+    return (
+        f"**Audience '{segment.name}'** (id: `{segment.segment_id}`)\n"
+        f"Platforms: {', '.join(segment.platforms)} · "
+        f"Estimated CPM: ${segment.estimated_cpm:.2f} · "
+        f"Est. size: {segment.user_count:,}"
+    ), {}
+
+
+async def _tool_estimate_ad_cac(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    estimated_cpm = float(args.get("estimated_cpm", 10.0))
+    product_price = float(args.get("product_price", 0))
+    expected_cvr = float(args.get("expected_cvr", 0.02))
+    platform = args.get("platform", "meta")
+    if product_price <= 0:
+        return "I need the product price to estimate CAC against.", {}
+    from apps.ads.audiences.audience_segmenter import (
+        AudienceSegment,
+        get_audience_segmenter,
+    )
+
+    segment = AudienceSegment(estimated_cpm=estimated_cpm, platforms=[platform])
+    result = get_audience_segmenter().cac_estimate(segment, product_price, expected_cvr)
+    verdict = "profitable" if result["profitable"] else "NOT profitable"
+    return (
+        f"**CAC estimate ({platform}): {verdict}**\n"
+        f"CPM ${result['cpm']:.2f} → CPC ${result['cpc']:.2f} → CAC ${result['cac']:.2f}\n"
+        f"Break-even price: ${result['break_even_price']:.2f} (product price: ${product_price:.2f})"
+    ), {}
+
+
+async def _tool_suggest_ad_targeting(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product = args.get("product", "")
+    niche = args.get("niche", "")
+    if not product or not niche:
+        return "I need both a product and a niche to suggest ad targeting.", {}
+    from apps.ads.audiences.audience_segmenter import get_audience_segmenter
+
+    segmenter = get_audience_segmenter()
+    interests = await segmenter.generate_interest_targeting(product, niche)
+    exclusions = segmenter.generate_exclusion_audiences()
+    lines = [
+        "**Interest targeting:**\n" + "\n".join(f"  • {i}" for i in interests),
+        "**Exclusion audiences:**\n" + "\n".join(f"  • {e}" for e in exclusions),
+    ]
+    return "\n\n".join(lines), {}
+
+
+async def _tool_create_retargeting_campaign(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product_name = args.get("product_name", "")
+    audience_type = args.get("audience_type", "product_viewers")
+    user_ids = args.get("user_ids", []) or []
+    budget_daily_usd = float(args.get("budget_daily_usd", 20.0))
+    platform = args.get("platform", "meta")
+    if not product_name:
+        return "I need a product name to build a retargeting campaign around.", {}
+    from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+    engine = get_retargeting_engine()
+    audience = await engine.create_audience(
+        f"{audience_type.replace('_', ' ').title()} — {product_name}",
+        audience_type,
+        user_ids,
+        [platform],
+    )
+    campaign = await engine.create_campaign(audience, product_name, budget_daily_usd, platform)
+    return (
+        f"**Retargeting campaign '{campaign.name}'** (id: `{campaign.campaign_id}`)\n"
+        f"Audience: {audience.size} users, est. ROAS {audience.estimated_roas:.1f}x\n"
+        f"Headline: {campaign.headline}\n"
+        f"Copy: {campaign.ad_copy}\n"
+        f"Budget: ${budget_daily_usd:.0f}/day on {platform} · status: {campaign.status}"
+    ), {}
+
+
+async def _tool_cart_abandonment_sequence(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    cart_items = args.get("cart_items", []) or []
+    user_id = args.get("user_id", "")
+    if not cart_items or not user_id:
+        return "I need the cart items and a user_id to build this sequence.", {}
+    from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+    sequence = await get_retargeting_engine().cart_abandonment_sequence(cart_items, user_id)
+    lines = [f"**Cart abandonment sequence for {user_id}:**"]
+    for step in sequence:
+        lines.append(
+            f"  {step['sequence']}. +{step['delay_hours']}h — {step['headline']}\n"
+            f"     {step['ad_copy']}"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_record_retargeting_metrics(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    campaign_id = args.get("campaign_id", "")
+    if not campaign_id:
+        return "I need the campaign_id to record metrics against.", {}
+    from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+    ok = await get_retargeting_engine().record_metrics(
+        campaign_id,
+        impressions=int(args.get("impressions", 0)),
+        clicks=int(args.get("clicks", 0)),
+        conversions=int(args.get("conversions", 0)),
+        spend=float(args.get("spend", 0.0)),
+        revenue=float(args.get("revenue", 0.0)),
+    )
+    if not ok:
+        return f"No retargeting campaign found with id `{campaign_id}`.", {}
+    return f"Metrics recorded for campaign `{campaign_id}`.", {}
+
+
+async def _tool_retargeting_performance(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    limit = int(args.get("limit", 5))
+    from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
+
+    engine = get_retargeting_engine()
+    await engine._load()
+    analytics = engine.campaign_analytics()
+    top = engine.top_performing_campaigns(limit)
+    if analytics["total_campaigns"] == 0:
+        return (
+            "No retargeting campaigns yet. Use create_retargeting_campaign first.",
+            {},
+        )
+    lines = [
+        f"**Retargeting performance** ({analytics['active_campaigns']}/{analytics['total_campaigns']} active)\n"
+        f"Spend ${analytics['total_spend']:,.0f} → Revenue ${analytics['total_revenue']:,.0f} "
+        f"(ROAS {analytics['avg_roas']:.2f}x) · CAC ${analytics['total_cac']:.2f}",
+        "Top performers:\n"
+        + "\n".join(
+            f"  • {c.get('name', c.get('campaign_id'))} — ROAS {c.get('roas', 0):.2f}x" for c in top
+        ),
+    ]
+    return "\n\n".join(lines), {}
+
+
 _TOOL_HANDLERS: dict = {
     "generate_image": _tool_generate_image,
     "generate_video": _tool_generate_video,
@@ -1185,6 +2143,57 @@ _TOOL_HANDLERS: dict = {
     "interact_browser": _tool_interact_browser,
     "computer_use": _tool_computer_use,
     "run_business_agent": _tool_run_business_agent,
+    # Batch 2
+    "deep_think": _tool_deep_think,
+    "analyze_decision": _tool_analyze_decision,
+    "create_presentation": _tool_create_presentation,
+    "create_pitch_deck": _tool_create_pitch_deck,
+    "analyze_image": _tool_analyze_image,
+    "extract_text": _tool_extract_text,
+    "edit_image": _tool_edit_image,
+    "analyze_video": _tool_analyze_video,
+    "remove_background": _tool_remove_background,
+    "classify_image": _tool_classify_image,
+    "document_qa": _tool_document_qa,
+    "create_product_pack": _tool_create_product_pack,
+    "run_background": _tool_run_background,
+    "task_status": _tool_task_status,
+    "learn": _tool_learn,
+    "search_knowledge": _tool_search_knowledge,
+    "forget_source": _tool_forget_source,
+    "create_research_project": _tool_create_research_project,
+    "add_research_finding": _tool_add_research_finding,
+    "list_research_projects": _tool_list_research_projects,
+    "create_brand": _tool_create_brand,
+    "check_brand_consistency": _tool_check_brand_consistency,
+    "list_brands": _tool_list_brands,
+    "create_style_profile": _tool_create_style_profile,
+    "evolve_style": _tool_evolve_style,
+    "check_content_novelty": _tool_check_content_novelty,
+    "audit_style_consistency": _tool_audit_style_consistency,
+    "add_priority_action": _tool_add_priority_action,
+    "top_priorities": _tool_top_priorities,
+    "allocate_resources": _tool_allocate_resources,
+    "recommend_persuasion_tactics": _tool_recommend_persuasion_tactics,
+    "score_copy_persuasion": _tool_score_copy_persuasion,
+    "optimize_cta": _tool_optimize_cta,
+    "evaluate_ai_response": _tool_evaluate_ai_response,
+    "ai_performance_report": _tool_ai_performance_report,
+    "forecast_revenue": _tool_forecast_revenue,
+    "find_growth_bottleneck": _tool_find_growth_bottleneck,
+    "growth_removal_plan": _tool_growth_removal_plan,
+    "simulate_growth_lever": _tool_simulate_growth_lever,
+    "analyze_user_behavior": _tool_analyze_user_behavior,
+    "predict_customer_churn": _tool_predict_customer_churn,
+    "generate_audience_personas": _tool_generate_audience_personas,
+    "match_content_to_persona": _tool_match_content_to_persona,
+    "create_ad_audience": _tool_create_ad_audience,
+    "estimate_ad_cac": _tool_estimate_ad_cac,
+    "suggest_ad_targeting": _tool_suggest_ad_targeting,
+    "create_retargeting_campaign": _tool_create_retargeting_campaign,
+    "cart_abandonment_sequence": _tool_cart_abandonment_sequence,
+    "record_retargeting_metrics": _tool_record_retargeting_metrics,
+    "retargeting_performance": _tool_retargeting_performance,
 }
 
 
@@ -2169,908 +3178,8 @@ class AriaMind:
                 await self._apply_goal_action(goal_action_dict, goals_list)
                 return f"Goal {'added' if action == 'add' else 'updated'} successfully", {}
 
-            # ── EXTENDED REASONING ────────────────────────────────────────
-            if tool == "deep_think":
-                question = args.get("question", "")
-                depth = args.get("depth", "auto")
-                context = args.get("context", "")
-                from apps.core.tools.deep_think import get_deep_think
-
-                result = await get_deep_think().think(question, context=context, depth=depth)
-                obs = f"[DEEP THINK — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
-                return obs, {}
-
-            elif tool == "analyze_decision":  # noqa: RET505 — the preceding
-                # branch (deep_think) now unconditionally returns since it's the
-                # first branch in this shrunk chain, so ruff would suggest
-                # flattening every subsequent `elif` in turn. Left as `elif`
-                # deliberately: this whole remaining ~150-branch chain is out of
-                # scope for the Batch 1 Tool Router extraction (see AAS Fase 2 /
-                # ADR-005) — restructuring it is later batches' job, not a side
-                # effect of this one.
-                question = args.get("question", "")
-                options = args.get("options", [])
-                criteria = args.get("criteria", [])
-                from apps.core.tools.deep_think import get_deep_think
-
-                result = await get_deep_think().analyze_decision(question, options, criteria)
-                return f"[DECISION]\n{result['recommendation']}", {}
-
-            # ── PRESENTATIONS ─────────────────────────────────────────────
-            elif tool == "create_presentation":
-                title = args.get("title", "Presentation")
-                topic = args.get("topic", title)
-                slide_count = int(args.get("slide_count", 10))
-                template = args.get("template", "dark")
-                from apps.core.tools.presentation_builder import PresentationBuilder
-
-                r = await PresentationBuilder().create_presentation(
-                    title, topic, slide_count, template
-                )
-                if r.get("success") and r.get("html_bytes"):
-                    fname = r.get("filename", "presentation.html")
-                    obs = f"Presentation '{title}' generated: {r['slide_count']} slides"
-                    return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
-                return "I couldn't generate the presentation", {}
-
-            elif tool == "create_pitch_deck":
-                company = args.get("company", "")
-                problem = args.get("problem", "")
-                solution = args.get("solution", "")
-                market = args.get("market", "")
-                traction = args.get("traction", "")
-                from apps.core.tools.presentation_builder import PresentationBuilder
-
-                r = await PresentationBuilder().create_pitch_deck(
-                    company, problem, solution, market, traction
-                )
-                if r.get("success") and r.get("html_bytes"):
-                    fname = r.get("filename", "pitch_deck.html")
-                    obs = f"Pitch deck '{company}' generated: {r['slide_count']} slides"
-                    return obs, {"document_bytes": r["html_bytes"], "document_filename": fname}
-                return "I couldn't generate the pitch deck", {}
-
-            # ── MULTIMODAL ───────────────────────────────────────────────
-            elif tool == "analyze_image":
-                url = args.get("url", "")
-                question = args.get("question", "Describe this image in detail.")
-                from apps.core.tools.multimodal import get_multimodal
-
-                r = await get_multimodal().analyze_image(image_url=url, question=question)
-                if r.get("success"):
-                    return f"[IMAGE ANALYSIS]\n{r['analysis']}", {}
-                return f"I couldn't analyze the image: {r.get('error', 'unknown error')}", {}
-
-            elif tool == "extract_text":
-                url = args.get("url", "")
-                from apps.core.tools.multimodal import get_multimodal
-
-                r = await get_multimodal().extract_text(image_url=url)
-                if r.get("success"):
-                    return f"[OCR]\n{r['analysis']}", {}
-                return f"I couldn't extract text: {r.get('error', 'unknown error')}", {}
-
-            elif tool == "edit_image":
-                url = args.get("url", "")
-                instruction = args.get("instruction", "")
-                from apps.core.tools.multimodal import get_multimodal
-
-                r = await get_multimodal().edit_image(image_url=url, instruction=instruction)
-                if r.get("success") and r.get("image_bytes"):
-                    return f"Image edited: '{instruction}'", {"image_bytes": r["image_bytes"]}
-                return f"I couldn't edit the image: {r.get('error', 'unknown error')}", {}
-
-            elif tool == "analyze_video":
-                url = args.get("url", "")
-                question = args.get("question", "Describe this video in detail.")
-                from apps.core.tools.multimodal import get_multimodal
-
-                r = await get_multimodal().analyze_video_url(url, question)
-                if r.get("success"):
-                    frames = r.get("frames_analyzed", 0)
-                    return f"[VIDEO ANALYSIS — {frames} frames]\n{r['analysis']}", {}
-                return f"I couldn't analyze the video: {r.get('error', 'unknown error')}", {}
-
-            # ── ADDITIONAL HF TOOLS (ecommerce/documents) ─────────────────
-            elif tool == "remove_background":
-                url = args.get("url", "")
-                if not url:
-                    return "I need an image URL.", {}
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                try:
-                    img_bytes = await _fetch_image_bytes(url)
-                except Exception as exc:
-                    return f"I couldn't download the image: {exc}", {}
-                r = await HuggingFaceSuite().remove_background(img_bytes)
-                if r.get("success") and r.get("image_bytes"):
-                    return "Background removed.", {"image_bytes": r["image_bytes"]}
-                return r.get("error", "I couldn't remove the background"), {}
-
-            elif tool == "classify_image":
-                url = args.get("url", "")
-                if not url:
-                    return "I need an image URL.", {}
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                try:
-                    img_bytes = await _fetch_image_bytes(url)
-                except Exception as exc:
-                    return f"I couldn't download the image: {exc}", {}
-                r = await HuggingFaceSuite().classify_image(img_bytes)
-                if r.get("success"):
-                    top = f"{r['top_label']} ({r['top_score'] * 100:.1f}%)"
-                    others = ", ".join(
-                        f"{a['label']} ({a['score'] * 100:.1f}%)" for a in r.get("all", [])[1:5]
-                    )
-                    obs = f"[CLASSIFICATION] {top}" + (f"\nAlso: {others}" if others else "")
-                    return obs, {}
-                return r.get("error", "I couldn't classify the image"), {}
-
-            elif tool == "document_qa":
-                url = args.get("url", "")
-                question = args.get("question", "")
-                if not url or not question:
-                    return "I need a document URL and a question.", {}
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                try:
-                    img_bytes = await _fetch_image_bytes(url)
-                except Exception as exc:
-                    return f"I couldn't download the document: {exc}", {}
-                r = await HuggingFaceSuite().document_qa(img_bytes, question)
-                if r.get("success"):
-                    return (
-                        f"[DOCUMENT] {r['answer']} (confidence: {r['confidence'] * 100:.0f}%)",
-                        {},
-                    )
-                return r.get("error", "I couldn't read the document"), {}
-
-            elif tool == "create_product_pack":
-                product_name = args.get("product_name", "")
-                product_description = args.get("product_description", "")
-                niche = args.get("niche", "")
-                languages = args.get("languages") or None
-                from apps.core.tools.huggingface_suite import HuggingFaceSuite
-
-                r = await HuggingFaceSuite().create_product_content_pack(
-                    product_name, product_description, niche, languages
-                )
-                media: dict = {}
-                product_bytes = (r.get("product_image") or {}).get("bytes")
-                if product_bytes:
-                    media["image_bytes"] = product_bytes
-                translations = r.get("translations") or {}
-                langs_done = ", ".join(translations.keys()) if translations else "none"
-                extra_imgs = []
-                if (r.get("social_image") or {}).get("bytes"):
-                    extra_imgs.append("social")
-                if (r.get("blog_thumbnail") or {}).get("bytes"):
-                    extra_imgs.append("blog thumbnail")
-                obs = (
-                    f"[PRODUCT PACK: {product_name}]\n"
-                    f"Niche: {r.get('niche_classification', niche)}\n"
-                    f"Summary: {r.get('summary', '')}\n"
-                    f"Market sentiment: {r.get('market_sentiment', '')}\n"
-                    f"Translations generated: {langs_done}\n"
-                    f"Images generated: product"
-                    + (f", {', '.join(extra_imgs)}" if extra_imgs else "")
-                )
-                return obs, media
-
-            # ── BACKGROUND TASKS ──────────────────────────────────────────
-            elif tool == "run_background":
-                task_name = args.get("task", "")
-                agent_name = args.get("agent", "ceo")
-                from apps.core.agents.business_hub import BusinessHub
-                from apps.core.tools.task_manager import get_task_manager
-
-                async def _bg():
-                    return await BusinessHub().dispatch(agent_name, task_name, {})
-
-                mgr = get_task_manager()
-                task_id = await mgr.submit(
-                    name=task_name,
-                    coro_factory=_bg,
-                    description=f"{agent_name}: {task_name}",
-                    session_id=None,
-                )
-                return (
-                    f"Task '{task_name}' started in the background (ID: {task_id}). I'll let you know when it's done.",
-                    {},
-                )
-
-            elif tool == "task_status":
-                task_id = args.get("task_id", "")
-                from apps.core.tools.task_manager import get_task_manager
-
-                mgr = get_task_manager()
-                if task_id:
-                    record = mgr.get_task(task_id)
-                    if record:
-                        return (
-                            f"[Task {task_id}] {record.status.value}: {record.result or record.error or 'in progress'}",
-                            {},
-                        )
-                    return f"Task {task_id} not found.", {}
-                tasks = mgr.list_tasks(limit=10)
-                if not tasks:
-                    return "No background tasks.", {}
-                lines = [f"• [{t['id']}] {t['status']} — {t['name']}" for t in tasks]
-                return "[BACKGROUND TASKS]\n" + "\n".join(lines), {}
-
-            # ── KNOWLEDGE BASE (RAG) ───────────────────────────────────────
-            elif tool == "learn":
-                source = args.get("source", "")
-                category = args.get("category", "general")
-                is_url = args.get("is_url", source.startswith("http"))
-                from apps.core.tools.knowledge_base import get_knowledge_base
-
-                kb = get_knowledge_base()
-                if is_url:
-                    r = await kb.ingest_url(source, category=category)
-                else:
-                    r = await kb.ingest_text(source, source=category, category=category)
-                if r.get("success"):
-                    return (
-                        f"Learned: {r['chunks_added']} chunks from '{source[:60]}' "
-                        f"(total in KB: {r['total_chunks']})"
-                    ), {}
-                return f"I couldn't learn that source: {r.get('error', 'error')}", {}
-
-            elif tool == "search_knowledge":
-                query = args.get("query", "")
-                top_k = int(args.get("top_k", 5))
-                from apps.core.tools.knowledge_base import get_knowledge_base
-
-                formatted = await get_knowledge_base().search_formatted(query, top_k=top_k)
-                if formatted:
-                    return formatted, {}
-                return (
-                    "I didn't find relevant information in the knowledge base. Try using 'learn' first.",
-                    {},
-                )
-
-            elif tool == "forget_source":
-                source = args.get("source", "")
-                from apps.core.tools.knowledge_base import get_knowledge_base
-
-                deleted = get_knowledge_base().delete_source(source)
-                return (
-                    f"Removed {deleted} chunks of '{source}' from the knowledge base.",
-                    {},
-                )
-
-            # ── R&D WING (long-running research projects) ──────────────────
-            elif tool == "create_research_project":
-                name = args.get("name", "")
-                goal = args.get("goal", "")
-                category = args.get("category", "General/Innovation")
-                if not name or not goal:
-                    return "I need both a project name and a goal to create it.", {}
-                from apps.core.intelligence.rd_wing import get_rd_wing
-
-                project = get_rd_wing().create_project(name, goal, category)
-                return (
-                    f"R&D project created: **{project.name}** ({project.category})\n{project.goal}",
-                    {},
-                )
-
-            elif tool == "add_research_finding":
-                project_name = args.get("project", "")
-                title = args.get("title", "")
-                content = args.get("content", "")
-                source = args.get("source", "unspecified")
-                if not project_name or not title or not content:
-                    return "I need a project name, a finding title, and its content.", {}
-                from apps.core.intelligence.rd_wing import get_rd_wing
-
-                rd = get_rd_wing()
-                if not rd.get_project(project_name):
-                    return f"No R&D project named '{project_name}' — create it first.", {}
-                rd.add_finding_to_project(project_name, title, content, source)
-                return f"Finding logged on **{project_name}**: {title}", {}
-
-            elif tool == "list_research_projects":
-                from apps.core.intelligence.rd_wing import get_rd_wing
-
-                projects = get_rd_wing().list_projects()
-                if not projects:
-                    return "No R&D projects yet. Use create_research_project to start one.", {}
-                lines = ["**R&D projects:**"]
-                for p in projects:
-                    lines.append(
-                        f"  • {p['name']} ({p['category']}, {p['status']}) — {len(p['findings'])} findings"
-                    )
-                return "\n".join(lines), {}
-
-            # ── BRAND IDENTITY ───────────────────────────────────────────────
-            elif tool == "create_brand":
-                name = args.get("name", "")
-                niche = args.get("niche", "")
-                tone_raw = args.get("tone", "professional")
-                if not name or not niche:
-                    return "I need both a brand name and a niche to create a brand identity.", {}
-                from apps.branding.identity.brand_engine import BrandTone, get_brand_engine
-
-                try:
-                    tone = BrandTone(tone_raw)
-                except ValueError:
-                    tone = BrandTone.PROFESSIONAL
-                profile = await get_brand_engine().create_brand(name, niche, tone)
-                return (
-                    f"Brand created: **{profile.name}** (id: `{profile.brand_id}`)\n"
-                    f"Niche: {profile.niche} · Tone: {profile.voice.tone.value}\n"
-                    f"Palette: {profile.palette.primary} / {profile.palette.secondary} / {profile.palette.accent}\n"
-                    f"Use this brand_id with check_brand_consistency to keep future content on-brand."
-                ), {}
-
-            elif tool == "check_brand_consistency":
-                brand_id = args.get("brand_id", "")
-                content = args.get("content", "")
-                if not brand_id or not content:
-                    return "I need a brand_id and the content to check.", {}
-                from apps.branding.identity.brand_engine import get_brand_engine
-
-                engine = get_brand_engine()
-                await engine._load()
-                result = engine.consistency_check(brand_id, content)
-                lines = [f"**Brand consistency: {result['score']}/100**"]
-                if result["violations"]:
-                    lines.append(
-                        "Violations:\n" + "\n".join(f"  • {v}" for v in result["violations"])
-                    )
-                if result["suggestions"]:
-                    lines.append(
-                        "Suggestions:\n" + "\n".join(f"  • {s}" for s in result["suggestions"])
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "list_brands":
-                from apps.branding.identity.brand_engine import get_brand_engine
-
-                brands = await get_brand_engine().list_brands()
-                if not brands:
-                    return "No brands defined yet. Use create_brand to start one.", {}
-                lines = ["**Brands:**"]
-                for b in brands:
-                    lines.append(
-                        f"  • {b.name} (id: `{b.brand_id}`) — {b.niche}, {b.voice.tone.value}"
-                    )
-                return "\n".join(lines), {}
-
-            # ── CREATIVE STYLE ────────────────────────────────────────────────
-            elif tool == "create_style_profile":
-                name = args.get("name", "")
-                niche = args.get("niche", "default")
-                base_style = args.get("base_style") or None
-                if not name:
-                    return "I need a name for this style profile.", {}
-                from apps.creative.style.style_engine import get_style_engine
-
-                profile = await get_style_engine().create_profile(name, niche, base_style)
-                dims = ", ".join(f"{k.lower()}: {v}" for k, v in profile.dimensions.items())
-                return (
-                    f"**Style profile '{profile.name}'** (id: `{profile.profile_id}`)\n{dims}",
-                    {},
-                )
-
-            elif tool == "evolve_style":
-                profile_id = args.get("profile_id", "")
-                direction = args.get("direction", "bolder")
-                if not profile_id:
-                    return "I need a profile_id (from create_style_profile) to evolve.", {}
-                from apps.creative.style.style_engine import get_style_engine
-
-                try:
-                    profile = await get_style_engine().evolve_style(profile_id, direction)
-                except ValueError as e:
-                    return str(e), {}
-                dims = ", ".join(f"{k.lower()}: {v}" for k, v in profile.dimensions.items())
-                return (
-                    f"**Evolved '{profile.name}' ({direction}, evolution #{profile.evolution_count})**\n"
-                    f"{dims}"
-                ), {}
-
-            elif tool == "check_content_novelty":
-                profile_id = args.get("profile_id", "")
-                content = args.get("content", "")
-                if not profile_id or not content:
-                    return "I need both a profile_id and the content to check for novelty.", {}
-                from apps.creative.style.style_engine import get_style_engine
-
-                result = await get_style_engine().check_novelty(profile_id, content)
-                lines = [f"**Novelty score: {result['novelty_score']:.0%}**"]
-                if result["detected_cliches"]:
-                    lines.append(
-                        "Clichés found:\n"
-                        + "\n".join(f"  • {c}" for c in result["detected_cliches"])
-                    )
-                if result["freshness_tips"]:
-                    lines.append(
-                        "Freshness tips:\n"
-                        + "\n".join(f"  • {t}" for t in result["freshness_tips"])
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "audit_style_consistency":
-                profile_id = args.get("profile_id", "")
-                contents = args.get("contents", []) or []
-                if not profile_id or not contents:
-                    return "I need a profile_id and at least one piece of content to audit.", {}
-                from apps.creative.style.style_engine import get_style_engine
-
-                result = await get_style_engine().style_consistency_audit(profile_id, contents)
-                lines = [f"**Consistency score: {result['consistency_score']:.0%}**"]
-                if result["inconsistencies"]:
-                    lines.append(
-                        "Inconsistencies:\n"
-                        + "\n".join(f"  • {i}" for i in result["inconsistencies"])
-                    )
-                lines.append(f"Recommendation: {result['recommendation']}")
-                return "\n".join(lines), {}
-
-            # ── STRATEGIC PRIORITIZATION (persistent action backlog) ────────
-            elif tool == "add_priority_action":
-                title = args.get("title", "")
-                if not title:
-                    return "I need at least a title for this action.", {}
-                from apps.strategy.prioritization.priority_engine import (
-                    StrategyAction,
-                    get_priority_engine,
-                )
-
-                action = StrategyAction(
-                    title=title,
-                    description=args.get("description", ""),
-                    category=args.get("category", "content"),
-                    estimated_roi=float(args.get("estimated_roi", 0.0)),
-                    effort_score=float(args.get("effort_score", 5.0)),
-                    time_to_result_days=int(args.get("time_to_result_days", 30)),
-                    leverage_score=float(args.get("leverage_score", 0.5)),
-                    compounding=bool(args.get("compounding", False)),
-                )
-                saved = await get_priority_engine().add_action(action)
-                return (
-                    f"Added to the priority backlog: **{saved.title}** "
-                    f"(priority score: {saved.priority_score:.1f}/100)"
-                ), {}
-
-            elif tool == "top_priorities":
-                limit = int(args.get("limit", 5))
-                from apps.strategy.prioritization.priority_engine import get_priority_engine
-
-                top = await get_priority_engine().top_priorities(limit=limit)
-                if not top:
-                    return (
-                        "No actions in the priority backlog yet. Use add_priority_action first.",
-                        {},
-                    )
-                lines = ["**Top priorities:**"]
-                for i, a in enumerate(top, 1):
-                    lines.append(
-                        f"  {i}. {a.title} — score {a.priority_score:.1f}/100 ({a.category})"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "allocate_resources":
-                total_hours = int(args.get("total_hours", 40))
-                total_budget_usd = float(args.get("total_budget_usd", 0))
-                from apps.strategy.prioritization.priority_engine import get_priority_engine
-
-                result = await get_priority_engine().allocate_resources(
-                    total_hours, total_budget_usd
-                )
-                if not result["allocations"]:
-                    return "No actions to allocate against yet. Use add_priority_action first.", {}
-                lines = [f"**Resource allocation** ({total_hours}h, ${total_budget_usd:.0f}):"]
-                for a in result["allocations"]:
-                    lines.append(
-                        f"  • {a['title']}: {a['allocated_hours']}h, "
-                        f"${a['allocated_budget_usd']:.0f} (score {a['priority_score']:.1f})"
-                    )
-                return "\n".join(lines), {}
-
-            # ── PERSUASION / CONVERSION COPY ─────────────────────────────────
-            elif tool == "recommend_persuasion_tactics":
-                context = args.get("context", "")
-                target_emotion = args.get("target_emotion", "desire")
-                if not context:
-                    return "Tell me what you're trying to persuade someone to do.", {}
-                from apps.psychology.conversion.persuasion_engine import get_persuasion_engine
-
-                tactics = await get_persuasion_engine().recommend_tactics(context, target_emotion)
-                lines = ["**Recommended persuasion tactics:**"]
-                for t in tactics:
-                    lines.append(f"  • **{t.title}** ({t.principle.value}): {t.copy_template}")
-                return "\n".join(lines), {}
-
-            elif tool == "score_copy_persuasion":
-                copy_text = args.get("copy", "")
-                if not copy_text:
-                    return "I need the copy text to score.", {}
-                from apps.psychology.conversion.persuasion_engine import get_persuasion_engine
-
-                result = await get_persuasion_engine().score_copy(copy_text)
-                lines = [f"**Persuasion score: {result['persuasion_score']:.2f}/1.0**"]
-                if result["principles_detected"]:
-                    lines.append(f"Principles detected: {', '.join(result['principles_detected'])}")
-                lines.append(result["improvement"])
-                return "\n".join(lines), {}
-
-            elif tool == "optimize_cta":
-                current_cta = args.get("cta", "")
-                principle_raw = args.get("principle", "scarcity")
-                if not current_cta:
-                    return "I need the current CTA text to optimize.", {}
-                from apps.psychology.conversion.persuasion_engine import (
-                    PersuasionPrinciple,
-                    get_persuasion_engine,
-                )
-
-                try:
-                    principle = PersuasionPrinciple(principle_raw)
-                except ValueError:
-                    principle = PersuasionPrinciple.SCARCITY
-                variations = await get_persuasion_engine().optimize_cta(current_cta, principle)
-                lines = [f"**CTA variations ({principle.value}):**"]
-                for v in variations:
-                    lines.append(f"  • {v}")
-                return "\n".join(lines), {}
-
-            # ── AI RESPONSE QUALITY (evaluation/phoenix) ──────────────────────
-            elif tool == "evaluate_ai_response":
-                content = args.get("content", "")
-                prompt = args.get("prompt", "")
-                if not content:
-                    return "I need the content to evaluate.", {}
-                from apps.evaluation.phoenix.evaluator import get_ai_evaluator
-
-                result = get_ai_evaluator().evaluate(content, prompt)
-                lines = [f"**Overall quality: {result.overall_score:.0%}**"]
-                lines.append(
-                    "Scores:\n" + "\n".join(f"  • {k}: {v:.0%}" for k, v in result.scores.items())
-                )
-                if result.flags:
-                    lines.append("Flags:\n" + "\n".join(f"  • {f}" for f in result.flags))
-                if result.recommendations:
-                    lines.append(
-                        "Recommendations:\n" + "\n".join(f"  • {r}" for r in result.recommendations)
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "ai_performance_report":
-                from apps.core import auth
-
-                if not auth.is_owner_email(email):
-                    return "This action is reserved for ARIA's owner.", {}
-                from apps.evaluation.phoenix.tracer import get_cognition_tracer
-
-                stats = await get_cognition_tracer().analytics()
-                if stats.get("total_traces", 0) == 0:
-                    return "No traced conversation turns yet.", {}
-                by_tool = ", ".join(f"{k}: {v}" for k, v in stats.get("by_task", {}).items())
-                return (
-                    f"**AI performance ({stats['total_traces']} traces)**\n"
-                    f"Avg latency: {stats['avg_latency_ms']:.0f}ms · "
-                    f"Failure rate: {stats['failure_rate']:.0%}\n"
-                    f"Avg quality: {stats['avg_quality_score']:.0%} · "
-                    f"Avg hallucination risk: {stats['avg_hallucination_risk']:.0%}\n"
-                    f"By tool: {by_tool}"
-                ), {}
-
-            # ── GROWTH FORECASTING & LEVERAGE ANALYSIS ───────────────────────
-            elif tool == "forecast_revenue":
-                initial_revenue = float(args.get("initial_revenue", 0))
-                growth_rate = float(args.get("growth_rate", 0.1))
-                months = int(args.get("months", 12))
-                model_raw = args.get("model", "exponential")
-                name = args.get("name", "forecast")
-                if initial_revenue <= 0:
-                    return "I need a starting monthly revenue greater than $0 to forecast from.", {}
-                from apps.strategy.forecasting.strategic_forecaster import (
-                    GrowthModel,
-                    get_strategic_forecaster,
-                )
-
-                try:
-                    model = GrowthModel(model_raw)
-                except ValueError:
-                    model = GrowthModel.EXPONENTIAL
-                scenario = await get_strategic_forecaster().forecast(
-                    initial_revenue, growth_rate, months, model, name
-                )
-                breakeven = (
-                    f"month {scenario.breakeven_month}"
-                    if scenario.breakeven_month
-                    else "not reached in this window"
-                )
-                return (
-                    f"**Forecast '{scenario.name}'** ({model.value}, {months} months)\n"
-                    f"Total projected revenue: ${scenario.total_projected_revenue:,.0f}\n"
-                    f"Breakeven: {breakeven}"
-                ), {}
-
-            elif tool == "find_growth_bottleneck":
-                metrics = args.get("metrics", {}) or {}
-                from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
-
-                result = await get_leverage_analyzer().bottleneck_analysis(metrics)
-                lines = [
-                    f"**Primary bottleneck: {result['primary_bottleneck']}**",
-                    f"Impact score: {result['impact_score']}x · "
-                    f"Estimated revenue lift: {result['estimated_revenue_lift_pct']}%",
-                ]
-                if result["fix_priority"]:
-                    lines.append(
-                        "Fix priority:\n" + "\n".join(f"  • {a}" for a in result["fix_priority"])
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "growth_removal_plan":
-                bottleneck = args.get("bottleneck", "")
-                if not bottleneck:
-                    return (
-                        "I need the bottleneck name (from find_growth_bottleneck) to plan around.",
-                        {},
-                    )
-                from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
-
-                plan = await get_leverage_analyzer().constraint_removal_plan(bottleneck)
-                lines = [f"**Removal plan for '{bottleneck}':**"]
-                for step in plan:
-                    lines.append(
-                        f"  {step['step']}. {step['action']} "
-                        f"({step['timeframe_days']}d) → {step['expected_outcome']}"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "simulate_growth_lever":
-                metrics = args.get("metrics", {}) or {}
-                lever = args.get("lever", "")
-                improvement_pct = float(args.get("improvement_pct", 10))
-                if not lever:
-                    return (
-                        "I need which lever to simulate (conversion, traffic, order_value, or retention).",
-                        {},
-                    )
-                from apps.strategy.leverage.leverage_analyzer import get_leverage_analyzer
-
-                result = await get_leverage_analyzer().simulate_improvement(
-                    metrics, lever, improvement_pct
-                )
-                return (
-                    f"**Simulated {improvement_pct:.0f}% improvement in {lever}:**\n"
-                    f"Monthly revenue: ${result['base_monthly_revenue_usd']:,.0f} → "
-                    f"${result['projected_monthly_revenue_usd']:,.0f} "
-                    f"({result['revenue_lift_pct']:+.1f}%)\n"
-                    f"Annualized lift: ${result['annualized_lift_usd']:,.0f}"
-                ), {}
-
-            # ── CUSTOMER BEHAVIOR & AUDIENCE PERSONAS ────────────────────────
-            elif tool == "analyze_user_behavior":
-                user_id = args.get("user_id", "")
-                actions = args.get("actions", []) or []
-                if not user_id or not actions:
-                    return (
-                        "I need a user_id and their recent actions (e.g. view, add_to_cart, purchase) to analyze.",
-                        {},
-                    )
-                from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
-
-                profile = await get_behavior_analyzer().analyze_user(user_id, actions)
-                signals = ", ".join(s.value for s in profile.signals) or "none detected"
-                return (
-                    f"**Behavior profile for {user_id}**\n"
-                    f"Signals: {signals}\n"
-                    f"Intent score: {profile.intent_score:.0%} · Churn risk: {profile.churn_probability:.0%} · "
-                    f"Predicted LTV: ${profile.predicted_ltv_usd:.0f}\n"
-                    f"Next best action: {profile.next_best_action}"
-                ), {}
-
-            elif tool == "predict_customer_churn":
-                user_id = args.get("user_id", "")
-                if not user_id:
-                    return (
-                        "I need a user_id (analyzed previously via analyze_user_behavior) to predict churn for.",
-                        {},
-                    )
-                from apps.psychology.behavior.behavior_analyzer import get_behavior_analyzer
-
-                result = await get_behavior_analyzer().predict_churn(user_id)
-                lines = [f"**Churn risk for {user_id}: {result['churn_probability']:.0%}**"]
-                lines.append("Reasons:\n" + "\n".join(f"  • {r}" for r in result["reasons"]))
-                lines.append(
-                    "Prevention actions:\n"
-                    + "\n".join(f"  • {p}" for p in result["prevention_actions"])
-                )
-                return "\n".join(lines), {}
-
-            elif tool == "generate_audience_personas":
-                niche = args.get("niche", "")
-                count = int(args.get("count", 3))
-                if not niche:
-                    return "I need a niche to generate audience personas for.", {}
-                from apps.psychology.personas.persona_engine import get_persona_engine
-
-                personas = await get_persona_engine().generate_niche_personas(niche, count)
-                lines = [f"**{len(personas)} audience personas for '{niche}':**"]
-                for p in personas:
-                    lines.append(
-                        f"  • **{p.archetype.value}** (id: `{p.persona_id}`) — "
-                        f"pain: {p.primary_pain}, desire: {p.primary_desire}"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "match_content_to_persona":
-                content = args.get("content", "")
-                persona_id = args.get("persona_id", "")
-                if not content or not persona_id:
-                    return (
-                        "I need the content and a persona_id (from generate_audience_personas) to check.",
-                        {},
-                    )
-                from apps.psychology.personas.persona_engine import get_persona_engine
-
-                result = await get_persona_engine().match_content_to_persona(content, persona_id)
-                lines = [f"**Persona match: {result['match_score']:.0%}**"]
-                if result["alignment_reasons"]:
-                    lines.append(
-                        "Aligned:\n" + "\n".join(f"  • {a}" for a in result["alignment_reasons"])
-                    )
-                if result["suggested_tweaks"]:
-                    lines.append(
-                        "Suggested tweaks:\n"
-                        + "\n".join(f"  • {t}" for t in result["suggested_tweaks"])
-                    )
-                return "\n".join(lines), {}
-
-            # ── PAID ADS: AUDIENCES & CAC ─────────────────────────────────────
-            elif tool == "create_ad_audience":
-                name = args.get("name", "")
-                criteria = args.get("criteria", {}) or {}
-                platforms = args.get("platforms") or ["meta"]
-                if not name:
-                    return "I need a name for this ad audience.", {}
-                from apps.ads.audiences.audience_segmenter import get_audience_segmenter
-
-                segment = await get_audience_segmenter().create_segment(name, criteria, platforms)
-                return (
-                    f"**Audience '{segment.name}'** (id: `{segment.segment_id}`)\n"
-                    f"Platforms: {', '.join(segment.platforms)} · "
-                    f"Estimated CPM: ${segment.estimated_cpm:.2f} · "
-                    f"Est. size: {segment.user_count:,}"
-                ), {}
-
-            elif tool == "estimate_ad_cac":
-                estimated_cpm = float(args.get("estimated_cpm", 10.0))
-                product_price = float(args.get("product_price", 0))
-                expected_cvr = float(args.get("expected_cvr", 0.02))
-                platform = args.get("platform", "meta")
-                if product_price <= 0:
-                    return "I need the product price to estimate CAC against.", {}
-                from apps.ads.audiences.audience_segmenter import (
-                    AudienceSegment,
-                    get_audience_segmenter,
-                )
-
-                segment = AudienceSegment(estimated_cpm=estimated_cpm, platforms=[platform])
-                result = get_audience_segmenter().cac_estimate(segment, product_price, expected_cvr)
-                verdict = "profitable" if result["profitable"] else "NOT profitable"
-                return (
-                    f"**CAC estimate ({platform}): {verdict}**\n"
-                    f"CPM ${result['cpm']:.2f} → CPC ${result['cpc']:.2f} → CAC ${result['cac']:.2f}\n"
-                    f"Break-even price: ${result['break_even_price']:.2f} (product price: ${product_price:.2f})"
-                ), {}
-
-            elif tool == "suggest_ad_targeting":
-                product = args.get("product", "")
-                niche = args.get("niche", "")
-                if not product or not niche:
-                    return "I need both a product and a niche to suggest ad targeting.", {}
-                from apps.ads.audiences.audience_segmenter import get_audience_segmenter
-
-                segmenter = get_audience_segmenter()
-                interests = await segmenter.generate_interest_targeting(product, niche)
-                exclusions = segmenter.generate_exclusion_audiences()
-                lines = [
-                    "**Interest targeting:**\n" + "\n".join(f"  • {i}" for i in interests),
-                    "**Exclusion audiences:**\n" + "\n".join(f"  • {e}" for e in exclusions),
-                ]
-                return "\n\n".join(lines), {}
-
-            # ── RETARGETING ──────────────────────────────────────────────────
-            elif tool == "create_retargeting_campaign":
-                product_name = args.get("product_name", "")
-                audience_type = args.get("audience_type", "product_viewers")
-                user_ids = args.get("user_ids", []) or []
-                budget_daily_usd = float(args.get("budget_daily_usd", 20.0))
-                platform = args.get("platform", "meta")
-                if not product_name:
-                    return "I need a product name to build a retargeting campaign around.", {}
-                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
-
-                engine = get_retargeting_engine()
-                audience = await engine.create_audience(
-                    f"{audience_type.replace('_', ' ').title()} — {product_name}",
-                    audience_type,
-                    user_ids,
-                    [platform],
-                )
-                campaign = await engine.create_campaign(
-                    audience, product_name, budget_daily_usd, platform
-                )
-                return (
-                    f"**Retargeting campaign '{campaign.name}'** (id: `{campaign.campaign_id}`)\n"
-                    f"Audience: {audience.size} users, est. ROAS {audience.estimated_roas:.1f}x\n"
-                    f"Headline: {campaign.headline}\n"
-                    f"Copy: {campaign.ad_copy}\n"
-                    f"Budget: ${budget_daily_usd:.0f}/day on {platform} · status: {campaign.status}"
-                ), {}
-
-            elif tool == "cart_abandonment_sequence":
-                cart_items = args.get("cart_items", []) or []
-                user_id = args.get("user_id", "")
-                if not cart_items or not user_id:
-                    return "I need the cart items and a user_id to build this sequence.", {}
-                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
-
-                sequence = await get_retargeting_engine().cart_abandonment_sequence(
-                    cart_items, user_id
-                )
-                lines = [f"**Cart abandonment sequence for {user_id}:**"]
-                for step in sequence:
-                    lines.append(
-                        f"  {step['sequence']}. +{step['delay_hours']}h — {step['headline']}\n"
-                        f"     {step['ad_copy']}"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "record_retargeting_metrics":
-                campaign_id = args.get("campaign_id", "")
-                if not campaign_id:
-                    return "I need the campaign_id to record metrics against.", {}
-                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
-
-                ok = await get_retargeting_engine().record_metrics(
-                    campaign_id,
-                    impressions=int(args.get("impressions", 0)),
-                    clicks=int(args.get("clicks", 0)),
-                    conversions=int(args.get("conversions", 0)),
-                    spend=float(args.get("spend", 0.0)),
-                    revenue=float(args.get("revenue", 0.0)),
-                )
-                if not ok:
-                    return f"No retargeting campaign found with id `{campaign_id}`.", {}
-                return f"Metrics recorded for campaign `{campaign_id}`.", {}
-
-            elif tool == "retargeting_performance":
-                limit = int(args.get("limit", 5))
-                from apps.ads.retargeting.retargeting_engine import get_retargeting_engine
-
-                engine = get_retargeting_engine()
-                await engine._load()
-                analytics = engine.campaign_analytics()
-                top = engine.top_performing_campaigns(limit)
-                if analytics["total_campaigns"] == 0:
-                    return (
-                        "No retargeting campaigns yet. Use create_retargeting_campaign first.",
-                        {},
-                    )
-                lines = [
-                    f"**Retargeting performance** ({analytics['active_campaigns']}/{analytics['total_campaigns']} active)\n"
-                    f"Spend ${analytics['total_spend']:,.0f} → Revenue ${analytics['total_revenue']:,.0f} "
-                    f"(ROAS {analytics['avg_roas']:.2f}x) · CAC ${analytics['total_cac']:.2f}",
-                    "Top performers:\n"
-                    + "\n".join(
-                        f"  • {c.get('name', c.get('campaign_id'))} — ROAS {c.get('roas', 0):.2f}x"
-                        for c in top
-                    ),
-                ]
-                return "\n\n".join(lines), {}
-
             # ── SHOPIFY REVENUE SUITE ──────────────────────────────────────────
-            elif tool == "recover_abandoned_cart":
+            if tool == "recover_abandoned_cart":
                 user_id = args.get("user_id", "") or args.get("email", "")
                 email = args.get("email", "")
                 items = args.get("items", []) or []
@@ -3095,7 +3204,12 @@ class AriaMind:
                     )
                 return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
 
-            elif tool == "create_flash_sale":
+            elif tool == "create_flash_sale":  # noqa: RET505 — same reason
+                # as analyze_decision above: recover_abandoned_cart is now the
+                # first branch of the remaining chain and always returns, so
+                # ruff would suggest flattening every subsequent `elif` in
+                # turn. Left as `elif` deliberately — rest of the chain is
+                # out of scope for this batch (see AAS Fase 2 / ADR-005).
                 name = args.get("name", "")
                 products = args.get("products", []) or []
                 discount_pct = float(args.get("discount_pct", 0.2))
