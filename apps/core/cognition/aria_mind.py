@@ -2117,6 +2117,1102 @@ async def _tool_retargeting_performance(
     return "\n\n".join(lines), {}
 
 
+# ── Batch 3 (48 tools: recover_abandoned_cart through predict_engagement) ──
+# Same extraction contract as Batches 1-2: verbatim body, no logic changes,
+# verified by AST-diff against origin/main before commit.
+
+
+async def _tool_recover_abandoned_cart(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    user_id = args.get("user_id", "") or args.get("email", "")
+    email = args.get("email", "")
+    items = args.get("items", []) or []
+    cart_value = float(args.get("cart_value", 0))
+    if not email or not items:
+        return (
+            "I need the customer's email and the cart items to build a recovery sequence.",
+            {},
+        )
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
+
+    engine = get_cart_recovery_engine(await workspace_id_for(email))
+    cart = await engine.register_abandoned_cart(user_id, email, items, cart_value)
+    sequence = await engine.generate_recovery_sequence(cart)
+    lines = [f"**Recovery sequence for {email}** (cart: `{cart.cart_id}`, ${cart_value:.2f})"]
+    for e in sequence:
+        lines.append(f"  +{e['delay_hours']}h ({e['discount_pct']:.0%} off) — {e['subject']}")
+    return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
+
+
+async def _tool_create_flash_sale(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    name = args.get("name", "")
+    products = args.get("products", []) or []
+    discount_pct = float(args.get("discount_pct", 0.2))
+    duration_hours = float(args.get("duration_hours", 24))
+    if not name or not products:
+        return "I need a sale name and at least one product to create a flash sale.", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+
+    engine = get_flash_sale_engine(await workspace_id_for(email))
+    prices = {p.get("id", p.get("title", "")): float(p.get("price", 0)) for p in products}
+    sale = await engine.create_sale(
+        name,
+        [p.get("id", p.get("title", "")) for p in products],
+        discount_pct,
+        duration_hours,
+        prices,
+    )
+    copy = await engine.create_urgency_copy(sale)
+    return (
+        f"**Flash sale '{sale.name}'** (id: `{sale.sale_id}`, status: {sale.status})\n"
+        f"{len(sale.product_ids)} products at {discount_pct:.0%} off, {duration_hours:.0f}h\n"
+        f"Urgency copy: {copy}" + _SHOPIFY_DRAFT_NOTICE
+    ), {}
+
+
+async def _tool_create_product_bundle(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    products = args.get("products", []) or []
+    bundle_type = args.get("bundle_type", "complementary")
+    discount_pct = float(args.get("discount_pct", 0.15))
+    if len(products) < 2:
+        return "I need at least 2 products to build a bundle.", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.bundles.bundle_generator import get_bundle_generator
+
+    bundle = await get_bundle_generator(await workspace_id_for(email)).create_bundle(
+        products, bundle_type, discount_pct
+    )
+    return (
+        f"**{bundle.name}** (id: `{bundle.bundle_id}`, {bundle.bundle_type})\n"
+        f"{bundle.description}\n"
+        f"${bundle.individual_total:.2f} → ${bundle.bundle_price:.2f} "
+        f"(save ${bundle.savings:.2f}, {bundle.savings_pct:.0f}%)\n"
+        f"CTA: {bundle.cta}" + _SHOPIFY_DRAFT_NOTICE
+    ), {}
+
+
+async def _tool_recommend_products(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    user_id = args.get("user_id", "")
+    context = args.get("context", "homepage")
+    catalog = args.get("catalog", []) or []
+    current_product_id = args.get("current_product_id", "")
+    limit = int(args.get("limit", 5))
+    if not catalog:
+        return "I need a product catalog to recommend from.", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.revenue.product_recommender import get_product_recommender
+
+    recommender = get_product_recommender(await workspace_id_for(email))
+    result = await recommender.recommend(user_id, context, catalog, current_product_id, limit)
+    if not result.recommended_ids:
+        return (
+            f"No recommendations available for context '{context}' from this catalog.",
+            {},
+        )
+    lines = [f"**Recommendations ({result.strategy}, {context}):**"]
+    for title, score in zip(result.recommended_titles, result.scores, strict=False):
+        lines.append(f"  • {title or '(untitled)'} — match {score:.0%}")
+    return "\n".join(lines), {}
+
+
+async def _tool_shopify_revenue_dashboard(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.bundles.bundle_generator import get_bundle_generator
+    from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+    from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
+    from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
+    from apps.shopify.revenue.product_recommender import get_product_recommender
+    from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
+    ws_id = await workspace_id_for(email)
+    cart_engine = get_cart_recovery_engine(ws_id)
+    await cart_engine._load()
+    sale_engine = get_flash_sale_engine(ws_id)
+    await sale_engine._load()
+    bundle_engine = get_bundle_generator(ws_id)
+    await bundle_engine._load()
+    rec_engine = get_product_recommender(ws_id)
+    await rec_engine._load()
+    seo_engine = get_product_seo_optimizer(ws_id)
+    await seo_engine._load()
+    funnel_engine = get_shopify_funnel_engine(ws_id)
+    await funnel_engine._load()
+
+    cart_stats = cart_engine.recovery_stats()
+    sale_stats = sale_engine.sales_analytics()
+    bundle_stats = bundle_engine.bundle_stats()
+    rec_stats = rec_engine.recommendation_stats()
+    seo_stats = seo_engine.seo_stats()
+    funnel_stats = funnel_engine.funnel_stats()
+    return (
+        f"**Shopify revenue dashboard**\n"
+        f"Cart recovery: {cart_stats['recovered']}/{cart_stats['total_abandoned']} recovered "
+        f"({cart_stats['recovery_rate']:.0%}), ${cart_stats['revenue_recovered']:,.2f} recovered\n"
+        f"Flash sales: {sale_stats['active_count']} active, "
+        f"${sale_stats['total_revenue']:,.2f} total revenue\n"
+        f"Bundles: {bundle_stats['total_bundles']} created, "
+        f"avg {bundle_stats['avg_savings_pct']:.0f}% savings\n"
+        f"Recommendations: {rec_stats['users_tracked']} users tracked, "
+        f"{rec_stats['total_recommendations']} interactions\n"
+        f"SEO: {seo_stats['total_optimized']} products optimized, "
+        f"avg score {seo_stats['avg_seo_score']:.0%}\n"
+        f"Funnels: {funnel_stats['total_funnels']} built, "
+        f"{funnel_stats['total_upsells']} upsell offers"
+    ), {}
+
+
+async def _tool_optimize_product_seo(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product_name = args.get("product_name", "")
+    current_title = args.get("current_title", "")
+    if not product_name or not current_title:
+        return "I need at least the product name and its current title to optimize.", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
+    seo_optimizer = get_product_seo_optimizer(await workspace_id_for(email))
+    seo = await seo_optimizer.optimize_product(
+        args.get("product_id", "") or product_name,
+        product_name,
+        current_title,
+        args.get("current_description", ""),
+        args.get("category", "general"),
+    )
+    return (
+        f"**SEO-optimized: {product_name}** (score {seo.seo_score:.0%}, "
+        f"est. +{seo.estimated_traffic_boost_pct:.0f}% traffic)\n"
+        f"Title: {seo.optimized_title}\n"
+        f"Meta description: {seo.meta_description}\n"
+        f"Target keywords: {', '.join(seo.target_keywords[:5])}\n\n"
+        f"{seo.optimized_description}" + _SHOPIFY_DRAFT_NOTICE
+    ), {}
+
+
+async def _tool_audit_seo_keywords(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    niche = args.get("niche", "")
+    if not niche:
+        return "What niche/product category should I find keywords for?", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.seo.product_seo import get_product_seo_optimizer
+
+    seo_optimizer = get_product_seo_optimizer(await workspace_id_for(email))
+    result = await seo_optimizer.audit_keywords(niche)
+    return (
+        f"**SEO keywords for '{niche}'**\n"
+        f"Commercial intent: {', '.join(result['commercial_keywords'])}\n"
+        f"Comparison intent: {', '.join(result['comparison_keywords'])}\n"
+        f"Long-tail: {', '.join(result['long_tail'])}"
+    ), {}
+
+
+async def _tool_create_upsell_offer(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    original_product = args.get("original_product", "")
+    upsell_product = args.get("upsell_product", "")
+    if not original_product or not upsell_product:
+        return "I need both the original product and the upsell product.", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+
+    funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
+    offer = await funnel_engine.create_upsell_flow(
+        original_product,
+        float(args.get("original_price", 0)),
+        upsell_product,
+        float(args.get("upsell_price", 0)),
+    )
+    return (
+        f"**Upsell offer** (est. {offer.acceptance_rate_pct:.0f}% acceptance)\n"
+        f"{offer.headline}\n{offer.reason}\n"
+        f"Urgency: {offer.urgency_trigger}" + _SHOPIFY_DRAFT_NOTICE
+    ), {}
+
+
+async def _tool_optimize_shopify_checkout(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product_name = args.get("product_name", "")
+    if not product_name:
+        return "Which product's checkout should I optimize?", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+
+    funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
+    result = await funnel_engine.optimize_checkout(product_name, args.get("pain_points", []) or [])
+    lines = [
+        f"**Checkout optimization: {product_name}** "
+        f"(est. +{result['expected_cvr_lift_pct']:.0f}% completion)",
+        "Friction points: " + ", ".join(result["friction_points"]),
+        "Fixes:\n" + "\n".join(f"  • {f}" for f in result["fixes"]),
+    ]
+    return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
+
+
+async def _tool_create_post_purchase_flow(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product_name = args.get("product_name", "")
+    if not product_name:
+        return "Which product is this post-purchase flow for?", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
+
+    funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
+    funnel = await funnel_engine.create_post_purchase_flow(
+        product_name, args.get("category", "general")
+    )
+    lines = [f"**Post-purchase flow: {product_name}** ({funnel.headline})"]
+    for e in funnel.stages:
+        lines.append(f"  +{e['delay']} — {e['type']}: {e['subject']}")
+    return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
+
+
+async def _tool_shopify_store_status(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.api_client import get_shopify_client_for
+
+    client = await get_shopify_client_for(await workspace_id_for(email))
+    status = client.client_status()
+    if not status["configured"]:
+        return (
+            "No Shopify store connected — connect your own store from the "
+            "Connectors menu, or (owner only) set SHOPIFY_SHOP_DOMAIN and "
+            "SHOPIFY_ACCESS_TOKEN to enable real revenue/order data. Until then, "
+            "shopify_revenue_dashboard only reflects ARIA's own tracked activity, "
+            "not actual store sales.",
+            {},
+        )
+    return (
+        f"**Shopify store connected**: {status['domain']} (API {status['api_version']})\n"
+        f"Cached: {status['cached_products']} products, {status['cached_orders']} orders"
+    ), {}
+
+
+async def _tool_shopify_live_analytics(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tenancy import workspace_id_for
+    from apps.shopify.api_client import get_shopify_client_for
+
+    client = await get_shopify_client_for(await workspace_id_for(email))
+    if not client.is_configured:
+        return (
+            "No Shopify store connected — check shopify_store_status. "
+            "Connect your own store from the Connectors menu, or (owner only) "
+            "set SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN.",
+            {},
+        )
+    days = int(args.get("days", 30))
+    analytics = await client.get_revenue_analytics(days)
+    if analytics.orders_count == 0:
+        return f"No orders found in the last {days} days.", {}
+    lines = [
+        f"**Real Shopify revenue — last {days} days**",
+        f"${analytics.total_revenue:,.2f} across {analytics.orders_count} orders "
+        f"(avg ${analytics.avg_order_value:,.2f})",
+    ]
+    if analytics.top_products:
+        lines.append(
+            "Top products:\n"
+            + "\n".join(
+                f"  • {p['title']} — ${p['revenue']:,.2f}" for p in analytics.top_products[:5]
+            )
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_discover_leads(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    niche = args.get("niche", "")
+    count = int(args.get("count", 10))
+    location = args.get("location", "US")
+    if not niche:
+        return "I need a niche to search for leads in.", {}
+    from apps.acquisition.scraper.lead_scraper import get_lead_scraper
+
+    batch = await get_lead_scraper().scrape_leads(niche, count, location)
+    if not batch.raw_leads:
+        return f"No leads found for '{niche}'.", {}
+    lines = [
+        f"**{batch.leads_qualified}/{batch.leads_found} qualified leads for '{niche}'** "
+        f"({', '.join(batch.sources_checked)})"
+    ]
+    for lead in batch.raw_leads:
+        tag = "web search" if lead["source"] == "duckduckgo" else "illustrative example"
+        signals = ", ".join(lead["signals"][:3]) or "no signals detected"
+        lines.append(f"  • {lead['company_name']} [{tag}] — {signals}")
+    return "\n".join(lines), {}
+
+
+async def _tool_generate_sales_proposal(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    company_name = args.get("company_name", "")
+    niche = args.get("niche", "")
+    pain_points = args.get("pain_points", []) or []
+    services_needed = args.get("services_needed", []) or []
+    estimated_value_usd = float(args.get("estimated_value_usd", 0))
+    if not company_name:
+        return "I need the company name to write a proposal for.", {}
+    from apps.acquisition.leads.lead_engine import Lead, get_lead_engine
+
+    lead = Lead(
+        company_name=company_name,
+        niche=niche,
+        pain_points=pain_points,
+        services_needed=services_needed,
+        estimated_value_usd=estimated_value_usd,
+    )
+    brief = await get_lead_engine().generate_proposal_brief(lead)
+    return (
+        f"**Proposal brief for {company_name}**\n"
+        f"Subject: {brief.subject_line}\n"
+        f"Opening: {brief.opening_hook}\n"
+        f"Pain identified: {brief.pain_identified}\n"
+        f"Solution: {brief.solution_summary}\n"
+        f"Social proof: {brief.social_proof}\n"
+        f"CTA: {brief.cta}"
+    ), {}
+
+
+async def _tool_register_deliverable(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    sku = args.get("sku", "")
+    name = args.get("name", "")
+    content = args.get("content", "")
+    delivery_type = args.get("delivery_type", "link")
+    price_usd = float(args.get("price_usd", 0) or 0)
+    if not sku or not name or not content:
+        return "I need a sku, a name, and the content (link or text) to register.", {}
+    from apps.acquisition.delivery.delivery_engine import get_delivery_engine
+
+    result = await get_delivery_engine().register_deliverable(
+        sku, name, content, delivery_type, price_usd
+    )
+    if result.get("success"):
+        return f"**Registered deliverable '{name}'** for sku `{sku}`.", {}
+    return f"Couldn't register that deliverable: {result.get('error')}", {}
+
+
+async def _tool_deliver_purchase(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    sku = args.get("sku", "")
+    buyer_email = args.get("buyer_email", "")
+    buyer_name = args.get("buyer_name", "")
+    order_ref = args.get("order_ref", "")
+    if not sku or not buyer_email:
+        return "I need a sku and the buyer's email to deliver a purchase.", {}
+    from apps.acquisition.delivery.delivery_engine import get_delivery_engine
+
+    record = await get_delivery_engine().deliver(sku, buyer_email, buyer_name, order_ref)
+    if record.status == "sent":
+        return f"**Delivered '{sku}' to {buyer_email}** ({record.detail}).", {}
+    if record.status == "no_deliverable":
+        return (
+            f"No deliverable is registered for sku `{sku}` — "
+            "call register_deliverable first, I won't guess what to send.",
+            {},
+        )
+    if record.status == "ambiguous":
+        # Deliberately phrased without any word from
+        # AriaMind._FAILURE_SIGNALS: the send outcome is
+        # genuinely unknown (the provider call raised before
+        # confirming success/failure), so the generic
+        # _execute_with_retry loop must NOT treat this as a
+        # retryable failure and fire again — that could send
+        # the product a second time for one purchase.
+        return (
+            f"Delivery to {buyer_email} for sku `{sku}` is unconfirmed — "
+            "the send attempt raised an exception before we could tell "
+            "whether the email actually went out. Check the email "
+            "provider's own logs before deliver_purchase runs again with "
+            "this same order_ref; a blind repeat risks sending it twice.",
+            {},
+        )
+    if record.status == "in_progress":
+        return (
+            f"A delivery for sku `{sku}` and this order is already "
+            "underway from another call right now — wait for it to "
+            "finish rather than starting a second one for the same order.",
+            {},
+        )
+    return f"**Delivery to {buyer_email} failed:** {record.detail}", {}
+
+
+async def _tool_add_linkedin_prospect(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    name = args.get("name", "")
+    title = args.get("title", "")
+    company = args.get("company", "")
+    industry = args.get("industry", "")
+    profile_url = args.get("profile_url", "")
+    if not name or not company:
+        return "I need at least a name and company to add this prospect.", {}
+    from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+    prospect = await get_linkedin_outreach().add_prospect(
+        name, title, company, industry, profile_url
+    )
+    return (
+        f"**Added prospect '{prospect.name}'** (id: `{prospect.prospect_id}`)\n"
+        f"{prospect.title} at {prospect.company} ({prospect.industry})"
+    ), {}
+
+
+async def _tool_score_linkedin_prospect(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    prospect_id = args.get("prospect_id", "")
+    service_offered = args.get("service_offered", "")
+    if not prospect_id or not service_offered:
+        return (
+            "I need a prospect_id and what service you're offering to score this prospect.",
+            {},
+        )
+    from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+    prospect = await get_linkedin_outreach().score_prospect(prospect_id, service_offered)
+    return (
+        f"**{prospect.name}: {prospect.relevance_score:.0%} relevance**\n"
+        f"Likely pain point: {prospect.pain_point_hypothesis}"
+    ), {}
+
+
+async def _tool_generate_linkedin_connection_request(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    prospect_id = args.get("prospect_id", "")
+    service = args.get("service", "")
+    if not prospect_id or not service:
+        return "I need a prospect_id and the service being offered.", {}
+    from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+    msg = await get_linkedin_outreach().generate_connection_request(prospect_id, service)
+    return f"**Connection request** ({len(msg.body)} chars):\n{msg.body}", {}
+
+
+async def _tool_generate_linkedin_outreach_sequence(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    prospect_id = args.get("prospect_id", "")
+    service = args.get("service", "")
+    if not prospect_id or not service:
+        return "I need a prospect_id and the service being offered.", {}
+    from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+    messages = await get_linkedin_outreach().generate_outreach_sequence(prospect_id, service)
+    lines = ["**4-message LinkedIn outreach sequence:**"]
+    for m in messages:
+        lines.append(f"  {m.message_type} — {m.subject}\n    {m.body}")
+    return "\n".join(lines), {}
+
+
+async def _tool_linkedin_outreach_pipeline(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    min_score = float(args.get("min_score", 0.7))
+    from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
+
+    outreach = get_linkedin_outreach()
+    await outreach._load()
+    analytics = outreach.outreach_analytics()
+    hot = outreach.hot_prospects(min_score)
+    if analytics["total_prospects"] == 0:
+        return "No LinkedIn prospects yet. Use add_linkedin_prospect first.", {}
+    lines = [
+        f"**LinkedIn pipeline** ({analytics['total_prospects']} prospects)\n"
+        f"Avg relevance: {analytics['avg_relevance_score']:.0%} · "
+        f"Connection rate: {analytics['connection_rate_pct']:.0f}% · "
+        f"Reply rate: {analytics['reply_rate_pct']:.0f}%",
+        (
+            f"Hot prospects (≥{min_score:.0%}):\n"
+            + "\n".join(
+                f"  • {p['name']} at {p['company']} — {p['relevance_score']:.0%}" for p in hot
+            )
+            if hot
+            else f"No prospects above {min_score:.0%} relevance yet."
+        ),
+    ]
+    return "\n\n".join(lines), {}
+
+
+async def _tool_create_landing_page(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product = args.get("product", "")
+    offer = args.get("offer", "")
+    target_audience = args.get("target_audience", "")
+    price = float(args.get("price", 0))
+    if not product or not offer:
+        return "I need at least a product and an offer to build a landing page.", {}
+    from apps.conversion.landing_pages.landing_page_engine import (
+        get_landing_page_engine,
+    )
+
+    page = await get_landing_page_engine().create_page(product, offer, target_audience, price)
+
+    # ── SAFETY LAYER 3: content firewall ─────────────────────
+    # This tool returns copy for the user to publish themselves
+    # (not hosted by ARIA), same category as post_to_social's
+    # own preview step — but a credential-harvesting page is
+    # exactly the shape this check exists to catch before
+    # anyone copies it onto a real live domain.
+    from apps.core.config import settings as _guardrail_settings
+    from apps.core.safety import guardrails
+
+    if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+        page_text = f"{page.headline}\n{page.hero_copy}\n{page.cta_primary}"
+        safety = guardrails.check_content_safety(page_text)
+        if not safety.safe:
+            with suppress(Exception):
+                await guardrails.record_audit_event(
+                    "content_blocked",
+                    {"email": email, "tool": tool, "findings": safety.findings},
+                )
+            return (
+                "I'm not going to generate that page — it matched a blocked "
+                f"pattern: {'; '.join(safety.findings)}.",
+                {},
+            )
+
+    bullets = "\n".join(f"  • {b}" for b in page.bullet_points)
+    return (
+        f"**{page.headline}** (id: `{page.page_id}`, est. CVR {page.estimated_cvr_pct:.1f}%)\n"
+        f"{page.subheadline}\n\n{page.hero_copy}\n\n{bullets}\n\n"
+        f"{page.social_proof} · {page.urgency_trigger}\n"
+        f"CTA: {page.cta_primary} / {page.cta_secondary}\n\n"
+        f"⚠ Placeholder numbers (customer counts, spots remaining) are templates — "
+        f"replace with real figures or remove before publishing."
+    ), {}
+
+
+async def _tool_generate_landing_headlines(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product = args.get("product", "")
+    audience = args.get("audience", "")
+    count = int(args.get("count", 5))
+    if not product:
+        return "I need a product to generate headline variants for.", {}
+    from apps.conversion.landing_pages.landing_page_engine import (
+        get_landing_page_engine,
+    )
+
+    variants = await get_landing_page_engine().generate_headline_variants(product, audience, count)
+    lines = ["**Headline variants:**"] + [f"  {i}. {v}" for i, v in enumerate(variants, 1)]
+    return "\n".join(lines), {}
+
+
+async def _tool_landing_page_stats(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.conversion.landing_pages.landing_page_engine import (
+        get_landing_page_engine,
+    )
+
+    engine = get_landing_page_engine()
+    await engine._load()
+    stats = engine.page_stats()
+    if stats["total_pages"] == 0:
+        return "No landing pages yet. Use create_landing_page first.", {}
+    by_variant = ", ".join(f"{k}: {v}" for k, v in stats["by_variant"].items())
+    return (
+        f"**Landing pages: {stats['total_pages']}** "
+        f"(avg est. CVR {stats['avg_estimated_cvr_pct']:.1f}%)\n"
+        f"By variant: {by_variant}"
+    ), {}
+
+
+async def _tool_analyze_pricing(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product_name = args.get("product_name", "") or args.get("product", "")
+    category = args.get("category", "")
+    our_price = float(args.get("our_price", 0))
+    competitor_data = args.get("competitors", []) or args.get("competitor_data", []) or []
+    if not product_name or our_price <= 0:
+        return "I need the product name and our current price to analyze pricing.", {}
+    from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+    pp = await get_pricing_intelligence().analyze_pricing(
+        product_name, category, our_price, competitor_data
+    )
+    return (
+        f"**{pp.product_name}: {pp.positioning}** (${pp.our_price:.2f})\n"
+        f"Market: ${pp.market_min:.2f} - ${pp.market_max:.2f} (avg ${pp.market_avg:.2f})\n"
+        f"Recommended price: ${pp.recommended_price:.2f}"
+    ), {}
+
+
+async def _tool_suggest_dynamic_price(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    product = args.get("product", "")
+    inventory_level = args.get("inventory_level", "normal")
+    demand_signal = args.get("demand_signal", "stable")
+    if not product:
+        return (
+            "I need a product (already analyzed via analyze_pricing) to suggest a price for.",
+            {},
+        )
+    from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+    result = await get_pricing_intelligence().dynamic_price_suggestion(
+        product, inventory_level, demand_signal
+    )
+    return (
+        f"**Suggested price: ${result['suggested_price']:.2f}** "
+        f"({result['adjustment_pct']:+.1f}%)\n{result['reasoning']}"
+    ), {}
+
+
+async def _tool_build_pricing_strategy(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    niche = args.get("niche", "")
+    product_type = args.get("product_type", "")
+    target_margin_pct = float(args.get("target_margin_pct", 60.0))
+    if not niche or not product_type:
+        return "I need a niche and product type to build a pricing strategy.", {}
+    from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+    strategy = await get_pricing_intelligence().build_strategy(
+        niche, product_type, target_margin_pct
+    )
+    return (
+        f"**{strategy.strategy_type.replace('_', ' ').title()} pricing strategy for {niche}**\n"
+        f"${strategy.initial_price:.2f} → ${strategy.target_price:.2f}\n"
+        f"{strategy.rationale[:300]}"
+    ), {}
+
+
+async def _tool_pricing_dashboard(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
+
+    engine = get_pricing_intelligence()
+    await engine._load()
+    stats = engine.pricing_dashboard()
+    gaps = engine.competitive_gaps()
+    if stats["total_price_points"] == 0:
+        return "No pricing analyses yet. Use analyze_pricing first.", {}
+    by_pos = ", ".join(f"{k}: {v}" for k, v in stats["by_positioning"].items())
+    lines = [
+        f"**Pricing dashboard** ({stats['total_price_points']} products, "
+        f"avg ${stats['avg_price']:.2f})\nBy positioning: {by_pos}"
+    ]
+    if gaps:
+        lines.append(
+            "Overpriced vs. recommendation:\n"
+            + "\n".join(
+                f"  • {g['product_name']} — ${g['our_price']:.2f} vs "
+                f"recommended ${g['recommended_price']:.2f}"
+                for g in gaps
+            )
+        )
+    return "\n\n".join(lines), {}
+
+
+async def _tool_create_fiverr_gig(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    service_type = args.get("service_type", "")
+    niche = args.get("niche", "")
+    if not service_type or not niche:
+        return "I need both a service type and a niche to build a Fiverr gig.", {}
+    from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+
+    gig = await get_fiverr_optimizer().create_gig(service_type, niche)
+    pkgs = ", ".join(
+        f"{name}: ${p['price']} ({p['delivery_days']}d)" for name, p in gig.packages.items()
+    )
+    return (
+        f"**{gig.title}** (id: `{gig.gig_id}`, SEO score {gig.seo_score:.0%})\n"
+        f"Packages: {pkgs}\n"
+        f"Tags: {', '.join(gig.tags)}\n\n"
+        f"⚠ Package prices are baseline templates — adjust for your actual market."
+    ), {}
+
+
+async def _tool_optimize_fiverr_title(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    current_title = args.get("current_title", "")
+    keyword = args.get("keyword", "")
+    if not current_title or not keyword:
+        return "I need the current title and target keyword to optimize it.", {}
+    from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+
+    optimized = await get_fiverr_optimizer().optimize_gig_title(current_title, keyword)
+    return f"**Optimized title:** {optimized}", {}
+
+
+async def _tool_fiverr_gig_analytics(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
+
+    engine = get_fiverr_optimizer()
+    await engine._load()
+    stats = engine.gig_analytics()
+    if stats["total_gigs"] == 0:
+        return "No Fiverr gigs yet. Use create_fiverr_gig first.", {}
+    return (
+        f"**Fiverr gigs: {stats['total_gigs']}** ({stats['active']} active)\n"
+        f"Avg SEO score: {stats['avg_seo_score']:.0%} · "
+        f"Categories: {', '.join(stats['categories'])}"
+    ), {}
+
+
+async def _tool_evaluate_upwork_job(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    title = args.get("title", "")
+    description = args.get("description", "")
+    budget_min = float(args.get("budget_min", 0))
+    budget_max = float(args.get("budget_max", 0))
+    skills_required = args.get("skills_required", []) or []
+    our_skills = args.get("our_skills", []) or []
+    if not title:
+        return "I need the job title to evaluate it.", {}
+    from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+    job = await get_upwork_bidder().evaluate_job(
+        title, description, budget_min, budget_max, skills_required, our_skills
+    )
+    return (
+        f"**{job.title}** (id: `{job.job_id}`)\n"
+        f"Fit score: {job.fit_score:.0%} · Suggested bid: ${job.bid_price:.2f}"
+    ), {}
+
+
+async def _tool_write_upwork_proposal(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    job_id = args.get("job_id", "")
+    our_expertise = args.get("our_expertise", "")
+    if not job_id or not our_expertise:
+        return (
+            "I need a job_id (from evaluate_upwork_job) and our relevant expertise.",
+            {},
+        )
+    from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+    proposal = await get_upwork_bidder().write_proposal(job_id, our_expertise)
+    return (
+        f"**Proposal** (bid: ${proposal.bid_amount:.2f}, {proposal.delivery_days}d delivery)\n"
+        f"{proposal.body}"
+    ), {}
+
+
+async def _tool_optimize_upwork_profile(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    skills = args.get("skills", []) or []
+    specialization = args.get("specialization", "")
+    if not skills or not specialization:
+        return (
+            "I need your skills and specialization to optimize an Upwork profile.",
+            {},
+        )
+    from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+    result = await get_upwork_bidder().generate_profile_optimization(skills, specialization)
+    return (
+        f"**Headline:** {result['headline']}\n\n"
+        f"**Overview:**\n{result['overview']}\n\n"
+        f"**Portfolio ideas:**\n" + "\n".join(f"  • {p}" for p in result["portfolio_suggestions"])
+    ), {}
+
+
+async def _tool_upwork_bidding_analytics(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
+
+    engine = get_upwork_bidder()
+    await engine._load()
+    stats = engine.bidding_analytics()
+    if stats["total_jobs"] == 0:
+        return "No Upwork jobs tracked yet. Use evaluate_upwork_job first.", {}
+    return (
+        f"**Upwork bidding: {stats['bids_sent']}/{stats['total_jobs']} bid on** "
+        f"({stats['win_rate_pct']:.0f}% win rate)\n"
+        f"Avg bid: ${stats['avg_bid']:.2f} · Total won value: ${stats['total_won_value']:,.2f}"
+    ), {}
+
+
+async def _tool_upsert_client_profile(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    name = args.get("name", "")
+    email = args.get("email", "")
+    company = args.get("company", "")
+    industry = args.get("industry", "")
+    if not name or not email:
+        return "I need at least a name and email to save this client profile.", {}
+    from apps.memory.client.client_memory import get_client_memory
+
+    profile = await get_client_memory().upsert_profile(name, email, company, industry)
+    return (
+        f"**Client profile saved: {profile.name}** (id: `{profile.profile_id}`)\n"
+        f"{profile.email} · {profile.company or 'no company'} · segment: {profile.segment}"
+    ), {}
+
+
+async def _tool_record_client_interaction(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    profile_id = args.get("profile_id", "")
+    interaction_type = args.get("interaction_type", "")
+    summary = args.get("summary", "")
+    value_usd = float(args.get("value_usd", 0))
+    if not profile_id or not interaction_type:
+        return "I need a profile_id and an interaction type to record this.", {}
+    from apps.memory.client.client_memory import get_client_memory
+
+    interaction = await get_client_memory().record_interaction(
+        profile_id, interaction_type, summary, value_usd
+    )
+    return (
+        f"**{interaction.interaction_type}** recorded ({interaction.sentiment})"
+        + (f", ${value_usd:.2f}" if value_usd else "")
+    ), {}
+
+
+async def _tool_segment_client(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    profile_id = args.get("profile_id", "")
+    if not profile_id:
+        return "I need a profile_id (from upsert_client_profile) to segment.", {}
+    from apps.memory.client.client_memory import get_client_memory
+
+    segment = await get_client_memory().segment_client(profile_id)
+    return f"**Segment: {segment}**", {}
+
+
+async def _tool_personalize_client_offer(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    profile_id = args.get("profile_id", "")
+    available_products = args.get("available_products", []) or []
+    if not profile_id or not available_products:
+        return (
+            "I need a profile_id and the available products to personalize an offer.",
+            {},
+        )
+    from apps.memory.client.client_memory import get_client_memory
+
+    result = await get_client_memory().personalize_offer(profile_id, available_products)
+    return (
+        f"**Recommended: {result['recommended_product']}** — {result['offer']}\n"
+        f"{result['reasoning']}"
+    ), {}
+
+
+async def _tool_client_memory_dashboard(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.memory.client.client_memory import get_client_memory
+
+    memory = get_client_memory()
+    await memory._load()
+    stats = memory.client_memory_summary()
+    vip = memory.vip_clients()
+    at_risk = memory.at_risk_clients()
+    if stats["total_profiles"] == 0:
+        return "No client profiles yet. Use upsert_client_profile first.", {}
+    by_segment = ", ".join(f"{k}: {v}" for k, v in stats["by_segment"].items())
+    lines = [
+        f"**Client memory: {stats['total_profiles']} profiles, "
+        f"{stats['total_interactions']} interactions**\n"
+        f"By segment: {by_segment} · Total LTV: ${stats['total_ltv']:,.2f}"
+    ]
+    if vip:
+        lines.append("VIP: " + ", ".join(p["name"] for p in vip[:10]))
+    if at_risk:
+        lines.append("At risk / churned: " + ", ".join(p["name"] for p in at_risk[:10]))
+    return "\n\n".join(lines), {}
+
+
+async def _tool_remember_user_fact(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content = args.get("content", "")
+    if not email:
+        return "I need you to be signed in to remember anything long-term.", {}
+    if not content:
+        return "What should I remember?", {}
+    category = args.get("category") or "fact"
+    if category not in ("fact", "preference", "constraint"):
+        category = "fact"
+    importance = float(args.get("importance", 0.5) or 0.5)
+    from apps.core.memory.user_facts import get_user_facts
+
+    memory_id = await get_user_facts().remember(
+        email, content, category=category, importance=importance
+    )
+    if not memory_id:
+        return (
+            "I couldn't save that long-term — long-term memory storage isn't "
+            "configured right now, but I'll still have it for this conversation.",
+            {},
+        )
+    return f"Got it, I'll remember that ({category}).", {}
+
+
+async def _tool_list_user_facts(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    if not email:
+        return "I need you to be signed in to look up what I remember about you.", {}
+    from apps.core.memory.user_facts import get_user_facts
+
+    facts = await get_user_facts().list_all(email, limit=50)
+    if not facts:
+        return "I don't have anything saved long-term about you yet.", {}
+    lines = [f"**What I remember about you** ({len(facts)}):"]
+    for f in facts:
+        lines.append(
+            f"  • [{f.get('category', 'fact')}] {f.get('content', '')} (id: `{f.get('id', '')}`)"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_forget_user_fact(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    memory_id = args.get("memory_id", "")
+    if not email:
+        return "I need you to be signed in to manage your remembered facts.", {}
+    if not memory_id:
+        return "Which memory should I forget? Use list_user_facts to see the ids.", {}
+    from apps.core.memory.user_facts import get_user_facts
+
+    ok = await get_user_facts().forget(email, memory_id)
+    return (
+        (
+            "Forgotten."
+            if ok
+            else "I couldn't find that memory (already gone, or " "it isn't yours)."
+        ),
+        {},
+    )
+
+
+async def _tool_audit_internal_links(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    site_niche = args.get("site_niche", "")
+    pages = args.get("pages", []) or []
+    if not pages:
+        return "I need a list of pages (url, title, word_count, keywords) to audit.", {}
+    from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+    audit = await get_linking_optimizer().audit_site(site_niche, pages)
+    lines = [
+        f"**Internal linking audit** ({audit.pages_analyzed} pages, "
+        f"{len(audit.orphan_pages)} orphans)",
+        f"Pillar pages: {', '.join(p['title'] for p in audit.pillar_pages) or 'none identified'}",
+        f"{len(audit.link_suggestions)} link suggestions generated "
+        f"(est. SEO score {audit.seo_score_before:.0%} → {audit.seo_score_after_estimate:.0%})",
+    ]
+    return "\n".join(lines), {}
+
+
+async def _tool_suggest_internal_links(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    source_page = args.get("source_page", {}) or {}
+    content_library = args.get("content_library", []) or []
+    if not source_page or not content_library:
+        return "I need the source page and a content library to link from.", {}
+    from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+    suggestions = await get_linking_optimizer().suggest_links(source_page, content_library)
+    if not suggestions:
+        return "No good internal link matches found in this content library.", {}
+    lines = [f"**Internal link suggestions for '{source_page.get('title', '')}'**"]
+    for s in suggestions[:5]:
+        lines.append(
+            f'  • → {s.target_title} ("{s.anchor_text}", {s.seo_value} value, '
+            f"{s.relevance_score:.0%} relevance)"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_generate_pillar_strategy(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    niche = args.get("niche", "")
+    topics = args.get("topics", []) or []
+    if not niche or not topics:
+        return "I need a niche and a list of topics to build a pillar strategy.", {}
+    from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+    result = await get_linking_optimizer().generate_pillar_strategy(niche, topics)
+    lines = [f"**Pillar-cluster strategy for {niche}**"]
+    for p in result["pillar_pages"]:
+        clusters = result["cluster_pages"].get(p["topic"], [])
+        lines.append(f"  • Pillar: {p['topic']} — clusters: {', '.join(clusters) or 'n/a'}")
+    return "\n".join(lines), {}
+
+
+async def _tool_internal_linking_stats(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
+
+    stats = get_linking_optimizer().linking_stats()
+    if stats["total_suggestions"] == 0:
+        return "No internal linking activity yet.", {}
+    return (
+        f"**Internal linking**: {stats['total_suggestions']} suggestions "
+        f"({stats['high_value_links']} high-value), {stats['audits_completed']} audits, "
+        f"avg relevance {stats['avg_relevance_score']:.0%}"
+    ), {}
+
+
+async def _tool_predict_engagement(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content = args.get("content", "")
+    platform = args.get("platform", "twitter")
+    if not content:
+        return "What content should I predict engagement for?", {}
+    from apps.content.scoring.engagement_predictor import get_engagement_predictor
+
+    pred = await get_engagement_predictor().predict(
+        content, platform, int(args.get("audience_size", 1000))
+    )
+    return (
+        f"**Engagement prediction ({platform})** — heuristic estimate, no historical "
+        f"data for this account yet (confidence {pred.confidence:.0%})\n"
+        f"~{pred.predicted_views:,} views, {pred.predicted_engagement_rate:.1%} engagement, "
+        f"{pred.predicted_shares} shares, {pred.predicted_comments} comments\n"
+        f"Viral probability: {pred.viral_probability:.0%} · Best time: {pred.best_publish_time}"
+    ), {}
+
+
 _TOOL_HANDLERS: dict = {
     "generate_image": _tool_generate_image,
     "generate_video": _tool_generate_video,
@@ -2194,6 +3290,55 @@ _TOOL_HANDLERS: dict = {
     "cart_abandonment_sequence": _tool_cart_abandonment_sequence,
     "record_retargeting_metrics": _tool_record_retargeting_metrics,
     "retargeting_performance": _tool_retargeting_performance,
+    # Batch 3
+    "recover_abandoned_cart": _tool_recover_abandoned_cart,
+    "create_flash_sale": _tool_create_flash_sale,
+    "create_product_bundle": _tool_create_product_bundle,
+    "recommend_products": _tool_recommend_products,
+    "shopify_revenue_dashboard": _tool_shopify_revenue_dashboard,
+    "optimize_product_seo": _tool_optimize_product_seo,
+    "audit_seo_keywords": _tool_audit_seo_keywords,
+    "create_upsell_offer": _tool_create_upsell_offer,
+    "optimize_shopify_checkout": _tool_optimize_shopify_checkout,
+    "create_post_purchase_flow": _tool_create_post_purchase_flow,
+    "shopify_store_status": _tool_shopify_store_status,
+    "shopify_live_analytics": _tool_shopify_live_analytics,
+    "discover_leads": _tool_discover_leads,
+    "generate_sales_proposal": _tool_generate_sales_proposal,
+    "register_deliverable": _tool_register_deliverable,
+    "deliver_purchase": _tool_deliver_purchase,
+    "add_linkedin_prospect": _tool_add_linkedin_prospect,
+    "score_linkedin_prospect": _tool_score_linkedin_prospect,
+    "generate_linkedin_connection_request": _tool_generate_linkedin_connection_request,
+    "generate_linkedin_outreach_sequence": _tool_generate_linkedin_outreach_sequence,
+    "linkedin_outreach_pipeline": _tool_linkedin_outreach_pipeline,
+    "create_landing_page": _tool_create_landing_page,
+    "generate_landing_headlines": _tool_generate_landing_headlines,
+    "landing_page_stats": _tool_landing_page_stats,
+    "analyze_pricing": _tool_analyze_pricing,
+    "suggest_dynamic_price": _tool_suggest_dynamic_price,
+    "build_pricing_strategy": _tool_build_pricing_strategy,
+    "pricing_dashboard": _tool_pricing_dashboard,
+    "create_fiverr_gig": _tool_create_fiverr_gig,
+    "optimize_fiverr_title": _tool_optimize_fiverr_title,
+    "fiverr_gig_analytics": _tool_fiverr_gig_analytics,
+    "evaluate_upwork_job": _tool_evaluate_upwork_job,
+    "write_upwork_proposal": _tool_write_upwork_proposal,
+    "optimize_upwork_profile": _tool_optimize_upwork_profile,
+    "upwork_bidding_analytics": _tool_upwork_bidding_analytics,
+    "upsert_client_profile": _tool_upsert_client_profile,
+    "record_client_interaction": _tool_record_client_interaction,
+    "segment_client": _tool_segment_client,
+    "personalize_client_offer": _tool_personalize_client_offer,
+    "client_memory_dashboard": _tool_client_memory_dashboard,
+    "remember_user_fact": _tool_remember_user_fact,
+    "list_user_facts": _tool_list_user_facts,
+    "forget_user_fact": _tool_forget_user_fact,
+    "audit_internal_links": _tool_audit_internal_links,
+    "suggest_internal_links": _tool_suggest_internal_links,
+    "generate_pillar_strategy": _tool_generate_pillar_strategy,
+    "internal_linking_stats": _tool_internal_linking_stats,
+    "predict_engagement": _tool_predict_engagement,
 }
 
 
@@ -3178,1016 +4323,7 @@ class AriaMind:
                 await self._apply_goal_action(goal_action_dict, goals_list)
                 return f"Goal {'added' if action == 'add' else 'updated'} successfully", {}
 
-            # ── SHOPIFY REVENUE SUITE ──────────────────────────────────────────
-            if tool == "recover_abandoned_cart":
-                user_id = args.get("user_id", "") or args.get("email", "")
-                email = args.get("email", "")
-                items = args.get("items", []) or []
-                cart_value = float(args.get("cart_value", 0))
-                if not email or not items:
-                    return (
-                        "I need the customer's email and the cart items to build a recovery sequence.",
-                        {},
-                    )
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
-
-                engine = get_cart_recovery_engine(await workspace_id_for(email))
-                cart = await engine.register_abandoned_cart(user_id, email, items, cart_value)
-                sequence = await engine.generate_recovery_sequence(cart)
-                lines = [
-                    f"**Recovery sequence for {email}** (cart: `{cart.cart_id}`, ${cart_value:.2f})"
-                ]
-                for e in sequence:
-                    lines.append(
-                        f"  +{e['delay_hours']}h ({e['discount_pct']:.0%} off) — {e['subject']}"
-                    )
-                return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
-
-            elif tool == "create_flash_sale":  # noqa: RET505 — same reason
-                # as analyze_decision above: recover_abandoned_cart is now the
-                # first branch of the remaining chain and always returns, so
-                # ruff would suggest flattening every subsequent `elif` in
-                # turn. Left as `elif` deliberately — rest of the chain is
-                # out of scope for this batch (see AAS Fase 2 / ADR-005).
-                name = args.get("name", "")
-                products = args.get("products", []) or []
-                discount_pct = float(args.get("discount_pct", 0.2))
-                duration_hours = float(args.get("duration_hours", 24))
-                if not name or not products:
-                    return "I need a sale name and at least one product to create a flash sale.", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
-
-                engine = get_flash_sale_engine(await workspace_id_for(email))
-                prices = {
-                    p.get("id", p.get("title", "")): float(p.get("price", 0)) for p in products
-                }
-                sale = await engine.create_sale(
-                    name,
-                    [p.get("id", p.get("title", "")) for p in products],
-                    discount_pct,
-                    duration_hours,
-                    prices,
-                )
-                copy = await engine.create_urgency_copy(sale)
-                return (
-                    f"**Flash sale '{sale.name}'** (id: `{sale.sale_id}`, status: {sale.status})\n"
-                    f"{len(sale.product_ids)} products at {discount_pct:.0%} off, {duration_hours:.0f}h\n"
-                    f"Urgency copy: {copy}" + _SHOPIFY_DRAFT_NOTICE
-                ), {}
-
-            elif tool == "create_product_bundle":
-                products = args.get("products", []) or []
-                bundle_type = args.get("bundle_type", "complementary")
-                discount_pct = float(args.get("discount_pct", 0.15))
-                if len(products) < 2:
-                    return "I need at least 2 products to build a bundle.", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.bundles.bundle_generator import get_bundle_generator
-
-                bundle = await get_bundle_generator(await workspace_id_for(email)).create_bundle(
-                    products, bundle_type, discount_pct
-                )
-                return (
-                    f"**{bundle.name}** (id: `{bundle.bundle_id}`, {bundle.bundle_type})\n"
-                    f"{bundle.description}\n"
-                    f"${bundle.individual_total:.2f} → ${bundle.bundle_price:.2f} "
-                    f"(save ${bundle.savings:.2f}, {bundle.savings_pct:.0f}%)\n"
-                    f"CTA: {bundle.cta}" + _SHOPIFY_DRAFT_NOTICE
-                ), {}
-
-            elif tool == "recommend_products":
-                user_id = args.get("user_id", "")
-                context = args.get("context", "homepage")
-                catalog = args.get("catalog", []) or []
-                current_product_id = args.get("current_product_id", "")
-                limit = int(args.get("limit", 5))
-                if not catalog:
-                    return "I need a product catalog to recommend from.", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.revenue.product_recommender import get_product_recommender
-
-                recommender = get_product_recommender(await workspace_id_for(email))
-                result = await recommender.recommend(
-                    user_id, context, catalog, current_product_id, limit
-                )
-                if not result.recommended_ids:
-                    return (
-                        f"No recommendations available for context '{context}' from this catalog.",
-                        {},
-                    )
-                lines = [f"**Recommendations ({result.strategy}, {context}):**"]
-                for title, score in zip(result.recommended_titles, result.scores, strict=False):
-                    lines.append(f"  • {title or '(untitled)'} — match {score:.0%}")
-                return "\n".join(lines), {}
-
-            elif tool == "shopify_revenue_dashboard":
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.bundles.bundle_generator import get_bundle_generator
-                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
-                from apps.shopify.offers.flash_sale_engine import get_flash_sale_engine
-                from apps.shopify.revenue.cart_recovery import get_cart_recovery_engine
-                from apps.shopify.revenue.product_recommender import get_product_recommender
-                from apps.shopify.seo.product_seo import get_product_seo_optimizer
-
-                ws_id = await workspace_id_for(email)
-                cart_engine = get_cart_recovery_engine(ws_id)
-                await cart_engine._load()
-                sale_engine = get_flash_sale_engine(ws_id)
-                await sale_engine._load()
-                bundle_engine = get_bundle_generator(ws_id)
-                await bundle_engine._load()
-                rec_engine = get_product_recommender(ws_id)
-                await rec_engine._load()
-                seo_engine = get_product_seo_optimizer(ws_id)
-                await seo_engine._load()
-                funnel_engine = get_shopify_funnel_engine(ws_id)
-                await funnel_engine._load()
-
-                cart_stats = cart_engine.recovery_stats()
-                sale_stats = sale_engine.sales_analytics()
-                bundle_stats = bundle_engine.bundle_stats()
-                rec_stats = rec_engine.recommendation_stats()
-                seo_stats = seo_engine.seo_stats()
-                funnel_stats = funnel_engine.funnel_stats()
-                return (
-                    f"**Shopify revenue dashboard**\n"
-                    f"Cart recovery: {cart_stats['recovered']}/{cart_stats['total_abandoned']} recovered "
-                    f"({cart_stats['recovery_rate']:.0%}), ${cart_stats['revenue_recovered']:,.2f} recovered\n"
-                    f"Flash sales: {sale_stats['active_count']} active, "
-                    f"${sale_stats['total_revenue']:,.2f} total revenue\n"
-                    f"Bundles: {bundle_stats['total_bundles']} created, "
-                    f"avg {bundle_stats['avg_savings_pct']:.0f}% savings\n"
-                    f"Recommendations: {rec_stats['users_tracked']} users tracked, "
-                    f"{rec_stats['total_recommendations']} interactions\n"
-                    f"SEO: {seo_stats['total_optimized']} products optimized, "
-                    f"avg score {seo_stats['avg_seo_score']:.0%}\n"
-                    f"Funnels: {funnel_stats['total_funnels']} built, "
-                    f"{funnel_stats['total_upsells']} upsell offers"
-                ), {}
-
-            elif tool == "optimize_product_seo":
-                product_name = args.get("product_name", "")
-                current_title = args.get("current_title", "")
-                if not product_name or not current_title:
-                    return "I need at least the product name and its current title to optimize.", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.seo.product_seo import get_product_seo_optimizer
-
-                seo_optimizer = get_product_seo_optimizer(await workspace_id_for(email))
-                seo = await seo_optimizer.optimize_product(
-                    args.get("product_id", "") or product_name,
-                    product_name,
-                    current_title,
-                    args.get("current_description", ""),
-                    args.get("category", "general"),
-                )
-                return (
-                    f"**SEO-optimized: {product_name}** (score {seo.seo_score:.0%}, "
-                    f"est. +{seo.estimated_traffic_boost_pct:.0f}% traffic)\n"
-                    f"Title: {seo.optimized_title}\n"
-                    f"Meta description: {seo.meta_description}\n"
-                    f"Target keywords: {', '.join(seo.target_keywords[:5])}\n\n"
-                    f"{seo.optimized_description}" + _SHOPIFY_DRAFT_NOTICE
-                ), {}
-
-            elif tool == "audit_seo_keywords":
-                niche = args.get("niche", "")
-                if not niche:
-                    return "What niche/product category should I find keywords for?", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.seo.product_seo import get_product_seo_optimizer
-
-                seo_optimizer = get_product_seo_optimizer(await workspace_id_for(email))
-                result = await seo_optimizer.audit_keywords(niche)
-                return (
-                    f"**SEO keywords for '{niche}'**\n"
-                    f"Commercial intent: {', '.join(result['commercial_keywords'])}\n"
-                    f"Comparison intent: {', '.join(result['comparison_keywords'])}\n"
-                    f"Long-tail: {', '.join(result['long_tail'])}"
-                ), {}
-
-            elif tool == "create_upsell_offer":
-                original_product = args.get("original_product", "")
-                upsell_product = args.get("upsell_product", "")
-                if not original_product or not upsell_product:
-                    return "I need both the original product and the upsell product.", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
-
-                funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
-                offer = await funnel_engine.create_upsell_flow(
-                    original_product,
-                    float(args.get("original_price", 0)),
-                    upsell_product,
-                    float(args.get("upsell_price", 0)),
-                )
-                return (
-                    f"**Upsell offer** (est. {offer.acceptance_rate_pct:.0f}% acceptance)\n"
-                    f"{offer.headline}\n{offer.reason}\n"
-                    f"Urgency: {offer.urgency_trigger}" + _SHOPIFY_DRAFT_NOTICE
-                ), {}
-
-            elif tool == "optimize_shopify_checkout":
-                product_name = args.get("product_name", "")
-                if not product_name:
-                    return "Which product's checkout should I optimize?", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
-
-                funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
-                result = await funnel_engine.optimize_checkout(
-                    product_name, args.get("pain_points", []) or []
-                )
-                lines = [
-                    f"**Checkout optimization: {product_name}** "
-                    f"(est. +{result['expected_cvr_lift_pct']:.0f}% completion)",
-                    "Friction points: " + ", ".join(result["friction_points"]),
-                    "Fixes:\n" + "\n".join(f"  • {f}" for f in result["fixes"]),
-                ]
-                return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
-
-            elif tool == "create_post_purchase_flow":
-                product_name = args.get("product_name", "")
-                if not product_name:
-                    return "Which product is this post-purchase flow for?", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.funnels.shopify_funnels import get_shopify_funnel_engine
-
-                funnel_engine = get_shopify_funnel_engine(await workspace_id_for(email))
-                funnel = await funnel_engine.create_post_purchase_flow(
-                    product_name, args.get("category", "general")
-                )
-                lines = [f"**Post-purchase flow: {product_name}** ({funnel.headline})"]
-                for e in funnel.stages:
-                    lines.append(f"  +{e['delay']} — {e['type']}: {e['subject']}")
-                return "\n".join(lines) + _SHOPIFY_DRAFT_NOTICE, {}
-
-            elif tool == "shopify_store_status":
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.api_client import get_shopify_client_for
-
-                client = await get_shopify_client_for(await workspace_id_for(email))
-                status = client.client_status()
-                if not status["configured"]:
-                    return (
-                        "No Shopify store connected — connect your own store from the "
-                        "Connectors menu, or (owner only) set SHOPIFY_SHOP_DOMAIN and "
-                        "SHOPIFY_ACCESS_TOKEN to enable real revenue/order data. Until then, "
-                        "shopify_revenue_dashboard only reflects ARIA's own tracked activity, "
-                        "not actual store sales.",
-                        {},
-                    )
-                return (
-                    f"**Shopify store connected**: {status['domain']} (API {status['api_version']})\n"
-                    f"Cached: {status['cached_products']} products, {status['cached_orders']} orders"
-                ), {}
-
-            elif tool == "shopify_live_analytics":
-                from apps.core.tenancy import workspace_id_for
-                from apps.shopify.api_client import get_shopify_client_for
-
-                client = await get_shopify_client_for(await workspace_id_for(email))
-                if not client.is_configured:
-                    return (
-                        "No Shopify store connected — check shopify_store_status. "
-                        "Connect your own store from the Connectors menu, or (owner only) "
-                        "set SHOPIFY_SHOP_DOMAIN/SHOPIFY_ACCESS_TOKEN.",
-                        {},
-                    )
-                days = int(args.get("days", 30))
-                analytics = await client.get_revenue_analytics(days)
-                if analytics.orders_count == 0:
-                    return f"No orders found in the last {days} days.", {}
-                lines = [
-                    f"**Real Shopify revenue — last {days} days**",
-                    f"${analytics.total_revenue:,.2f} across {analytics.orders_count} orders "
-                    f"(avg ${analytics.avg_order_value:,.2f})",
-                ]
-                if analytics.top_products:
-                    lines.append(
-                        "Top products:\n"
-                        + "\n".join(
-                            f"  • {p['title']} — ${p['revenue']:,.2f}"
-                            for p in analytics.top_products[:5]
-                        )
-                    )
-                return "\n".join(lines), {}
-
-            # ── LEAD DISCOVERY & PROPOSALS ─────────────────────────────────────
-            elif tool == "discover_leads":
-                niche = args.get("niche", "")
-                count = int(args.get("count", 10))
-                location = args.get("location", "US")
-                if not niche:
-                    return "I need a niche to search for leads in.", {}
-                from apps.acquisition.scraper.lead_scraper import get_lead_scraper
-
-                batch = await get_lead_scraper().scrape_leads(niche, count, location)
-                if not batch.raw_leads:
-                    return f"No leads found for '{niche}'.", {}
-                lines = [
-                    f"**{batch.leads_qualified}/{batch.leads_found} qualified leads for '{niche}'** "
-                    f"({', '.join(batch.sources_checked)})"
-                ]
-                for lead in batch.raw_leads:
-                    tag = "web search" if lead["source"] == "duckduckgo" else "illustrative example"
-                    signals = ", ".join(lead["signals"][:3]) or "no signals detected"
-                    lines.append(f"  • {lead['company_name']} [{tag}] — {signals}")
-                return "\n".join(lines), {}
-
-            elif tool == "generate_sales_proposal":
-                company_name = args.get("company_name", "")
-                niche = args.get("niche", "")
-                pain_points = args.get("pain_points", []) or []
-                services_needed = args.get("services_needed", []) or []
-                estimated_value_usd = float(args.get("estimated_value_usd", 0))
-                if not company_name:
-                    return "I need the company name to write a proposal for.", {}
-                from apps.acquisition.leads.lead_engine import Lead, get_lead_engine
-
-                lead = Lead(
-                    company_name=company_name,
-                    niche=niche,
-                    pain_points=pain_points,
-                    services_needed=services_needed,
-                    estimated_value_usd=estimated_value_usd,
-                )
-                brief = await get_lead_engine().generate_proposal_brief(lead)
-                return (
-                    f"**Proposal brief for {company_name}**\n"
-                    f"Subject: {brief.subject_line}\n"
-                    f"Opening: {brief.opening_hook}\n"
-                    f"Pain identified: {brief.pain_identified}\n"
-                    f"Solution: {brief.solution_summary}\n"
-                    f"Social proof: {brief.social_proof}\n"
-                    f"CTA: {brief.cta}"
-                ), {}
-
-            # ── POST-SALE DELIVERY ──────────────────────────────────────────
-            elif tool == "register_deliverable":
-                sku = args.get("sku", "")
-                name = args.get("name", "")
-                content = args.get("content", "")
-                delivery_type = args.get("delivery_type", "link")
-                price_usd = float(args.get("price_usd", 0) or 0)
-                if not sku or not name or not content:
-                    return "I need a sku, a name, and the content (link or text) to register.", {}
-                from apps.acquisition.delivery.delivery_engine import get_delivery_engine
-
-                result = await get_delivery_engine().register_deliverable(
-                    sku, name, content, delivery_type, price_usd
-                )
-                if result.get("success"):
-                    return f"**Registered deliverable '{name}'** for sku `{sku}`.", {}
-                return f"Couldn't register that deliverable: {result.get('error')}", {}
-
-            elif tool == "deliver_purchase":
-                sku = args.get("sku", "")
-                buyer_email = args.get("buyer_email", "")
-                buyer_name = args.get("buyer_name", "")
-                order_ref = args.get("order_ref", "")
-                if not sku or not buyer_email:
-                    return "I need a sku and the buyer's email to deliver a purchase.", {}
-                from apps.acquisition.delivery.delivery_engine import get_delivery_engine
-
-                record = await get_delivery_engine().deliver(
-                    sku, buyer_email, buyer_name, order_ref
-                )
-                if record.status == "sent":
-                    return f"**Delivered '{sku}' to {buyer_email}** ({record.detail}).", {}
-                if record.status == "no_deliverable":
-                    return (
-                        f"No deliverable is registered for sku `{sku}` — "
-                        "call register_deliverable first, I won't guess what to send.",
-                        {},
-                    )
-                if record.status == "ambiguous":
-                    # Deliberately phrased without any word from
-                    # AriaMind._FAILURE_SIGNALS: the send outcome is
-                    # genuinely unknown (the provider call raised before
-                    # confirming success/failure), so the generic
-                    # _execute_with_retry loop must NOT treat this as a
-                    # retryable failure and fire again — that could send
-                    # the product a second time for one purchase.
-                    return (
-                        f"Delivery to {buyer_email} for sku `{sku}` is unconfirmed — "
-                        "the send attempt raised an exception before we could tell "
-                        "whether the email actually went out. Check the email "
-                        "provider's own logs before deliver_purchase runs again with "
-                        "this same order_ref; a blind repeat risks sending it twice.",
-                        {},
-                    )
-                if record.status == "in_progress":
-                    return (
-                        f"A delivery for sku `{sku}` and this order is already "
-                        "underway from another call right now — wait for it to "
-                        "finish rather than starting a second one for the same order.",
-                        {},
-                    )
-                return f"**Delivery to {buyer_email} failed:** {record.detail}", {}
-
-            # ── LINKEDIN OUTREACH ────────────────────────────────────────────
-            elif tool == "add_linkedin_prospect":
-                name = args.get("name", "")
-                title = args.get("title", "")
-                company = args.get("company", "")
-                industry = args.get("industry", "")
-                profile_url = args.get("profile_url", "")
-                if not name or not company:
-                    return "I need at least a name and company to add this prospect.", {}
-                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
-
-                prospect = await get_linkedin_outreach().add_prospect(
-                    name, title, company, industry, profile_url
-                )
-                return (
-                    f"**Added prospect '{prospect.name}'** (id: `{prospect.prospect_id}`)\n"
-                    f"{prospect.title} at {prospect.company} ({prospect.industry})"
-                ), {}
-
-            elif tool == "score_linkedin_prospect":
-                prospect_id = args.get("prospect_id", "")
-                service_offered = args.get("service_offered", "")
-                if not prospect_id or not service_offered:
-                    return (
-                        "I need a prospect_id and what service you're offering to score this prospect.",
-                        {},
-                    )
-                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
-
-                prospect = await get_linkedin_outreach().score_prospect(
-                    prospect_id, service_offered
-                )
-                return (
-                    f"**{prospect.name}: {prospect.relevance_score:.0%} relevance**\n"
-                    f"Likely pain point: {prospect.pain_point_hypothesis}"
-                ), {}
-
-            elif tool == "generate_linkedin_connection_request":
-                prospect_id = args.get("prospect_id", "")
-                service = args.get("service", "")
-                if not prospect_id or not service:
-                    return "I need a prospect_id and the service being offered.", {}
-                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
-
-                msg = await get_linkedin_outreach().generate_connection_request(
-                    prospect_id, service
-                )
-                return f"**Connection request** ({len(msg.body)} chars):\n{msg.body}", {}
-
-            elif tool == "generate_linkedin_outreach_sequence":
-                prospect_id = args.get("prospect_id", "")
-                service = args.get("service", "")
-                if not prospect_id or not service:
-                    return "I need a prospect_id and the service being offered.", {}
-                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
-
-                messages = await get_linkedin_outreach().generate_outreach_sequence(
-                    prospect_id, service
-                )
-                lines = ["**4-message LinkedIn outreach sequence:**"]
-                for m in messages:
-                    lines.append(f"  {m.message_type} — {m.subject}\n    {m.body}")
-                return "\n".join(lines), {}
-
-            elif tool == "linkedin_outreach_pipeline":
-                min_score = float(args.get("min_score", 0.7))
-                from apps.acquisition.linkedin.linkedin_outreach import get_linkedin_outreach
-
-                outreach = get_linkedin_outreach()
-                await outreach._load()
-                analytics = outreach.outreach_analytics()
-                hot = outreach.hot_prospects(min_score)
-                if analytics["total_prospects"] == 0:
-                    return "No LinkedIn prospects yet. Use add_linkedin_prospect first.", {}
-                lines = [
-                    f"**LinkedIn pipeline** ({analytics['total_prospects']} prospects)\n"
-                    f"Avg relevance: {analytics['avg_relevance_score']:.0%} · "
-                    f"Connection rate: {analytics['connection_rate_pct']:.0f}% · "
-                    f"Reply rate: {analytics['reply_rate_pct']:.0f}%",
-                    (
-                        f"Hot prospects (≥{min_score:.0%}):\n"
-                        + "\n".join(
-                            f"  • {p['name']} at {p['company']} — {p['relevance_score']:.0%}"
-                            for p in hot
-                        )
-                        if hot
-                        else f"No prospects above {min_score:.0%} relevance yet."
-                    ),
-                ]
-                return "\n\n".join(lines), {}
-
-            # ── LANDING PAGES ────────────────────────────────────────────────
-            elif tool == "create_landing_page":
-                product = args.get("product", "")
-                offer = args.get("offer", "")
-                target_audience = args.get("target_audience", "")
-                price = float(args.get("price", 0))
-                if not product or not offer:
-                    return "I need at least a product and an offer to build a landing page.", {}
-                from apps.conversion.landing_pages.landing_page_engine import (
-                    get_landing_page_engine,
-                )
-
-                page = await get_landing_page_engine().create_page(
-                    product, offer, target_audience, price
-                )
-
-                # ── SAFETY LAYER 3: content firewall ─────────────────────
-                # This tool returns copy for the user to publish themselves
-                # (not hosted by ARIA), same category as post_to_social's
-                # own preview step — but a credential-harvesting page is
-                # exactly the shape this check exists to catch before
-                # anyone copies it onto a real live domain.
-                from apps.core.config import settings as _guardrail_settings
-                from apps.core.safety import guardrails
-
-                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
-                    page_text = f"{page.headline}\n{page.hero_copy}\n{page.cta_primary}"
-                    safety = guardrails.check_content_safety(page_text)
-                    if not safety.safe:
-                        with suppress(Exception):
-                            await guardrails.record_audit_event(
-                                "content_blocked",
-                                {"email": email, "tool": tool, "findings": safety.findings},
-                            )
-                        return (
-                            "I'm not going to generate that page — it matched a blocked "
-                            f"pattern: {'; '.join(safety.findings)}.",
-                            {},
-                        )
-
-                bullets = "\n".join(f"  • {b}" for b in page.bullet_points)
-                return (
-                    f"**{page.headline}** (id: `{page.page_id}`, est. CVR {page.estimated_cvr_pct:.1f}%)\n"
-                    f"{page.subheadline}\n\n{page.hero_copy}\n\n{bullets}\n\n"
-                    f"{page.social_proof} · {page.urgency_trigger}\n"
-                    f"CTA: {page.cta_primary} / {page.cta_secondary}\n\n"
-                    f"⚠ Placeholder numbers (customer counts, spots remaining) are templates — "
-                    f"replace with real figures or remove before publishing."
-                ), {}
-
-            elif tool == "generate_landing_headlines":
-                product = args.get("product", "")
-                audience = args.get("audience", "")
-                count = int(args.get("count", 5))
-                if not product:
-                    return "I need a product to generate headline variants for.", {}
-                from apps.conversion.landing_pages.landing_page_engine import (
-                    get_landing_page_engine,
-                )
-
-                variants = await get_landing_page_engine().generate_headline_variants(
-                    product, audience, count
-                )
-                lines = ["**Headline variants:**"] + [
-                    f"  {i}. {v}" for i, v in enumerate(variants, 1)
-                ]
-                return "\n".join(lines), {}
-
-            elif tool == "landing_page_stats":
-                from apps.conversion.landing_pages.landing_page_engine import (
-                    get_landing_page_engine,
-                )
-
-                engine = get_landing_page_engine()
-                await engine._load()
-                stats = engine.page_stats()
-                if stats["total_pages"] == 0:
-                    return "No landing pages yet. Use create_landing_page first.", {}
-                by_variant = ", ".join(f"{k}: {v}" for k, v in stats["by_variant"].items())
-                return (
-                    f"**Landing pages: {stats['total_pages']}** "
-                    f"(avg est. CVR {stats['avg_estimated_cvr_pct']:.1f}%)\n"
-                    f"By variant: {by_variant}"
-                ), {}
-
-            # ── PRICING INTELLIGENCE ─────────────────────────────────────────
-            elif tool == "analyze_pricing":
-                product_name = args.get("product_name", "") or args.get("product", "")
-                category = args.get("category", "")
-                our_price = float(args.get("our_price", 0))
-                competitor_data = (
-                    args.get("competitors", []) or args.get("competitor_data", []) or []
-                )
-                if not product_name or our_price <= 0:
-                    return "I need the product name and our current price to analyze pricing.", {}
-                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
-
-                pp = await get_pricing_intelligence().analyze_pricing(
-                    product_name, category, our_price, competitor_data
-                )
-                return (
-                    f"**{pp.product_name}: {pp.positioning}** (${pp.our_price:.2f})\n"
-                    f"Market: ${pp.market_min:.2f} - ${pp.market_max:.2f} (avg ${pp.market_avg:.2f})\n"
-                    f"Recommended price: ${pp.recommended_price:.2f}"
-                ), {}
-
-            elif tool == "suggest_dynamic_price":
-                product = args.get("product", "")
-                inventory_level = args.get("inventory_level", "normal")
-                demand_signal = args.get("demand_signal", "stable")
-                if not product:
-                    return (
-                        "I need a product (already analyzed via analyze_pricing) to suggest a price for.",
-                        {},
-                    )
-                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
-
-                result = await get_pricing_intelligence().dynamic_price_suggestion(
-                    product, inventory_level, demand_signal
-                )
-                return (
-                    f"**Suggested price: ${result['suggested_price']:.2f}** "
-                    f"({result['adjustment_pct']:+.1f}%)\n{result['reasoning']}"
-                ), {}
-
-            elif tool == "build_pricing_strategy":
-                niche = args.get("niche", "")
-                product_type = args.get("product_type", "")
-                target_margin_pct = float(args.get("target_margin_pct", 60.0))
-                if not niche or not product_type:
-                    return "I need a niche and product type to build a pricing strategy.", {}
-                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
-
-                strategy = await get_pricing_intelligence().build_strategy(
-                    niche, product_type, target_margin_pct
-                )
-                return (
-                    f"**{strategy.strategy_type.replace('_', ' ').title()} pricing strategy for {niche}**\n"
-                    f"${strategy.initial_price:.2f} → ${strategy.target_price:.2f}\n"
-                    f"{strategy.rationale[:300]}"
-                ), {}
-
-            elif tool == "pricing_dashboard":
-                from apps.market.pricing.pricing_intelligence import get_pricing_intelligence
-
-                engine = get_pricing_intelligence()
-                await engine._load()
-                stats = engine.pricing_dashboard()
-                gaps = engine.competitive_gaps()
-                if stats["total_price_points"] == 0:
-                    return "No pricing analyses yet. Use analyze_pricing first.", {}
-                by_pos = ", ".join(f"{k}: {v}" for k, v in stats["by_positioning"].items())
-                lines = [
-                    f"**Pricing dashboard** ({stats['total_price_points']} products, "
-                    f"avg ${stats['avg_price']:.2f})\nBy positioning: {by_pos}"
-                ]
-                if gaps:
-                    lines.append(
-                        "Overpriced vs. recommendation:\n"
-                        + "\n".join(
-                            f"  • {g['product_name']} — ${g['our_price']:.2f} vs "
-                            f"recommended ${g['recommended_price']:.2f}"
-                            for g in gaps
-                        )
-                    )
-                return "\n\n".join(lines), {}
-
-            # ── FREELANCE GIGS: FIVERR ──────────────────────────────────────────
-            elif tool == "create_fiverr_gig":
-                service_type = args.get("service_type", "")
-                niche = args.get("niche", "")
-                if not service_type or not niche:
-                    return "I need both a service type and a niche to build a Fiverr gig.", {}
-                from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
-
-                gig = await get_fiverr_optimizer().create_gig(service_type, niche)
-                pkgs = ", ".join(
-                    f"{name}: ${p['price']} ({p['delivery_days']}d)"
-                    for name, p in gig.packages.items()
-                )
-                return (
-                    f"**{gig.title}** (id: `{gig.gig_id}`, SEO score {gig.seo_score:.0%})\n"
-                    f"Packages: {pkgs}\n"
-                    f"Tags: {', '.join(gig.tags)}\n\n"
-                    f"⚠ Package prices are baseline templates — adjust for your actual market."
-                ), {}
-
-            elif tool == "optimize_fiverr_title":
-                current_title = args.get("current_title", "")
-                keyword = args.get("keyword", "")
-                if not current_title or not keyword:
-                    return "I need the current title and target keyword to optimize it.", {}
-                from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
-
-                optimized = await get_fiverr_optimizer().optimize_gig_title(current_title, keyword)
-                return f"**Optimized title:** {optimized}", {}
-
-            elif tool == "fiverr_gig_analytics":
-                from apps.acquisition.fiverr.fiverr_optimizer import get_fiverr_optimizer
-
-                engine = get_fiverr_optimizer()
-                await engine._load()
-                stats = engine.gig_analytics()
-                if stats["total_gigs"] == 0:
-                    return "No Fiverr gigs yet. Use create_fiverr_gig first.", {}
-                return (
-                    f"**Fiverr gigs: {stats['total_gigs']}** ({stats['active']} active)\n"
-                    f"Avg SEO score: {stats['avg_seo_score']:.0%} · "
-                    f"Categories: {', '.join(stats['categories'])}"
-                ), {}
-
-            # ── FREELANCE GIGS: UPWORK ───────────────────────────────────────
-            elif tool == "evaluate_upwork_job":
-                title = args.get("title", "")
-                description = args.get("description", "")
-                budget_min = float(args.get("budget_min", 0))
-                budget_max = float(args.get("budget_max", 0))
-                skills_required = args.get("skills_required", []) or []
-                our_skills = args.get("our_skills", []) or []
-                if not title:
-                    return "I need the job title to evaluate it.", {}
-                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
-
-                job = await get_upwork_bidder().evaluate_job(
-                    title, description, budget_min, budget_max, skills_required, our_skills
-                )
-                return (
-                    f"**{job.title}** (id: `{job.job_id}`)\n"
-                    f"Fit score: {job.fit_score:.0%} · Suggested bid: ${job.bid_price:.2f}"
-                ), {}
-
-            elif tool == "write_upwork_proposal":
-                job_id = args.get("job_id", "")
-                our_expertise = args.get("our_expertise", "")
-                if not job_id or not our_expertise:
-                    return (
-                        "I need a job_id (from evaluate_upwork_job) and our relevant expertise.",
-                        {},
-                    )
-                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
-
-                proposal = await get_upwork_bidder().write_proposal(job_id, our_expertise)
-                return (
-                    f"**Proposal** (bid: ${proposal.bid_amount:.2f}, {proposal.delivery_days}d delivery)\n"
-                    f"{proposal.body}"
-                ), {}
-
-            elif tool == "optimize_upwork_profile":
-                skills = args.get("skills", []) or []
-                specialization = args.get("specialization", "")
-                if not skills or not specialization:
-                    return (
-                        "I need your skills and specialization to optimize an Upwork profile.",
-                        {},
-                    )
-                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
-
-                result = await get_upwork_bidder().generate_profile_optimization(
-                    skills, specialization
-                )
-                return (
-                    f"**Headline:** {result['headline']}\n\n"
-                    f"**Overview:**\n{result['overview']}\n\n"
-                    f"**Portfolio ideas:**\n"
-                    + "\n".join(f"  • {p}" for p in result["portfolio_suggestions"])
-                ), {}
-
-            elif tool == "upwork_bidding_analytics":
-                from apps.acquisition.upwork.upwork_bidder import get_upwork_bidder
-
-                engine = get_upwork_bidder()
-                await engine._load()
-                stats = engine.bidding_analytics()
-                if stats["total_jobs"] == 0:
-                    return "No Upwork jobs tracked yet. Use evaluate_upwork_job first.", {}
-                return (
-                    f"**Upwork bidding: {stats['bids_sent']}/{stats['total_jobs']} bid on** "
-                    f"({stats['win_rate_pct']:.0f}% win rate)\n"
-                    f"Avg bid: ${stats['avg_bid']:.2f} · Total won value: ${stats['total_won_value']:,.2f}"
-                ), {}
-
-            # ── CLIENT MEMORY (CRM) ──────────────────────────────────────────
-            elif tool == "upsert_client_profile":
-                name = args.get("name", "")
-                email = args.get("email", "")
-                company = args.get("company", "")
-                industry = args.get("industry", "")
-                if not name or not email:
-                    return "I need at least a name and email to save this client profile.", {}
-                from apps.memory.client.client_memory import get_client_memory
-
-                profile = await get_client_memory().upsert_profile(name, email, company, industry)
-                return (
-                    f"**Client profile saved: {profile.name}** (id: `{profile.profile_id}`)\n"
-                    f"{profile.email} · {profile.company or 'no company'} · segment: {profile.segment}"
-                ), {}
-
-            elif tool == "record_client_interaction":
-                profile_id = args.get("profile_id", "")
-                interaction_type = args.get("interaction_type", "")
-                summary = args.get("summary", "")
-                value_usd = float(args.get("value_usd", 0))
-                if not profile_id or not interaction_type:
-                    return "I need a profile_id and an interaction type to record this.", {}
-                from apps.memory.client.client_memory import get_client_memory
-
-                interaction = await get_client_memory().record_interaction(
-                    profile_id, interaction_type, summary, value_usd
-                )
-                return (
-                    f"**{interaction.interaction_type}** recorded ({interaction.sentiment})"
-                    + (f", ${value_usd:.2f}" if value_usd else "")
-                ), {}
-
-            elif tool == "segment_client":
-                profile_id = args.get("profile_id", "")
-                if not profile_id:
-                    return "I need a profile_id (from upsert_client_profile) to segment.", {}
-                from apps.memory.client.client_memory import get_client_memory
-
-                segment = await get_client_memory().segment_client(profile_id)
-                return f"**Segment: {segment}**", {}
-
-            elif tool == "personalize_client_offer":
-                profile_id = args.get("profile_id", "")
-                available_products = args.get("available_products", []) or []
-                if not profile_id or not available_products:
-                    return (
-                        "I need a profile_id and the available products to personalize an offer.",
-                        {},
-                    )
-                from apps.memory.client.client_memory import get_client_memory
-
-                result = await get_client_memory().personalize_offer(profile_id, available_products)
-                return (
-                    f"**Recommended: {result['recommended_product']}** — {result['offer']}\n"
-                    f"{result['reasoning']}"
-                ), {}
-
-            elif tool == "client_memory_dashboard":
-                from apps.memory.client.client_memory import get_client_memory
-
-                memory = get_client_memory()
-                await memory._load()
-                stats = memory.client_memory_summary()
-                vip = memory.vip_clients()
-                at_risk = memory.at_risk_clients()
-                if stats["total_profiles"] == 0:
-                    return "No client profiles yet. Use upsert_client_profile first.", {}
-                by_segment = ", ".join(f"{k}: {v}" for k, v in stats["by_segment"].items())
-                lines = [
-                    f"**Client memory: {stats['total_profiles']} profiles, "
-                    f"{stats['total_interactions']} interactions**\n"
-                    f"By segment: {by_segment} · Total LTV: ${stats['total_ltv']:,.2f}"
-                ]
-                if vip:
-                    lines.append("VIP: " + ", ".join(p["name"] for p in vip[:10]))
-                if at_risk:
-                    lines.append("At risk / churned: " + ", ".join(p["name"] for p in at_risk[:10]))
-                return "\n\n".join(lines), {}
-
-            # ── PER-USER LONG-TERM MEMORY (durable facts/preferences) ─────────
-            # Always scoped to `email` (the server-verified identity threaded
-            # through _execute_tool) — none of these three accept a target
-            # user/email argument from the model, so there is no way for a
-            # tool call to read or write another person's memory.
-            elif tool == "remember_user_fact":
-                content = args.get("content", "")
-                if not email:
-                    return "I need you to be signed in to remember anything long-term.", {}
-                if not content:
-                    return "What should I remember?", {}
-                category = args.get("category") or "fact"
-                if category not in ("fact", "preference", "constraint"):
-                    category = "fact"
-                importance = float(args.get("importance", 0.5) or 0.5)
-                from apps.core.memory.user_facts import get_user_facts
-
-                memory_id = await get_user_facts().remember(
-                    email, content, category=category, importance=importance
-                )
-                if not memory_id:
-                    return (
-                        "I couldn't save that long-term — long-term memory storage isn't "
-                        "configured right now, but I'll still have it for this conversation.",
-                        {},
-                    )
-                return f"Got it, I'll remember that ({category}).", {}
-
-            elif tool == "list_user_facts":
-                if not email:
-                    return "I need you to be signed in to look up what I remember about you.", {}
-                from apps.core.memory.user_facts import get_user_facts
-
-                facts = await get_user_facts().list_all(email, limit=50)
-                if not facts:
-                    return "I don't have anything saved long-term about you yet.", {}
-                lines = [f"**What I remember about you** ({len(facts)}):"]
-                for f in facts:
-                    lines.append(
-                        f"  • [{f.get('category', 'fact')}] {f.get('content', '')} "
-                        f"(id: `{f.get('id', '')}`)"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "forget_user_fact":
-                memory_id = args.get("memory_id", "")
-                if not email:
-                    return "I need you to be signed in to manage your remembered facts.", {}
-                if not memory_id:
-                    return "Which memory should I forget? Use list_user_facts to see the ids.", {}
-                from apps.core.memory.user_facts import get_user_facts
-
-                ok = await get_user_facts().forget(email, memory_id)
-                return (
-                    (
-                        "Forgotten."
-                        if ok
-                        else "I couldn't find that memory (already gone, or " "it isn't yours)."
-                    ),
-                    {},
-                )
-
-            # ── INTERNAL LINKING & CONTENT STRATEGY ───────────────────────────
-            elif tool == "audit_internal_links":
-                site_niche = args.get("site_niche", "")
-                pages = args.get("pages", []) or []
-                if not pages:
-                    return "I need a list of pages (url, title, word_count, keywords) to audit.", {}
-                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
-
-                audit = await get_linking_optimizer().audit_site(site_niche, pages)
-                lines = [
-                    f"**Internal linking audit** ({audit.pages_analyzed} pages, "
-                    f"{len(audit.orphan_pages)} orphans)",
-                    f"Pillar pages: {', '.join(p['title'] for p in audit.pillar_pages) or 'none identified'}",
-                    f"{len(audit.link_suggestions)} link suggestions generated "
-                    f"(est. SEO score {audit.seo_score_before:.0%} → {audit.seo_score_after_estimate:.0%})",
-                ]
-                return "\n".join(lines), {}
-
-            elif tool == "suggest_internal_links":
-                source_page = args.get("source_page", {}) or {}
-                content_library = args.get("content_library", []) or []
-                if not source_page or not content_library:
-                    return "I need the source page and a content library to link from.", {}
-                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
-
-                suggestions = await get_linking_optimizer().suggest_links(
-                    source_page, content_library
-                )
-                if not suggestions:
-                    return "No good internal link matches found in this content library.", {}
-                lines = [f"**Internal link suggestions for '{source_page.get('title', '')}'**"]
-                for s in suggestions[:5]:
-                    lines.append(
-                        f'  • → {s.target_title} ("{s.anchor_text}", {s.seo_value} value, '
-                        f"{s.relevance_score:.0%} relevance)"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "generate_pillar_strategy":
-                niche = args.get("niche", "")
-                topics = args.get("topics", []) or []
-                if not niche or not topics:
-                    return "I need a niche and a list of topics to build a pillar strategy.", {}
-                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
-
-                result = await get_linking_optimizer().generate_pillar_strategy(niche, topics)
-                lines = [f"**Pillar-cluster strategy for {niche}**"]
-                for p in result["pillar_pages"]:
-                    clusters = result["cluster_pages"].get(p["topic"], [])
-                    lines.append(
-                        f"  • Pillar: {p['topic']} — clusters: {', '.join(clusters) or 'n/a'}"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "internal_linking_stats":
-                from apps.content.internal_linking.linking_optimizer import get_linking_optimizer
-
-                stats = get_linking_optimizer().linking_stats()
-                if stats["total_suggestions"] == 0:
-                    return "No internal linking activity yet.", {}
-                return (
-                    f"**Internal linking**: {stats['total_suggestions']} suggestions "
-                    f"({stats['high_value_links']} high-value), {stats['audits_completed']} audits, "
-                    f"avg relevance {stats['avg_relevance_score']:.0%}"
-                ), {}
-
-            # ── ENGAGEMENT & VIRALITY PREDICTION ──────────────────────────────
-            elif tool == "predict_engagement":
-                content = args.get("content", "")
-                platform = args.get("platform", "twitter")
-                if not content:
-                    return "What content should I predict engagement for?", {}
-                from apps.content.scoring.engagement_predictor import get_engagement_predictor
-
-                pred = await get_engagement_predictor().predict(
-                    content, platform, int(args.get("audience_size", 1000))
-                )
-                return (
-                    f"**Engagement prediction ({platform})** — heuristic estimate, no historical "
-                    f"data for this account yet (confidence {pred.confidence:.0%})\n"
-                    f"~{pred.predicted_views:,} views, {pred.predicted_engagement_rate:.1%} engagement, "
-                    f"{pred.predicted_shares} shares, {pred.predicted_comments} comments\n"
-                    f"Viral probability: {pred.viral_probability:.0%} · Best time: {pred.best_publish_time}"
-                ), {}
-
-            elif tool == "analyze_virality":
+            if tool == "analyze_virality":
                 content = args.get("content", "")
                 if not content:
                     return "What content should I analyze for virality?", {}
@@ -4208,7 +4344,12 @@ class AriaMind:
                     )
                 return "\n".join(lines), {}
 
-            elif tool == "optimize_viral_title":
+            elif tool == "optimize_viral_title":  # noqa: RET505 — same reason
+                # as create_flash_sale above: analyze_virality is now the
+                # first branch of the remaining chain and always returns, so
+                # ruff would suggest flattening every subsequent `elif` in
+                # turn. Left as `elif` deliberately — rest of the chain is
+                # out of scope for this batch (see AAS Fase 2 / ADR-005).
                 title = args.get("title", "")
                 if not title:
                     return "What title should I make more viral?", {}
