@@ -47,6 +47,7 @@ async def test_add_goal_persists_a_new_goal_via_cache():
     cache.set.assert_awaited_once()
     saved_key, saved_goals = cache.set.await_args.args[:2]
     assert saved_key == mind.K_GOALS
+    assert cache.set.await_args.kwargs == {"ttl_seconds": 86400 * 365}
     assert len(saved_goals) == 1
     assert saved_goals[0]["text"] == "Grow MRR to $10k"
     assert saved_goals[0]["priority"] == 2
@@ -55,7 +56,7 @@ async def test_add_goal_persists_a_new_goal_via_cache():
 
 async def test_update_goal_persists_progress_and_status():
     existing = [
-        {"text": "Grow MRR", "priority": 5, "status": "active", "progress": "", "created_at": ""}
+        {"text": "Grow MRR", "priority": 5, "status": "paused", "progress": "", "created_at": ""}
     ]
     cache = _fake_cache(initial_goals=existing)
 
@@ -63,7 +64,7 @@ async def test_update_goal_persists_progress_and_status():
         mind = AriaMind()
         obs, media = await mind._execute_tool(
             "update_goal",
-            {"index": 0, "progress": "50%", "status": "active"},
+            {"index": 0, "progress": "50%", "status": "completed"},
             email="owner@example.com",
         )
 
@@ -72,6 +73,7 @@ async def test_update_goal_persists_progress_and_status():
     cache.set.assert_awaited_once()
     _, saved_goals = cache.set.await_args.args[:2]
     assert saved_goals[0]["progress"] == "50%"
+    assert saved_goals[0]["status"] == "completed"
 
 
 async def test_update_goal_out_of_range_index_is_a_noop_but_still_reports_success():
