@@ -177,7 +177,7 @@ async def test_create_landing_page_returns_page_for_safe_content():
 # ── post_to_social ────────────────────────────────────────────────────────
 async def test_post_to_social_blocked_for_phishing_content_before_preview():
     cache = _FakeCache()
-    with patch.object(AriaMind, "_cache_client", return_value=cache):
+    with patch("apps.core.memory.redis_client.get_cache", return_value=cache):
         mind = AriaMind()
         obs, media = await mind._execute_tool(
             "post_to_social",
@@ -198,7 +198,7 @@ async def test_post_to_social_preview_and_confirm_flow_for_safe_content():
         return_value={"success": True, "url": "https://twitter.com/x/status/1"}
     )
     with (
-        patch.object(AriaMind, "_cache_client", return_value=cache),
+        patch("apps.core.memory.redis_client.get_cache", return_value=cache),
         patch(
             "apps.core.tools.social_session.get_social_session_manager",
             return_value=fake_session_mgr,

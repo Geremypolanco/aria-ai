@@ -3213,6 +3213,923 @@ async def _tool_predict_engagement(
     ), {}
 
 
+# ── Batch 4 (final 50 tools — cleanup phase, see AAS Fase 2 / ADR-005) ─────
+# Same extraction contract as Batches 1-3: verbatim body, no logic changes,
+# verified by AST-diff against origin/main before commit. This batch also
+# migrates the 3 tools that touch AriaMind instance state (add_goal,
+# update_goal, post_to_social) — see _tool_cache_or_none/_tool_load_goals/
+# _tool_save_goals/_tool_apply_goal_action below: these are the exact same
+# logic AriaMind._cache_client/_load_goals/_save_goals/_apply_goal_action
+# already had, pulled out to module level so both the instance methods
+# (still used by handle()/_build_status(), untouched) and these three tool
+# handlers share one implementation instead of duplicating it — no `self`
+# needed by the handlers, no new "ctx" abstraction introduced either.
+# After this batch, the if/elif chain is gone entirely and _TOOL_HANDLERS
+# is the only dispatch mechanism _execute_tool has.
+
+
+def _tool_cache_or_none():
+    """Same fallback contract as AriaMind._cache_client(): get_cache() is
+    already a module-level singleton, so this differs from the instance
+    method only in not memoizing on `self` — functionally identical."""
+    from apps.core.memory.redis_client import get_cache
+
+    try:
+        return get_cache()
+    except Exception as e:
+        logger.warning("[AriaMind] Could not load cache: %s", e)
+        return None
+
+
+async def _tool_load_goals(cache) -> list[dict]:
+    if cache:
+        g = await cache.get(AriaMind.K_GOALS)
+        if isinstance(g, list):
+            return [x for x in g if isinstance(x, dict)]
+    return []
+
+
+async def _tool_save_goals(cache, goals: list[dict]) -> None:
+    if cache:
+        await cache.set(AriaMind.K_GOALS, goals, ttl_seconds=86400 * 365)
+
+
+async def _tool_apply_goal_action(cache, action: dict, goals: list[dict]) -> list[dict]:
+    if action.get("action") == "add":
+        goals.append(
+            Goal(
+                text=action.get("text", ""),
+                priority=int(action.get("priority", 5)),
+            ).__dict__
+        )
+        await _tool_save_goals(cache, goals)
+    elif action.get("action") == "update":
+        idx = action.get("index", 0)
+        if 0 <= idx < len(goals):
+            if "progress" in action:
+                goals[idx]["progress"] = action["progress"]
+            if "status" in action:
+                goals[idx]["status"] = action["status"]
+            await _tool_save_goals(cache, goals)
+    return goals
+
+
+async def _tool_add_or_update_goal(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    # Delegate to the goal_action system properly
+    action = "add" if tool == "add_goal" else "update"
+    goal_action_dict: dict = {"action": action}
+    if action == "add":
+        goal_action_dict["text"] = args.get("text", "")
+        goal_action_dict["priority"] = args.get("priority", 5)
+    else:
+        goal_action_dict["index"] = args.get("index", 0)
+        if "progress" in args:
+            goal_action_dict["progress"] = args["progress"]
+        if "status" in args:
+            goal_action_dict["status"] = args["status"]
+    cache = _tool_cache_or_none()
+    goals_list = await _tool_load_goals(cache)
+    await _tool_apply_goal_action(cache, goal_action_dict, goals_list)
+    return f"Goal {'added' if action == 'add' else 'updated'} successfully", {}
+
+
+async def _tool_analyze_virality(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content = args.get("content", "")
+    if not content:
+        return "What content should I analyze for virality?", {}
+    from apps.content.virality.virality_engine import get_virality_engine
+
+    analysis = await get_virality_engine().analyze(content, args.get("platform", "general"))
+    lines = [
+        f"**Virality analysis** (score {analysis.virality_score:.0%}, "
+        f"hook {analysis.hook_score:.0%}, shareability {analysis.shareability_score:.0%})",
+        analysis.analysis_notes,
+    ]
+    if analysis.title_alternatives:
+        lines.append(
+            "Title alternatives:\n" + "\n".join(f"  • {t}" for t in analysis.title_alternatives)
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_optimize_viral_title(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    title = args.get("title", "")
+    if not title:
+        return "What title should I make more viral?", {}
+    from apps.content.virality.virality_engine import get_virality_engine
+
+    alts = await get_virality_engine().optimize_title(title, args.get("platform", "youtube"))
+    return "**Viral title alternatives:**\n" + "\n".join(f"  • {t}" for t in alts), {}
+
+
+async def _tool_analyze_content_originality(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content = args.get("content", "")
+    if not content:
+        return "What content should I check for AI-cliché phrasing?", {}
+    from apps.creative.differentiation.differentiation_engine import (
+        get_differentiation_engine,
+    )
+
+    report = await get_differentiation_engine().analyze(content)
+    lines = [
+        f"**Originality check** — {report.risk_level.value} genericity risk "
+        f"({report.genericity_score:.0%} generic, {report.differentiation_score:.0%} differentiated)",
+    ]
+    if report.generic_phrases:
+        lines.append("Clichés found: " + ", ".join(f'"{p}"' for p in report.generic_phrases))
+    if report.unique_elements:
+        lines.append("Already unique: " + "; ".join(report.unique_elements))
+    if report.alternatives:
+        lines.append("Alternative openers:\n" + "\n".join(f"  • {a}" for a in report.alternatives))
+    return "\n".join(lines), {}
+
+
+async def _tool_purge_generic_phrases(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content = args.get("content", "")
+    if not content:
+        return "What content should I rewrite to remove AI clichés?", {}
+    from apps.creative.differentiation.differentiation_engine import (
+        get_differentiation_engine,
+    )
+
+    purged = await get_differentiation_engine().purge_generic(content)
+    return f"**Rewritten:**\n{purged}", {}
+
+
+async def _tool_generate_unique_angles(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    niche = args.get("niche", "general")
+    if not topic:
+        return "What topic do you want unique content angles for?", {}
+    from apps.creative.differentiation.differentiation_engine import (
+        get_differentiation_engine,
+    )
+
+    angles = await get_differentiation_engine().generate_unique_angle(topic, niche)
+    return "**Unique angles:**\n" + "\n".join(f"  • {a}" for a in angles), {}
+
+
+async def _tool_check_audience_fatigue(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    content_history = args.get("content_history", []) or []
+    if not content_history:
+        return (
+            "I need your recent content pieces (a list of strings) to check for fatigue.",
+            {},
+        )
+    from apps.creative.differentiation.differentiation_engine import (
+        get_differentiation_engine,
+    )
+
+    result = await get_differentiation_engine().audience_fatigue_risk(content_history)
+    lines = [f"**Audience fatigue risk: {result['fatigue_risk']:.0%}**"]
+    if result["overused_patterns"]:
+        lines.append("Overused: " + "; ".join(result["overused_patterns"]))
+    if result["refresh_recommendations"]:
+        lines.append(
+            "Recommendations:\n" + "\n".join(f"  • {r}" for r in result["refresh_recommendations"])
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_write_blog_post(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    target_keyword = args.get("target_keyword", "")
+    if not topic or not target_keyword:
+        return "I need a topic and a target keyword to write a blog post.", {}
+    from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+    post = await get_blog_publisher().write_post(
+        topic,
+        target_keyword,
+        args.get("target_audience", "general"),
+        int(args.get("word_target", 1200)),
+    )
+    return (
+        f"**{post.title}** ({post.word_count} words, est. SEO score {post.seo_score:.0%}, "
+        f"est. {post.estimated_monthly_traffic}/mo organic traffic — both estimates, not measured)\n"
+        f"Meta: {post.meta_description}\n\n{post.body[:1500]}"
+    ), {}
+
+
+async def _tool_generate_blog_outline(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    keyword = args.get("keyword", "")
+    if not topic or not keyword:
+        return "I need a topic and target keyword to outline a blog post.", {}
+    from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+    outline = await get_blog_publisher().generate_outline(
+        topic, keyword, int(args.get("num_sections", 5))
+    )
+    lines = [f"**Blog outline: {topic}**"]
+    for s in outline:
+        lines.append(f"  • {s['heading']} (~{s['word_target']} words)")
+    return "\n".join(lines), {}
+
+
+async def _tool_generate_blog_topic_cluster(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    pillar_topic = args.get("pillar_topic", "")
+    if not pillar_topic:
+        return "What's the pillar topic for the content cluster?", {}
+    from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+    cluster = await get_blog_publisher().generate_topic_cluster(
+        pillar_topic, int(args.get("num_posts", 5))
+    )
+    lines = [f"**Topic cluster: {pillar_topic}**"]
+    for c in cluster:
+        lines.append(
+            f"  • {c['title']} — \"{c['keyword']}\" ({c['search_intent']}, {c['difficulty']} difficulty)"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_blog_publishing_stats(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.distribution.blog.blog_publisher import get_blog_publisher
+
+    stats = get_blog_publisher().blog_stats()
+    if stats["total_posts"] == 0:
+        return "No blog posts written yet. Use write_blog_post first.", {}
+    return (
+        f"**Blog stats**: {stats['total_posts']} posts, avg SEO score "
+        f"{stats['avg_seo_score']:.0%}, avg {stats['avg_word_count']} words, "
+        f"est. {stats['avg_monthly_traffic']}/mo traffic each"
+    ), {}
+
+
+async def _tool_create_linkedin_post(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    if not topic:
+        return "What topic should the LinkedIn post be about?", {}
+    from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+    post = await get_linkedin_publisher().create_post(
+        topic, args.get("objective", "thought_leadership")
+    )
+    return (
+        f"**LinkedIn post** (est. engagement {post.engagement_score:.0%}, "
+        f"est. {post.estimated_impressions:,} impressions)\n\n{post.content}"
+    ), {}
+
+
+async def _tool_generate_linkedin_carousel_outline(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    if not topic:
+        return "What topic should the LinkedIn carousel be about?", {}
+    from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+    outline = await get_linkedin_publisher().generate_carousel_outline(
+        topic, int(args.get("num_slides", 7))
+    )
+    lines = [
+        f"**Carousel: {outline.get('cover_text', topic)}**",
+        f"Hook: {outline.get('hook', '')}",
+    ]
+    for s in outline.get("slides", []):
+        lines.append(f"  {s.get('slide')}. {s.get('headline')} — {s.get('content')}")
+    return "\n".join(lines), {}
+
+
+async def _tool_generate_linkedin_hooks(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    if not topic:
+        return "What topic do you need LinkedIn hook lines for?", {}
+    from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+    hooks = await get_linkedin_publisher().generate_hook_variants(topic)
+    return "**Hook variants:**\n" + "\n".join(f"  • {h}" for h in hooks), {}
+
+
+async def _tool_linkedin_post_analytics(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
+
+    stats = get_linkedin_publisher().post_analytics()
+    if stats["total_posts"] == 0:
+        return "No LinkedIn posts created yet. Use create_linkedin_post first.", {}
+    return (
+        f"**LinkedIn stats**: {stats['total_posts']} posts, avg engagement "
+        f"{stats['avg_engagement_score']:.0%}, avg {stats['avg_impressions']:,} impressions"
+    ), {}
+
+
+async def _tool_create_twitter_thread(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    if not topic:
+        return "What topic should the Twitter/X thread be about?", {}
+    from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+    thread = await get_twitter_engine().create_thread(
+        topic, args.get("angle", "educational"), int(args.get("num_tweets", 7))
+    )
+    lines = [
+        f"**Thread: {thread.topic}** ({thread.total_tweets} tweets, "
+        f"est. viral score {thread.viral_score:.0%}, est. reach {thread.estimated_reach:,})"
+    ]
+    for t in thread.tweets:
+        lines.append(f"  {t['thread_position'] + 1}. {t['content']}")
+    return "\n".join(lines), {}
+
+
+async def _tool_generate_tweet(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    topic = args.get("topic", "")
+    if not topic:
+        return "What topic should the tweet be about?", {}
+    from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+    tweet = await get_twitter_engine().generate_tweet(topic, args.get("tweet_type", "insight"))
+    return f"**Tweet:** {tweet.content}", {}
+
+
+async def _tool_repurpose_to_twitter_thread(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    long_content = args.get("long_content", "")
+    topic = args.get("topic", "")
+    if not long_content or not topic:
+        return (
+            "I need the long-form content and its topic to repurpose it into a thread.",
+            {},
+        )
+    from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+    thread = await get_twitter_engine().repurpose_to_thread(long_content, topic)
+    lines = [f"**Repurposed thread: {thread.topic}** ({thread.total_tweets} tweets)"]
+    for t in thread.tweets:
+        lines.append(f"  {t['thread_position'] + 1}. {t['content']}")
+    return "\n".join(lines), {}
+
+
+async def _tool_twitter_thread_analytics(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.distribution.twitter.twitter_engine import get_twitter_engine
+
+    stats = get_twitter_engine().twitter_analytics()
+    if stats["total_threads"] == 0:
+        return "No Twitter/X threads created yet. Use create_twitter_thread first.", {}
+    return (
+        f"**Twitter/X stats**: {stats['total_threads']} threads, "
+        f"{stats['total_tweets']} tweets, avg viral score {stats['avg_viral_score']:.0%}, "
+        f"avg est. reach {stats['avg_estimated_reach']:,}"
+    ), {}
+
+
+async def _tool_select_growth_action(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.learning.optimization.reinforcement_optimizer import (
+        get_reinforcement_optimizer,
+    )
+
+    action = await get_reinforcement_optimizer().select_action()
+    return (
+        f"Recommended next growth action: **{action}** "
+        f"(chosen via UCB1 bandit over past outcomes — log the result with "
+        f"record_action_outcome so future picks improve)."
+    ), {}
+
+
+async def _tool_record_action_outcome(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    action_type = args.get("action_type", "")
+    if not action_type:
+        return "Which action type had this outcome?", {}
+    from apps.learning.optimization.reinforcement_optimizer import (
+        get_reinforcement_optimizer,
+    )
+
+    arm = await get_reinforcement_optimizer().record_outcome(
+        action_type, float(args.get("reward", 0))
+    )
+    return (
+        f"Recorded. **{action_type}**: {arm.total_pulls} pulls, avg reward {arm.avg_reward:.2f}"
+    ), {}
+
+
+async def _tool_reinforcement_report(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.learning.optimization.reinforcement_optimizer import (
+        get_reinforcement_optimizer,
+    )
+
+    report = get_reinforcement_optimizer().optimization_report()
+    if report["total_pulls"] == 0:
+        return "No growth actions logged yet. Use select_growth_action to start.", {}
+    lines = [
+        f"**Growth-action learning**: {report['total_pulls']} actions tried, "
+        f"best: {report['best_action']}, worst: {report['worst_action']}",
+    ]
+    for a in report["arm_rankings"]:
+        lines.append(
+            f"  • {a['action_type']}: avg reward {a['avg_reward']} ({a['total_pulls']} pulls)"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_track_roi(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    name = args.get("name", "")
+    category = args.get("category", "campaign")
+    investment_usd = args.get("investment_usd")
+    if not name or investment_usd is None:
+        return "I need a name and the investment amount to start tracking ROI.", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.economics.roi_tracker import get_roi_tracker
+
+    tracker = get_roi_tracker(await workspace_id_for(email))
+    record = await tracker.track(name, category, float(investment_usd))
+    return (
+        f"Tracking ROI for **{name}** ({category}): ${record.investment_usd:,.2f} "
+        f"invested. Update it later with update_roi_returns and record_id `{record.record_id}`."
+    ), {}
+
+
+async def _tool_update_roi_returns(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    record_id = args.get("record_id", "")
+    returns_usd = args.get("returns_usd")
+    if not record_id or returns_usd is None:
+        return "I need the record_id and the returns amount.", {}
+    from apps.core.tenancy import workspace_id_for
+    from apps.economics.roi_tracker import get_roi_tracker
+
+    tracker = get_roi_tracker(await workspace_id_for(email))
+    record = await tracker.update_returns(record_id, float(returns_usd))
+    if record is None:
+        return f"No ROI record found with id `{record_id}`.", {}
+    return (
+        f"**{record.name}**: ${record.investment_usd:,.2f} → ${record.returns_usd:,.2f} "
+        f"({record.roi_pct:+.1f}% ROI, {record.roi_multiple():.2f}x)"
+    ), {}
+
+
+async def _tool_roi_summary(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.tenancy import workspace_id_for
+    from apps.economics.roi_tracker import get_roi_tracker
+
+    tracker = get_roi_tracker(await workspace_id_for(email))
+    await tracker._load()
+    summary = tracker.roi_summary()
+    if summary["total_tracked"] == 0:
+        return "No ROI records yet. Use track_roi to start tracking an investment.", {}
+    lines = [
+        f"**ROI summary**: {summary['total_tracked']} tracked, avg {summary['avg_roi_pct']:+.1f}%\n"
+        f"Invested ${summary['total_invested']:,.2f} → returned ${summary['total_returns']:,.2f}"
+    ]
+    if summary["best_roi"]:
+        lines.append(
+            f"Best: {summary['best_roi'].get('name')} ({summary['best_roi'].get('roi_pct', 0):+.1f}%)"
+        )
+    if summary["worst_roi"]:
+        lines.append(
+            f"Worst: {summary['worst_roi'].get('name')} ({summary['worst_roi'].get('roi_pct', 0):+.1f}%)"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_record_cashflow_entry(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    entry_type = args.get("type", "")
+    amount = args.get("amount")
+    category = args.get("category", "general")
+    if entry_type not in ("income", "expense") or amount is None:
+        return 'I need type ("income" or "expense"), an amount, and a category.', {}
+    from apps.business.finance.cashflow_engine import get_cashflow_engine
+    from apps.core.tenancy import workspace_id_for
+
+    entry = await get_cashflow_engine(await workspace_id_for(email)).record(
+        entry_type,
+        float(amount),
+        category,
+        args.get("description", ""),
+        bool(args.get("recurring", False)),
+        int(args.get("frequency_days", 0)),
+    )
+    return f"Recorded {entry.type}: ${entry.amount_usd:,.2f} ({entry.category})", {}
+
+
+async def _tool_cashflow_summary(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.business.finance.cashflow_engine import get_cashflow_engine
+    from apps.core.tenancy import workspace_id_for
+
+    engine = get_cashflow_engine(await workspace_id_for(email))
+    await engine._load()
+    summary = engine.summary()
+    runway = await engine.runway_months()
+    tips = await engine.optimization_tips()
+    lines = [
+        f"**Cashflow**: balance ${summary['current_balance_usd']:,.2f}, "
+        f"monthly burn ${summary['monthly_burn_usd']:,.2f}, runway {runway:.1f} months",
+    ]
+    if tips:
+        lines.append("Tips:\n" + "\n".join(f"  • {t}" for t in tips[:3]))
+    return "\n".join(lines), {}
+
+
+async def _tool_forecast_cashflow(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.business.finance.cashflow_engine import get_cashflow_engine
+    from apps.core.tenancy import workspace_id_for
+
+    engine = get_cashflow_engine(await workspace_id_for(email))
+    forecast = await engine.forecast_cashflow(int(args.get("months_ahead", 3)))
+    lines = ["**Cashflow forecast**"]
+    for f in forecast:
+        lines.append(
+            f"  Month {f['month']}: net ${f['projected_net']:,.2f} "
+            f"(cumulative ${f['cumulative_net']:,.2f})"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_list_social_sessions(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tools.social_session import get_social_session_manager
+
+    sessions = await get_social_session_manager().list_active_sessions()
+    if not sessions:
+        return (
+            "No social sessions imported yet. Sessions are imported via the "
+            "Telegram /sesion flow, not through chat.",
+            {},
+        )
+    lines = ["**Active social sessions:**"]
+    for s in sessions:
+        lines.append(
+            f"  {s['emoji']} {s['display_name']} — {s['cookies_count']} cookies, "
+            f"imported {s['age_days']}d ago"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_check_social_session(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    platform = args.get("platform", "")
+    if not platform:
+        return "I need a platform to check the session for.", {}
+    from apps.core.tools.social_session import get_social_session_manager
+
+    result = await get_social_session_manager().test_session(platform)
+    if result.get("success"):
+        return f"**{platform}: session active**", {}
+    return f"**{platform}: {result.get('error', 'session not working')}**", {}
+
+
+async def _tool_post_to_social(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    platform = args.get("platform", "")
+    text = args.get("text", "")
+    confirm_token = args.get("confirm_token", "")
+    if not platform or not text:
+        return "I need a platform and the text to post.", {}
+
+    # ── SAFETY LAYER 3: content firewall ─────────────────────
+    # Checked before the preview is even generated: a phishing/
+    # credential-harvesting post must never reach the preview
+    # step, since a user could confirm it verbatim without
+    # re-reading closely.
+    from apps.core.config import settings as _guardrail_settings
+    from apps.core.safety import guardrails
+
+    if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
+        safety = guardrails.check_content_safety(text)
+        if not safety.safe:
+            with suppress(Exception):
+                await guardrails.record_audit_event(
+                    "content_blocked",
+                    {"email": email, "tool": tool, "findings": safety.findings},
+                )
+            return (
+                "I'm not going to post that — it matched a blocked "
+                f"pattern: {'; '.join(safety.findings)}.",
+                {},
+            )
+
+    # Forced preview step, enforced in code rather than trusted to
+    # the model's own prompt-following: this is an immediately
+    # public, effectively irreversible action using the owner's
+    # real logged-in session, not draft content generation. A
+    # single tool call can never produce a valid confirm_token —
+    # one is only minted by a prior preview call and stored
+    # server-side, so the model cannot skip straight to posting
+    # by simply passing confirmed=true on the first attempt.
+    cache = _tool_cache_or_none()
+    pending_key = None
+    if confirm_token and cache:
+        pending_key = f"aria:pending_social_post:{confirm_token}"
+        pending = await cache.get(pending_key)
+        if (
+            isinstance(pending, dict)
+            and pending.get("platform") == platform
+            and pending.get("text") == text
+        ):
+            await cache.delete(pending_key)
+            from apps.core.tools.social_session import get_social_session_manager
+
+            result = await get_social_session_manager().post_to_platform(platform, text)
+            if result.get("success"):
+                url = result.get("url") or result.get("post_id", "")
+                return f"**Posted to {platform}.**" + (f" {url}" if url else ""), {}
+            return (
+                f"**Post to {platform} failed:** {result.get('error', 'unknown error')}",
+                {},
+            )
+
+    import secrets
+
+    token = secrets.token_hex(8)
+    if cache:
+        await cache.set(
+            f"aria:pending_social_post:{token}",
+            {"platform": platform, "text": text},
+            ttl_seconds=600,
+        )
+    return (
+        f"**Preview — not yet posted to {platform}:**\n{text}\n\n"
+        f"Ask me to post this exact text again to confirm — "
+        f"confirm_token: {token} (expires in 10 minutes).",
+        {},
+    )
+
+
+async def _tool_run_crew(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    mission = args.get("mission", "")
+    crew_name = args.get("crew", "research_crew")
+    from apps.core.tools.crew_engine import get_crew_engine
+    from apps.core.tools.deep_think import ProgressStream
+
+    ps = ProgressStream(session_id="", task_name=f"Crew:{crew_name}")
+    run = await get_crew_engine().run(
+        mission=mission,
+        crew_name=crew_name,
+        on_progress=lambda step, total, role: ps.update(
+            f"{role} working...", f"Step {step}/{total}"
+        ),
+    )
+    members_summary = " → ".join(m.role for m in run.members)
+    obs = f"[CREW: {crew_name.upper()} — {members_summary}]\n\n{run.final_output or 'No final output'}"
+    return obs, {}
+
+
+async def _tool_create_workflow(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    name = args.get("name", "Workflow")
+    description = args.get("description", "")
+    from apps.core.tools.workflow_engine import get_workflow_engine
+
+    r = await get_workflow_engine().create(name, description)
+    if r.get("success"):
+        steps_str = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", [])))
+        return (
+            f"Workflow '{name}' created (ID: {r['workflow_id']}, {r['steps']} steps):\n"
+            f"{steps_str}\n\nUse run_workflow with id='{r['workflow_id']}' to run it."
+        ), {}
+    return f"I couldn't create the workflow: {r.get('error', 'error')}", {}
+
+
+async def _tool_run_workflow(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    wid = args.get("workflow_id", "")
+    from apps.core.tools.workflow_engine import get_workflow_engine
+
+    r = await get_workflow_engine().run(wid, email=email)
+    if "results" in r:
+        steps_summary = "; ".join(
+            f"step{s['step']}={'OK' if s['success'] else 'FAIL'}" for s in r.get("results", [])
+        )
+        status = "" if r.get("success") else " (with errors)"
+        return (
+            f"[WORKFLOW '{r.get('name', wid)}'{status} — {r['steps_run']} steps]\n"
+            f"{steps_summary}\n\n{r.get('final_output', '')}"
+        ), {}
+    return f"Error running workflow: {r.get('error', 'error')}", {}
+
+
+async def _tool_list_workflows(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.tools.workflow_engine import get_workflow_engine
+
+    wfs = get_workflow_engine().list()
+    if not wfs:
+        return "No saved workflows. Use create_workflow to create one.", {}
+    lines = [
+        f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})"
+        for w in wfs
+    ]
+    return "[WORKFLOWS]\n" + "\n".join(lines), {}
+
+
+async def _tool_think_verified(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    question = args.get("question", "")
+    context = args.get("context", "")
+    from apps.core.tools.deep_think import get_deep_think
+
+    result = await get_deep_think().think_verified(question, context=context, paths=2)
+    obs = f"[VERIFIED REASONING — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
+    return obs, {}
+
+
+async def _tool_launch_niche(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    niche = args.get("niche", "")
+    context = args.get("context", "")
+    if not niche:
+        from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
+        top5 = get_niche_revenue_engine().get_top_niches_by_potential(n=3)
+        names = [n["key"] for n in top5]
+        return (
+            f"Specify a niche. Top 3 recommended right now: {', '.join(names)}\n"
+            f"Use list_niches to see all 45 available."
+        ), {}
+    from apps.core.tools.niche_revenue_engine import (
+        NICHE_CATALOG,
+        get_niche_revenue_engine,
+    )
+
+    if niche not in NICHE_CATALOG:
+        close = [k for k in NICHE_CATALOG if niche.lower() in k.lower()]
+        return (
+            f"Niche '{niche}' not found."
+            + (f" Did you mean: {', '.join(close[:3])}?" if close else "")
+        ), {}
+    result = await get_niche_revenue_engine().launch_niche(niche, context=context)
+    lines = [
+        f"[LAUNCH: {result.niche_name}]",
+        f"Checklist: {result.checklist.score}/100 {'OK' if result.checklist and result.checklist.passed else 'needs review'}",
+        f"Time: {result.elapsed_seconds}s",
+    ]
+    if result.published_urls:
+        lines.append("**Published to:**")
+        for u in result.published_urls:
+            lines.append(f"  • {u['platform']}: {u['url']}")
+    if result.seo_article_urls:
+        lines.append("**SEO articles:**")
+        for u in result.seo_article_urls:
+            lines.append(f"  • {u['platform']}: {u['url']}")
+    if result.errors:
+        lines.append(f"Warnings: {'; '.join(result.errors[:3])}")
+    if result.listing:
+        lines.append(f"\n**Listing:** {result.listing.title}")
+        lines.append(
+            f"Price: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}"
+        )
+    return "\n".join(lines), {}
+
+
+async def _tool_income_dashboard(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
+    return get_niche_revenue_engine().income_dashboard(), {}
+
+
+async def _tool_list_niches(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    category = args.get("category")
+    tier = args.get("tier")
+    from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
+    return get_niche_revenue_engine().list_all_niches(category=category, tier=tier), {}
+
+
+async def _tool_auto_income(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    num_niches = int(args.get("num_niches", 3))
+    from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
+
+    result = await get_niche_revenue_engine().autonomous_income_cycle(num_niches=num_niches)
+    lines = [
+        "[AUTO INCOME CYCLE]",
+        f"Niches attempted: {result['niches_attempted']}",
+        f"Niches succeeded: {result['niches_succeeded']}",
+        f"Live listings: {result['total_listings_live']}",
+        f"Articles published: {result['total_content_published']}",
+        f"Time: {result['elapsed_seconds']}s",
+    ]
+    if result.get("all_live_urls"):
+        lines.append("\n**Active URLs:**")
+        for u in result["all_live_urls"][:8]:
+            lines.append(f"  • {u.get('platform')}: {u.get('url')}")
+    if result.get("successful_niches"):
+        lines.append("\n**Niches launched:**")
+        for n in result["successful_niches"]:
+            lines.append(f"  - {n['niche']} — potential ${n.get('revenue_potential',0)}/sale")
+    if result.get("failed_niches"):
+        lines.append("\n**Niches with errors:**")
+        for n in result["failed_niches"]:
+            lines.append(f"  - {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
+    return "\n".join(lines), {}
+
+
+async def _tool_income_loop_status(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tools.income_loop import get_income_loop
+
+    return get_income_loop().get_status(), {}
+
+
+async def _tool_start_income_loop(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tools.income_loop import get_income_loop
+
+    loop = get_income_loop()
+    if loop.is_running:
+        return (
+            "The 24/7 income loop is already running. Use income_loop_status to check its state.",
+            {},
+        )
+    await loop.start()
+    return (
+        "24/7 income loop started. It will run revenue strategies every 30 minutes autonomously.",
+        {},
+    )
+
+
+async def _tool_run_income_cycle(
+    tool: str, args: dict, attempt: int, email: str
+) -> tuple[str, dict]:
+    from apps.core.tools.income_loop import STRATEGIES, get_income_loop
+
+    loop = get_income_loop()
+    strategy = args.get("strategy", "")
+    valid = [s[0] for s in STRATEGIES]
+    if strategy and strategy not in valid:
+        return f"Invalid strategy. Options: {', '.join(valid)}", {}
+    import random as _rnd
+
+    if not strategy:
+        strategy = _rnd.choices(
+            [s[0] for s in STRATEGIES], weights=[s[1] for s in STRATEGIES], k=1
+        )[0]
+    obs = await loop._execute(strategy)
+    lines = [
+        f"[INCOME CYCLE — {strategy}]",
+        f"Success: {'yes' if obs.get('success') else 'no'}",
+        f"Summary: {obs.get('summary', '')}",
+        f"Revenue potential: ${obs.get('revenue_potential', 0):.0f}",
+    ]
+    if obs.get("urls"):
+        lines.append("URLs:")
+        for u in obs["urls"][:4]:
+            lines.append(f"  • {u}")
+    return "\n".join(lines), {}
+
+
+async def _tool_github(tool: str, args: dict, attempt: int, email: str) -> tuple[str, dict]:
+    from apps.core.tools.github_client import github_dispatch
+
+    action_map = {
+        "github_view": args.get("action", "view"),
+        "github_write": "write",
+        "github_pr": args.get("action", "create_pr"),
+        "github_issues": args.get("action", "issues"),
+        "github_search": "search",
+        "github_self": "self",
+    }
+    gh_action = action_map[tool]
+    obs = await github_dispatch(gh_action, args)
+    return obs, {}
+
+
 _TOOL_HANDLERS: dict = {
     "generate_image": _tool_generate_image,
     "generate_video": _tool_generate_video,
@@ -3339,6 +4256,57 @@ _TOOL_HANDLERS: dict = {
     "generate_pillar_strategy": _tool_generate_pillar_strategy,
     "internal_linking_stats": _tool_internal_linking_stats,
     "predict_engagement": _tool_predict_engagement,
+    # Batch 4 (final — see module comment above _tool_cache_or_none)
+    "add_goal": _tool_add_or_update_goal,
+    "update_goal": _tool_add_or_update_goal,
+    "analyze_virality": _tool_analyze_virality,
+    "optimize_viral_title": _tool_optimize_viral_title,
+    "analyze_content_originality": _tool_analyze_content_originality,
+    "purge_generic_phrases": _tool_purge_generic_phrases,
+    "generate_unique_angles": _tool_generate_unique_angles,
+    "check_audience_fatigue": _tool_check_audience_fatigue,
+    "write_blog_post": _tool_write_blog_post,
+    "generate_blog_outline": _tool_generate_blog_outline,
+    "generate_blog_topic_cluster": _tool_generate_blog_topic_cluster,
+    "blog_publishing_stats": _tool_blog_publishing_stats,
+    "create_linkedin_post": _tool_create_linkedin_post,
+    "generate_linkedin_carousel_outline": _tool_generate_linkedin_carousel_outline,
+    "generate_linkedin_hooks": _tool_generate_linkedin_hooks,
+    "linkedin_post_analytics": _tool_linkedin_post_analytics,
+    "create_twitter_thread": _tool_create_twitter_thread,
+    "generate_tweet": _tool_generate_tweet,
+    "repurpose_to_twitter_thread": _tool_repurpose_to_twitter_thread,
+    "twitter_thread_analytics": _tool_twitter_thread_analytics,
+    "select_growth_action": _tool_select_growth_action,
+    "record_action_outcome": _tool_record_action_outcome,
+    "reinforcement_report": _tool_reinforcement_report,
+    "track_roi": _tool_track_roi,
+    "update_roi_returns": _tool_update_roi_returns,
+    "roi_summary": _tool_roi_summary,
+    "record_cashflow_entry": _tool_record_cashflow_entry,
+    "cashflow_summary": _tool_cashflow_summary,
+    "forecast_cashflow": _tool_forecast_cashflow,
+    "list_social_sessions": _tool_list_social_sessions,
+    "check_social_session": _tool_check_social_session,
+    "post_to_social": _tool_post_to_social,
+    "run_crew": _tool_run_crew,
+    "create_workflow": _tool_create_workflow,
+    "run_workflow": _tool_run_workflow,
+    "list_workflows": _tool_list_workflows,
+    "think_verified": _tool_think_verified,
+    "launch_niche": _tool_launch_niche,
+    "income_dashboard": _tool_income_dashboard,
+    "list_niches": _tool_list_niches,
+    "auto_income": _tool_auto_income,
+    "income_loop_status": _tool_income_loop_status,
+    "start_income_loop": _tool_start_income_loop,
+    "run_income_cycle": _tool_run_income_cycle,
+    "github_view": _tool_github,
+    "github_write": _tool_github,
+    "github_pr": _tool_github,
+    "github_issues": _tool_github,
+    "github_search": _tool_github,
+    "github_self": _tool_github,
 }
 
 
@@ -4283,6 +5251,10 @@ class AriaMind:
         """
         Executes the tool. Returns (obs_text, media_dict).
         media_dict: {image_bytes, video_bytes, audio_bytes} — only the one that applies.
+
+        Pure registry dispatch — the if/elif chain this replaced (Tool
+        Router extraction, Batches 1-4, see AAS Fase 2 / ADR-005) is gone.
+        Every recognized tool is a _tool_* function in _TOOL_HANDLERS.
         """
         if tool in self._OWNER_ONLY_TOOLS:
             from apps.core import auth
@@ -4293,821 +5265,14 @@ class AriaMind:
                     {},
                 )
 
-        # Registry dispatch (Tool Router extraction, Stage 1 — Batch 1 of N).
-        # Anything not yet migrated falls through to the if/elif chain below,
-        # unchanged. Same try/except contract as the chain: never raises.
         handler = _TOOL_HANDLERS.get(tool)
-        if handler is not None:
-            try:
-                return await handler(tool, args, attempt, email)
-            except Exception as exc:
-                logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
-                return f"I couldn't complete the '{tool}' action — please try again.", {}
-
+        if handler is None:
+            return "Unknown tool", {}
         try:
-            # ── GOAL MANAGEMENT ───────────────────────────────────────────
-            if tool in ("add_goal", "update_goal"):
-                # Delegate to the goal_action system properly
-                action = "add" if tool == "add_goal" else "update"
-                goal_action_dict: dict = {"action": action}
-                if action == "add":
-                    goal_action_dict["text"] = args.get("text", "")
-                    goal_action_dict["priority"] = args.get("priority", 5)
-                else:
-                    goal_action_dict["index"] = args.get("index", 0)
-                    if "progress" in args:
-                        goal_action_dict["progress"] = args["progress"]
-                    if "status" in args:
-                        goal_action_dict["status"] = args["status"]
-                goals_list = await self._load_goals()
-                await self._apply_goal_action(goal_action_dict, goals_list)
-                return f"Goal {'added' if action == 'add' else 'updated'} successfully", {}
-
-            if tool == "analyze_virality":
-                content = args.get("content", "")
-                if not content:
-                    return "What content should I analyze for virality?", {}
-                from apps.content.virality.virality_engine import get_virality_engine
-
-                analysis = await get_virality_engine().analyze(
-                    content, args.get("platform", "general")
-                )
-                lines = [
-                    f"**Virality analysis** (score {analysis.virality_score:.0%}, "
-                    f"hook {analysis.hook_score:.0%}, shareability {analysis.shareability_score:.0%})",
-                    analysis.analysis_notes,
-                ]
-                if analysis.title_alternatives:
-                    lines.append(
-                        "Title alternatives:\n"
-                        + "\n".join(f"  • {t}" for t in analysis.title_alternatives)
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "optimize_viral_title":  # noqa: RET505 — same reason
-                # as create_flash_sale above: analyze_virality is now the
-                # first branch of the remaining chain and always returns, so
-                # ruff would suggest flattening every subsequent `elif` in
-                # turn. Left as `elif` deliberately — rest of the chain is
-                # out of scope for this batch (see AAS Fase 2 / ADR-005).
-                title = args.get("title", "")
-                if not title:
-                    return "What title should I make more viral?", {}
-                from apps.content.virality.virality_engine import get_virality_engine
-
-                alts = await get_virality_engine().optimize_title(
-                    title, args.get("platform", "youtube")
-                )
-                return "**Viral title alternatives:**\n" + "\n".join(f"  • {t}" for t in alts), {}
-
-            # ── ORIGINALITY / ANTI-CLICHÉ ──────────────────────────────────────
-            elif tool == "analyze_content_originality":
-                content = args.get("content", "")
-                if not content:
-                    return "What content should I check for AI-cliché phrasing?", {}
-                from apps.creative.differentiation.differentiation_engine import (
-                    get_differentiation_engine,
-                )
-
-                report = await get_differentiation_engine().analyze(content)
-                lines = [
-                    f"**Originality check** — {report.risk_level.value} genericity risk "
-                    f"({report.genericity_score:.0%} generic, {report.differentiation_score:.0%} differentiated)",
-                ]
-                if report.generic_phrases:
-                    lines.append(
-                        "Clichés found: " + ", ".join(f'"{p}"' for p in report.generic_phrases)
-                    )
-                if report.unique_elements:
-                    lines.append("Already unique: " + "; ".join(report.unique_elements))
-                if report.alternatives:
-                    lines.append(
-                        "Alternative openers:\n"
-                        + "\n".join(f"  • {a}" for a in report.alternatives)
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "purge_generic_phrases":
-                content = args.get("content", "")
-                if not content:
-                    return "What content should I rewrite to remove AI clichés?", {}
-                from apps.creative.differentiation.differentiation_engine import (
-                    get_differentiation_engine,
-                )
-
-                purged = await get_differentiation_engine().purge_generic(content)
-                return f"**Rewritten:**\n{purged}", {}
-
-            elif tool == "generate_unique_angles":
-                topic = args.get("topic", "")
-                niche = args.get("niche", "general")
-                if not topic:
-                    return "What topic do you want unique content angles for?", {}
-                from apps.creative.differentiation.differentiation_engine import (
-                    get_differentiation_engine,
-                )
-
-                angles = await get_differentiation_engine().generate_unique_angle(topic, niche)
-                return "**Unique angles:**\n" + "\n".join(f"  • {a}" for a in angles), {}
-
-            elif tool == "check_audience_fatigue":
-                content_history = args.get("content_history", []) or []
-                if not content_history:
-                    return (
-                        "I need your recent content pieces (a list of strings) to check for fatigue.",
-                        {},
-                    )
-                from apps.creative.differentiation.differentiation_engine import (
-                    get_differentiation_engine,
-                )
-
-                result = await get_differentiation_engine().audience_fatigue_risk(content_history)
-                lines = [f"**Audience fatigue risk: {result['fatigue_risk']:.0%}**"]
-                if result["overused_patterns"]:
-                    lines.append("Overused: " + "; ".join(result["overused_patterns"]))
-                if result["refresh_recommendations"]:
-                    lines.append(
-                        "Recommendations:\n"
-                        + "\n".join(f"  • {r}" for r in result["refresh_recommendations"])
-                    )
-                return "\n".join(lines), {}
-
-            # ── LONG-FORM BLOG (SEO) ────────────────────────────────────────────
-            elif tool == "write_blog_post":
-                topic = args.get("topic", "")
-                target_keyword = args.get("target_keyword", "")
-                if not topic or not target_keyword:
-                    return "I need a topic and a target keyword to write a blog post.", {}
-                from apps.distribution.blog.blog_publisher import get_blog_publisher
-
-                post = await get_blog_publisher().write_post(
-                    topic,
-                    target_keyword,
-                    args.get("target_audience", "general"),
-                    int(args.get("word_target", 1200)),
-                )
-                return (
-                    f"**{post.title}** ({post.word_count} words, est. SEO score {post.seo_score:.0%}, "
-                    f"est. {post.estimated_monthly_traffic}/mo organic traffic — both estimates, not measured)\n"
-                    f"Meta: {post.meta_description}\n\n{post.body[:1500]}"
-                ), {}
-
-            elif tool == "generate_blog_outline":
-                topic = args.get("topic", "")
-                keyword = args.get("keyword", "")
-                if not topic or not keyword:
-                    return "I need a topic and target keyword to outline a blog post.", {}
-                from apps.distribution.blog.blog_publisher import get_blog_publisher
-
-                outline = await get_blog_publisher().generate_outline(
-                    topic, keyword, int(args.get("num_sections", 5))
-                )
-                lines = [f"**Blog outline: {topic}**"]
-                for s in outline:
-                    lines.append(f"  • {s['heading']} (~{s['word_target']} words)")
-                return "\n".join(lines), {}
-
-            elif tool == "generate_blog_topic_cluster":
-                pillar_topic = args.get("pillar_topic", "")
-                if not pillar_topic:
-                    return "What's the pillar topic for the content cluster?", {}
-                from apps.distribution.blog.blog_publisher import get_blog_publisher
-
-                cluster = await get_blog_publisher().generate_topic_cluster(
-                    pillar_topic, int(args.get("num_posts", 5))
-                )
-                lines = [f"**Topic cluster: {pillar_topic}**"]
-                for c in cluster:
-                    lines.append(
-                        f"  • {c['title']} — \"{c['keyword']}\" ({c['search_intent']}, {c['difficulty']} difficulty)"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "blog_publishing_stats":
-                from apps.distribution.blog.blog_publisher import get_blog_publisher
-
-                stats = get_blog_publisher().blog_stats()
-                if stats["total_posts"] == 0:
-                    return "No blog posts written yet. Use write_blog_post first.", {}
-                return (
-                    f"**Blog stats**: {stats['total_posts']} posts, avg SEO score "
-                    f"{stats['avg_seo_score']:.0%}, avg {stats['avg_word_count']} words, "
-                    f"est. {stats['avg_monthly_traffic']}/mo traffic each"
-                ), {}
-
-            # ── LINKEDIN CONTENT ─────────────────────────────────────────────────
-            elif tool == "create_linkedin_post":
-                topic = args.get("topic", "")
-                if not topic:
-                    return "What topic should the LinkedIn post be about?", {}
-                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
-
-                post = await get_linkedin_publisher().create_post(
-                    topic, args.get("objective", "thought_leadership")
-                )
-                return (
-                    f"**LinkedIn post** (est. engagement {post.engagement_score:.0%}, "
-                    f"est. {post.estimated_impressions:,} impressions)\n\n{post.content}"
-                ), {}
-
-            elif tool == "generate_linkedin_carousel_outline":
-                topic = args.get("topic", "")
-                if not topic:
-                    return "What topic should the LinkedIn carousel be about?", {}
-                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
-
-                outline = await get_linkedin_publisher().generate_carousel_outline(
-                    topic, int(args.get("num_slides", 7))
-                )
-                lines = [
-                    f"**Carousel: {outline.get('cover_text', topic)}**",
-                    f"Hook: {outline.get('hook', '')}",
-                ]
-                for s in outline.get("slides", []):
-                    lines.append(f"  {s.get('slide')}. {s.get('headline')} — {s.get('content')}")
-                return "\n".join(lines), {}
-
-            elif tool == "generate_linkedin_hooks":
-                topic = args.get("topic", "")
-                if not topic:
-                    return "What topic do you need LinkedIn hook lines for?", {}
-                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
-
-                hooks = await get_linkedin_publisher().generate_hook_variants(topic)
-                return "**Hook variants:**\n" + "\n".join(f"  • {h}" for h in hooks), {}
-
-            elif tool == "linkedin_post_analytics":
-                from apps.distribution.linkedin.linkedin_publisher import get_linkedin_publisher
-
-                stats = get_linkedin_publisher().post_analytics()
-                if stats["total_posts"] == 0:
-                    return "No LinkedIn posts created yet. Use create_linkedin_post first.", {}
-                return (
-                    f"**LinkedIn stats**: {stats['total_posts']} posts, avg engagement "
-                    f"{stats['avg_engagement_score']:.0%}, avg {stats['avg_impressions']:,} impressions"
-                ), {}
-
-            # ── TWITTER/X CONTENT ────────────────────────────────────────────────
-            elif tool == "create_twitter_thread":
-                topic = args.get("topic", "")
-                if not topic:
-                    return "What topic should the Twitter/X thread be about?", {}
-                from apps.distribution.twitter.twitter_engine import get_twitter_engine
-
-                thread = await get_twitter_engine().create_thread(
-                    topic, args.get("angle", "educational"), int(args.get("num_tweets", 7))
-                )
-                lines = [
-                    f"**Thread: {thread.topic}** ({thread.total_tweets} tweets, "
-                    f"est. viral score {thread.viral_score:.0%}, est. reach {thread.estimated_reach:,})"
-                ]
-                for t in thread.tweets:
-                    lines.append(f"  {t['thread_position'] + 1}. {t['content']}")
-                return "\n".join(lines), {}
-
-            elif tool == "generate_tweet":
-                topic = args.get("topic", "")
-                if not topic:
-                    return "What topic should the tweet be about?", {}
-                from apps.distribution.twitter.twitter_engine import get_twitter_engine
-
-                tweet = await get_twitter_engine().generate_tweet(
-                    topic, args.get("tweet_type", "insight")
-                )
-                return f"**Tweet:** {tweet.content}", {}
-
-            elif tool == "repurpose_to_twitter_thread":
-                long_content = args.get("long_content", "")
-                topic = args.get("topic", "")
-                if not long_content or not topic:
-                    return (
-                        "I need the long-form content and its topic to repurpose it into a thread.",
-                        {},
-                    )
-                from apps.distribution.twitter.twitter_engine import get_twitter_engine
-
-                thread = await get_twitter_engine().repurpose_to_thread(long_content, topic)
-                lines = [f"**Repurposed thread: {thread.topic}** ({thread.total_tweets} tweets)"]
-                for t in thread.tweets:
-                    lines.append(f"  {t['thread_position'] + 1}. {t['content']}")
-                return "\n".join(lines), {}
-
-            elif tool == "twitter_thread_analytics":
-                from apps.distribution.twitter.twitter_engine import get_twitter_engine
-
-                stats = get_twitter_engine().twitter_analytics()
-                if stats["total_threads"] == 0:
-                    return "No Twitter/X threads created yet. Use create_twitter_thread first.", {}
-                return (
-                    f"**Twitter/X stats**: {stats['total_threads']} threads, "
-                    f"{stats['total_tweets']} tweets, avg viral score {stats['avg_viral_score']:.0%}, "
-                    f"avg est. reach {stats['avg_estimated_reach']:,}"
-                ), {}
-
-            # ── ADAPTIVE GROWTH-ACTION LEARNING (bandit) ──────────────────────
-            elif tool == "select_growth_action":
-                from apps.learning.optimization.reinforcement_optimizer import (
-                    get_reinforcement_optimizer,
-                )
-
-                action = await get_reinforcement_optimizer().select_action()
-                return (
-                    f"Recommended next growth action: **{action}** "
-                    f"(chosen via UCB1 bandit over past outcomes — log the result with "
-                    f"record_action_outcome so future picks improve)."
-                ), {}
-
-            elif tool == "record_action_outcome":
-                action_type = args.get("action_type", "")
-                if not action_type:
-                    return "Which action type had this outcome?", {}
-                from apps.learning.optimization.reinforcement_optimizer import (
-                    get_reinforcement_optimizer,
-                )
-
-                arm = await get_reinforcement_optimizer().record_outcome(
-                    action_type, float(args.get("reward", 0))
-                )
-                return (
-                    f"Recorded. **{action_type}**: {arm.total_pulls} pulls, "
-                    f"avg reward {arm.avg_reward:.2f}"
-                ), {}
-
-            elif tool == "reinforcement_report":
-                from apps.learning.optimization.reinforcement_optimizer import (
-                    get_reinforcement_optimizer,
-                )
-
-                report = get_reinforcement_optimizer().optimization_report()
-                if report["total_pulls"] == 0:
-                    return "No growth actions logged yet. Use select_growth_action to start.", {}
-                lines = [
-                    f"**Growth-action learning**: {report['total_pulls']} actions tried, "
-                    f"best: {report['best_action']}, worst: {report['worst_action']}",
-                ]
-                for a in report["arm_rankings"]:
-                    lines.append(
-                        f"  • {a['action_type']}: avg reward {a['avg_reward']} ({a['total_pulls']} pulls)"
-                    )
-                return "\n".join(lines), {}
-
-            # ── ROI TRACKING ───────────────────────────────────────────────────
-            elif tool == "track_roi":
-                name = args.get("name", "")
-                category = args.get("category", "campaign")
-                investment_usd = args.get("investment_usd")
-                if not name or investment_usd is None:
-                    return "I need a name and the investment amount to start tracking ROI.", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.economics.roi_tracker import get_roi_tracker
-
-                tracker = get_roi_tracker(await workspace_id_for(email))
-                record = await tracker.track(name, category, float(investment_usd))
-                return (
-                    f"Tracking ROI for **{name}** ({category}): ${record.investment_usd:,.2f} "
-                    f"invested. Update it later with update_roi_returns and record_id `{record.record_id}`."
-                ), {}
-
-            elif tool == "update_roi_returns":
-                record_id = args.get("record_id", "")
-                returns_usd = args.get("returns_usd")
-                if not record_id or returns_usd is None:
-                    return "I need the record_id and the returns amount.", {}
-                from apps.core.tenancy import workspace_id_for
-                from apps.economics.roi_tracker import get_roi_tracker
-
-                tracker = get_roi_tracker(await workspace_id_for(email))
-                record = await tracker.update_returns(record_id, float(returns_usd))
-                if record is None:
-                    return f"No ROI record found with id `{record_id}`.", {}
-                return (
-                    f"**{record.name}**: ${record.investment_usd:,.2f} → ${record.returns_usd:,.2f} "
-                    f"({record.roi_pct:+.1f}% ROI, {record.roi_multiple():.2f}x)"
-                ), {}
-
-            elif tool == "roi_summary":
-                from apps.core.tenancy import workspace_id_for
-                from apps.economics.roi_tracker import get_roi_tracker
-
-                tracker = get_roi_tracker(await workspace_id_for(email))
-                await tracker._load()
-                summary = tracker.roi_summary()
-                if summary["total_tracked"] == 0:
-                    return "No ROI records yet. Use track_roi to start tracking an investment.", {}
-                lines = [
-                    f"**ROI summary**: {summary['total_tracked']} tracked, avg {summary['avg_roi_pct']:+.1f}%\n"
-                    f"Invested ${summary['total_invested']:,.2f} → returned ${summary['total_returns']:,.2f}"
-                ]
-                if summary["best_roi"]:
-                    lines.append(
-                        f"Best: {summary['best_roi'].get('name')} ({summary['best_roi'].get('roi_pct', 0):+.1f}%)"
-                    )
-                if summary["worst_roi"]:
-                    lines.append(
-                        f"Worst: {summary['worst_roi'].get('name')} ({summary['worst_roi'].get('roi_pct', 0):+.1f}%)"
-                    )
-                return "\n".join(lines), {}
-
-            # ── CASHFLOW ──────────────────────────────────────────────────────
-            elif tool == "record_cashflow_entry":
-                entry_type = args.get("type", "")
-                amount = args.get("amount")
-                category = args.get("category", "general")
-                if entry_type not in ("income", "expense") or amount is None:
-                    return 'I need type ("income" or "expense"), an amount, and a category.', {}
-                from apps.business.finance.cashflow_engine import get_cashflow_engine
-                from apps.core.tenancy import workspace_id_for
-
-                entry = await get_cashflow_engine(await workspace_id_for(email)).record(
-                    entry_type,
-                    float(amount),
-                    category,
-                    args.get("description", ""),
-                    bool(args.get("recurring", False)),
-                    int(args.get("frequency_days", 0)),
-                )
-                return f"Recorded {entry.type}: ${entry.amount_usd:,.2f} ({entry.category})", {}
-
-            elif tool == "cashflow_summary":
-                from apps.business.finance.cashflow_engine import get_cashflow_engine
-                from apps.core.tenancy import workspace_id_for
-
-                engine = get_cashflow_engine(await workspace_id_for(email))
-                await engine._load()
-                summary = engine.summary()
-                runway = await engine.runway_months()
-                tips = await engine.optimization_tips()
-                lines = [
-                    f"**Cashflow**: balance ${summary['current_balance_usd']:,.2f}, "
-                    f"monthly burn ${summary['monthly_burn_usd']:,.2f}, runway {runway:.1f} months",
-                ]
-                if tips:
-                    lines.append("Tips:\n" + "\n".join(f"  • {t}" for t in tips[:3]))
-                return "\n".join(lines), {}
-
-            elif tool == "forecast_cashflow":
-                from apps.business.finance.cashflow_engine import get_cashflow_engine
-                from apps.core.tenancy import workspace_id_for
-
-                engine = get_cashflow_engine(await workspace_id_for(email))
-                forecast = await engine.forecast_cashflow(int(args.get("months_ahead", 3)))
-                lines = ["**Cashflow forecast**"]
-                for f in forecast:
-                    lines.append(
-                        f"  Month {f['month']}: net ${f['projected_net']:,.2f} "
-                        f"(cumulative ${f['cumulative_net']:,.2f})"
-                    )
-                return "\n".join(lines), {}
-
-            # ── SOCIAL SESSIONS (owner-only — see _OWNER_ONLY_TOOLS) ─────────
-            elif tool == "list_social_sessions":
-                from apps.core.tools.social_session import get_social_session_manager
-
-                sessions = await get_social_session_manager().list_active_sessions()
-                if not sessions:
-                    return (
-                        "No social sessions imported yet. Sessions are imported via the "
-                        "Telegram /sesion flow, not through chat.",
-                        {},
-                    )
-                lines = ["**Active social sessions:**"]
-                for s in sessions:
-                    lines.append(
-                        f"  {s['emoji']} {s['display_name']} — {s['cookies_count']} cookies, "
-                        f"imported {s['age_days']}d ago"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "check_social_session":
-                platform = args.get("platform", "")
-                if not platform:
-                    return "I need a platform to check the session for.", {}
-                from apps.core.tools.social_session import get_social_session_manager
-
-                result = await get_social_session_manager().test_session(platform)
-                if result.get("success"):
-                    return f"**{platform}: session active**", {}
-                return f"**{platform}: {result.get('error', 'session not working')}**", {}
-
-            elif tool == "post_to_social":
-                platform = args.get("platform", "")
-                text = args.get("text", "")
-                confirm_token = args.get("confirm_token", "")
-                if not platform or not text:
-                    return "I need a platform and the text to post.", {}
-
-                # ── SAFETY LAYER 3: content firewall ─────────────────────
-                # Checked before the preview is even generated: a phishing/
-                # credential-harvesting post must never reach the preview
-                # step, since a user could confirm it verbatim without
-                # re-reading closely.
-                from apps.core.config import settings as _guardrail_settings
-                from apps.core.safety import guardrails
-
-                if getattr(_guardrail_settings, "GUARDRAILS_ENABLED", True):
-                    safety = guardrails.check_content_safety(text)
-                    if not safety.safe:
-                        with suppress(Exception):
-                            await guardrails.record_audit_event(
-                                "content_blocked",
-                                {"email": email, "tool": tool, "findings": safety.findings},
-                            )
-                        return (
-                            "I'm not going to post that — it matched a blocked "
-                            f"pattern: {'; '.join(safety.findings)}.",
-                            {},
-                        )
-
-                # Forced preview step, enforced in code rather than trusted to
-                # the model's own prompt-following: this is an immediately
-                # public, effectively irreversible action using the owner's
-                # real logged-in session, not draft content generation. A
-                # single tool call can never produce a valid confirm_token —
-                # one is only minted by a prior preview call and stored
-                # server-side, so the model cannot skip straight to posting
-                # by simply passing confirmed=true on the first attempt.
-                cache = self._cache_client()
-                pending_key = None
-                if confirm_token and cache:
-                    pending_key = f"aria:pending_social_post:{confirm_token}"
-                    pending = await cache.get(pending_key)
-                    if (
-                        isinstance(pending, dict)
-                        and pending.get("platform") == platform
-                        and pending.get("text") == text
-                    ):
-                        await cache.delete(pending_key)
-                        from apps.core.tools.social_session import get_social_session_manager
-
-                        result = await get_social_session_manager().post_to_platform(platform, text)
-                        if result.get("success"):
-                            url = result.get("url") or result.get("post_id", "")
-                            return f"**Posted to {platform}.**" + (f" {url}" if url else ""), {}
-                        return (
-                            f"**Post to {platform} failed:** {result.get('error', 'unknown error')}",
-                            {},
-                        )
-
-                import secrets
-
-                token = secrets.token_hex(8)
-                if cache:
-                    await cache.set(
-                        f"aria:pending_social_post:{token}",
-                        {"platform": platform, "text": text},
-                        ttl_seconds=600,
-                    )
-                return (
-                    f"**Preview — not yet posted to {platform}:**\n{text}\n\n"
-                    f"Ask me to post this exact text again to confirm — "
-                    f"confirm_token: {token} (expires in 10 minutes).",
-                    {},
-                )
-
-            # ── MULTI-AGENT CREW ────────────────────────────────────────────
-            elif tool == "run_crew":
-                mission = args.get("mission", "")
-                crew_name = args.get("crew", "research_crew")
-                from apps.core.tools.crew_engine import get_crew_engine
-                from apps.core.tools.deep_think import ProgressStream
-
-                ps = ProgressStream(session_id="", task_name=f"Crew:{crew_name}")
-                run = await get_crew_engine().run(
-                    mission=mission,
-                    crew_name=crew_name,
-                    on_progress=lambda step, total, role: ps.update(
-                        f"{role} working...", f"Step {step}/{total}"
-                    ),
-                )
-                members_summary = " → ".join(m.role for m in run.members)
-                obs = (
-                    f"[CREW: {crew_name.upper()} — {members_summary}]\n\n"
-                    f"{run.final_output or 'No final output'}"
-                )
-                return obs, {}
-
-            # ── WORKFLOW ENGINE ───────────────────────────────────────────
-            elif tool == "create_workflow":
-                name = args.get("name", "Workflow")
-                description = args.get("description", "")
-                from apps.core.tools.workflow_engine import get_workflow_engine
-
-                r = await get_workflow_engine().create(name, description)
-                if r.get("success"):
-                    steps_str = "\n".join(
-                        f"  {i+1}. {s}" for i, s in enumerate(r.get("steps_preview", []))
-                    )
-                    return (
-                        f"Workflow '{name}' created (ID: {r['workflow_id']}, {r['steps']} steps):\n"
-                        f"{steps_str}\n\nUse run_workflow with id='{r['workflow_id']}' to run it."
-                    ), {}
-                return f"I couldn't create the workflow: {r.get('error', 'error')}", {}
-
-            elif tool == "run_workflow":
-                wid = args.get("workflow_id", "")
-                from apps.core.tools.workflow_engine import get_workflow_engine
-
-                r = await get_workflow_engine().run(wid, email=email)
-                if "results" in r:
-                    steps_summary = "; ".join(
-                        f"step{s['step']}={'OK' if s['success'] else 'FAIL'}"
-                        for s in r.get("results", [])
-                    )
-                    status = "" if r.get("success") else " (with errors)"
-                    return (
-                        f"[WORKFLOW '{r.get('name', wid)}'{status} — {r['steps_run']} steps]\n"
-                        f"{steps_summary}\n\n{r.get('final_output', '')}"
-                    ), {}
-                return f"Error running workflow: {r.get('error', 'error')}", {}
-
-            elif tool == "list_workflows":
-                from apps.core.tools.workflow_engine import get_workflow_engine
-
-                wfs = get_workflow_engine().list()
-                if not wfs:
-                    return "No saved workflows. Use create_workflow to create one.", {}
-                lines = [
-                    f"• [{w['id']}] **{w['name']}** — {w['description'][:60]} (runs: {w['run_count']})"
-                    for w in wfs
-                ]
-                return "[WORKFLOWS]\n" + "\n".join(lines), {}
-
-            # ── THINK VERIFIED (Test-Time Compute) ────────────────────────
-            elif tool == "think_verified":
-                question = args.get("question", "")
-                context = args.get("context", "")
-                from apps.core.tools.deep_think import get_deep_think
-
-                result = await get_deep_think().think_verified(question, context=context, paths=2)
-                obs = f"[VERIFIED REASONING — {result.depth.upper()} — {result.duration_ms}ms]\n{result.answer}"
-                return obs, {}
-
-            # ── NICHE REVENUE ENGINE ─────────────────────────────────────
-            elif tool == "launch_niche":
-                niche = args.get("niche", "")
-                context = args.get("context", "")
-                if not niche:
-                    from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-
-                    top5 = get_niche_revenue_engine().get_top_niches_by_potential(n=3)
-                    names = [n["key"] for n in top5]
-                    return (
-                        f"Specify a niche. Top 3 recommended right now: {', '.join(names)}\n"
-                        f"Use list_niches to see all 45 available."
-                    ), {}
-                from apps.core.tools.niche_revenue_engine import (
-                    NICHE_CATALOG,
-                    get_niche_revenue_engine,
-                )
-
-                if niche not in NICHE_CATALOG:
-                    close = [k for k in NICHE_CATALOG if niche.lower() in k.lower()]
-                    return (
-                        f"Niche '{niche}' not found."
-                        + (f" Did you mean: {', '.join(close[:3])}?" if close else "")
-                    ), {}
-                result = await get_niche_revenue_engine().launch_niche(niche, context=context)
-                lines = [
-                    f"[LAUNCH: {result.niche_name}]",
-                    f"Checklist: {result.checklist.score}/100 {'OK' if result.checklist and result.checklist.passed else 'needs review'}",
-                    f"Time: {result.elapsed_seconds}s",
-                ]
-                if result.published_urls:
-                    lines.append("**Published to:**")
-                    for u in result.published_urls:
-                        lines.append(f"  • {u['platform']}: {u['url']}")
-                if result.seo_article_urls:
-                    lines.append("**SEO articles:**")
-                    for u in result.seo_article_urls:
-                        lines.append(f"  • {u['platform']}: {u['url']}")
-                if result.errors:
-                    lines.append(f"Warnings: {'; '.join(result.errors[:3])}")
-                if result.listing:
-                    lines.append(f"\n**Listing:** {result.listing.title}")
-                    lines.append(
-                        f"Price: ${result.listing.pricing_tiers['basic']['price']} – ${result.listing.pricing_tiers['premium']['price']}"
-                    )
-                return "\n".join(lines), {}
-
-            elif tool == "income_dashboard":
-                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-
-                return get_niche_revenue_engine().income_dashboard(), {}
-
-            elif tool == "list_niches":
-                category = args.get("category")
-                tier = args.get("tier")
-                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-
-                return get_niche_revenue_engine().list_all_niches(category=category, tier=tier), {}
-
-            elif tool == "auto_income":
-                num_niches = int(args.get("num_niches", 3))
-                from apps.core.tools.niche_revenue_engine import get_niche_revenue_engine
-
-                result = await get_niche_revenue_engine().autonomous_income_cycle(
-                    num_niches=num_niches
-                )
-                lines = [
-                    "[AUTO INCOME CYCLE]",
-                    f"Niches attempted: {result['niches_attempted']}",
-                    f"Niches succeeded: {result['niches_succeeded']}",
-                    f"Live listings: {result['total_listings_live']}",
-                    f"Articles published: {result['total_content_published']}",
-                    f"Time: {result['elapsed_seconds']}s",
-                ]
-                if result.get("all_live_urls"):
-                    lines.append("\n**Active URLs:**")
-                    for u in result["all_live_urls"][:8]:
-                        lines.append(f"  • {u.get('platform')}: {u.get('url')}")
-                if result.get("successful_niches"):
-                    lines.append("\n**Niches launched:**")
-                    for n in result["successful_niches"]:
-                        lines.append(
-                            f"  - {n['niche']} — potential ${n.get('revenue_potential',0)}/sale"
-                        )
-                if result.get("failed_niches"):
-                    lines.append("\n**Niches with errors:**")
-                    for n in result["failed_niches"]:
-                        lines.append(f"  - {n['niche']}: {', '.join(n.get('errors',[])[:2])}")
-                return "\n".join(lines), {}
-
-            # ── INCOME LOOP 24/7 ──────────────────────────────────────────
-            elif tool == "income_loop_status":
-                from apps.core.tools.income_loop import get_income_loop
-
-                return get_income_loop().get_status(), {}
-
-            elif tool == "start_income_loop":
-                from apps.core.tools.income_loop import get_income_loop
-
-                loop = get_income_loop()
-                if loop.is_running:
-                    return (
-                        "The 24/7 income loop is already running. Use income_loop_status to check its state.",
-                        {},
-                    )
-                await loop.start()
-                return (
-                    "24/7 income loop started. It will run revenue strategies every 30 minutes autonomously.",
-                    {},
-                )
-
-            elif tool == "run_income_cycle":
-                from apps.core.tools.income_loop import STRATEGIES, get_income_loop
-
-                loop = get_income_loop()
-                strategy = args.get("strategy", "")
-                valid = [s[0] for s in STRATEGIES]
-                if strategy and strategy not in valid:
-                    return f"Invalid strategy. Options: {', '.join(valid)}", {}
-                import random as _rnd
-
-                if not strategy:
-                    strategy = _rnd.choices(
-                        [s[0] for s in STRATEGIES], weights=[s[1] for s in STRATEGIES], k=1
-                    )[0]
-                obs = await loop._execute(strategy)
-                lines = [
-                    f"[INCOME CYCLE — {strategy}]",
-                    f"Success: {'yes' if obs.get('success') else 'no'}",
-                    f"Summary: {obs.get('summary', '')}",
-                    f"Revenue potential: ${obs.get('revenue_potential', 0):.0f}",
-                ]
-                if obs.get("urls"):
-                    lines.append("URLs:")
-                    for u in obs["urls"][:4]:
-                        lines.append(f"  • {u}")
-                return "\n".join(lines), {}
-
-            # ── GITHUB ───────────────────────────────────────────────────
-            elif tool in (
-                "github_view",
-                "github_write",
-                "github_pr",
-                "github_issues",
-                "github_search",
-                "github_self",
-            ):
-                from apps.core.tools.github_client import github_dispatch
-
-                action_map = {
-                    "github_view": args.get("action", "view"),
-                    "github_write": "write",
-                    "github_pr": args.get("action", "create_pr"),
-                    "github_issues": args.get("action", "issues"),
-                    "github_search": "search",
-                    "github_self": "self",
-                }
-                gh_action = action_map[tool]
-                obs = await github_dispatch(gh_action, args)
-                return obs, {}
-
+            return await handler(tool, args, attempt, email)
         except Exception as exc:
             logger.error("[AriaMind] tool=%s: %s", tool, exc, exc_info=True)
             return f"I couldn't complete the '{tool}' action — please try again.", {}
-
-        return "Unknown tool", {}
 
     # ── SYNTHESIS ────────────────────────────────────────────────────────────
 
@@ -5229,36 +5394,17 @@ class AriaMind:
         await cache.set(self.K_STATE.format(cid=chat_id), current, ttl_seconds=86400 * 30)
 
     async def _load_goals(self) -> list[dict]:
-        cache = self._cache_client()
-        if cache:
-            g = await cache.get(self.K_GOALS)
-            if isinstance(g, list):
-                return [x for x in g if isinstance(x, dict)]
-        return []
+        # Delegates to the module-level helper the "add_goal"/"update_goal"
+        # tool handler also calls directly (_tool_load_goals) — same
+        # implementation, not two copies. See the comment above
+        # _tool_cache_or_none (Batch 4 of the Tool Router extraction).
+        return await _tool_load_goals(self._cache_client())
 
     async def _save_goals(self, goals: list[dict]) -> None:
-        cache = self._cache_client()
-        if cache:
-            await cache.set(self.K_GOALS, goals, ttl_seconds=86400 * 365)
+        await _tool_save_goals(self._cache_client(), goals)
 
     async def _apply_goal_action(self, action: dict, goals: list[dict]) -> list[dict]:
-        if action.get("action") == "add":
-            goals.append(
-                Goal(
-                    text=action.get("text", ""),
-                    priority=int(action.get("priority", 5)),
-                ).__dict__
-            )
-            await self._save_goals(goals)
-        elif action.get("action") == "update":
-            idx = action.get("index", 0)
-            if 0 <= idx < len(goals):
-                if "progress" in action:
-                    goals[idx]["progress"] = action["progress"]
-                if "status" in action:
-                    goals[idx]["status"] = action["status"]
-                await self._save_goals(goals)
-        return goals
+        return await _tool_apply_goal_action(self._cache_client(), action, goals)
 
     async def _load_learned(self) -> list[str]:
         cache = self._cache_client()

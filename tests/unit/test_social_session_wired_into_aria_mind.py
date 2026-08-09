@@ -144,7 +144,7 @@ async def test_post_to_social_first_call_never_posts():
         patch(
             "apps.core.tools.social_session.get_social_session_manager", return_value=fake_manager
         ),
-        patch.object(mind, "_cache_client", return_value=fake_cache),
+        patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache),
     ):
         obs, media = await mind._execute_tool(
             "post_to_social",
@@ -170,7 +170,7 @@ async def test_post_to_social_confirm_token_flow_actually_posts():
         patch(
             "apps.core.tools.social_session.get_social_session_manager", return_value=fake_manager
         ),
-        patch.object(mind, "_cache_client", return_value=fake_cache),
+        patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache),
     ):
         preview_obs, _ = await mind._execute_tool(
             "post_to_social",
@@ -201,7 +201,7 @@ async def test_post_to_social_wrong_token_does_not_post():
         patch(
             "apps.core.tools.social_session.get_social_session_manager", return_value=fake_manager
         ),
-        patch.object(mind, "_cache_client", return_value=fake_cache),
+        patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache),
     ):
         obs, media = await mind._execute_tool(
             "post_to_social",
@@ -226,7 +226,7 @@ async def test_post_to_social_token_does_not_transfer_to_different_text():
         patch(
             "apps.core.tools.social_session.get_social_session_manager", return_value=fake_manager
         ),
-        patch.object(mind, "_cache_client", return_value=fake_cache),
+        patch("apps.core.memory.redis_client.get_cache", return_value=fake_cache),
     ):
         preview_obs, _ = await mind._execute_tool(
             "post_to_social", {"platform": "twitter", "text": "Original text"}, email=OWNER_EMAIL
