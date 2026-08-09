@@ -581,26 +581,28 @@ async def _fetch_image_bytes(url: str, timeout: float = 20.0) -> bytes:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TOOL HANDLERS (Tool Router extraction, Stage 1 — see AAS Fase 2 / ADR-005)
+# TOOL HANDLERS (Tool Router extraction, Stage 1 — complete; see AAS Fase 2 /
+# ADR-005)
 #
-# Mechanical, behavior-preserving conversion of _execute_tool's if/elif
-# chain into a registry. Each function below is a verbatim extraction of one
-# former `elif tool == "...":` branch — same body, same lazy imports, same
-# return values — now a standalone module-level coroutine instead of an
-# inline block. No branch's business logic changed in this conversion.
+# Mechanical, behavior-preserving conversion of _execute_tool's former
+# if/elif chain into a registry, done in 4 batches (1: 25 tools, 2: 50, 3:
+# 48, 4: the remaining 50 plus cleanup). Each function below is a verbatim
+# extraction of one former `elif tool == "...":` branch — same body, same
+# lazy imports, same return values — now a standalone module-level
+# coroutine instead of an inline block. No branch's business logic changed
+# in this conversion, with one deliberate exception: the 3 tools that used
+# to touch AriaMind instance state (add_goal, update_goal via
+# _load_goals/_apply_goal_action; post_to_social via _cache_client) were
+# made stateless in Batch 4 by promoting that logic to shared module-level
+# helpers (_tool_cache_or_none/_tool_load_goals/_tool_save_goals/
+# _tool_apply_goal_action, defined below near _tool_add_or_update_goal) —
+# no generic "ctx" object was introduced; AriaMind's own
+# _load_goals/_save_goals/_apply_goal_action became thin wrappers around
+# the same helpers so handle()/_build_status() keep working unchanged.
 #
-# Batch 1 (this batch): the 25 tools with zero `self` coupling — verified by
-# grepping _execute_tool's full body for `self.` before starting this
-# extraction (see AAS reconnaissance report). Handlers therefore only need
-# (tool, args, attempt, email), never AriaMind instance state. The two tools
-# that DO need instance state (add_goal/update_goal via _load_goals/
-# _apply_goal_action; post_to_social via _cache_client) are deliberately
-# left inside _execute_tool's remaining if/elif chain for a later batch,
-# once a small `ctx` object exists to carry that state safely.
-#
-# _execute_tool checks this registry first; anything not found here falls
-# through to the (still large, shrinking batch by batch) if/elif chain
-# below it — the strangler pattern applied at the function level.
+# All 173 tools are registered in _TOOL_HANDLERS below; the if/elif chain
+# this section replaced no longer exists — _TOOL_HANDLERS is the only
+# dispatch mechanism _execute_tool has.
 # ═══════════════════════════════════════════════════════════════════════════
 
 

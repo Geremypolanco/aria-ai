@@ -1,40 +1,28 @@
 """Characterization test for AriaMind._execute_tool()'s dispatch surface.
 
-Purpose: apps/core/cognition/aria_mind.py's _execute_tool() (~3,264 lines) is
-being converted, in small batches, from an if/elif chain over `tool` into a
-handler registry (see ARIA_ADM/AAS: "Tool Router" extraction, Stage 1 — a
-mechanical, behavior-preserving conversion; no branch logic changes).
+Purpose: apps/core/cognition/aria_mind.py's _execute_tool() was converted, in
+4 small batches, from a ~3,264-line if/elif chain over `tool` into a handler
+registry (see ARIA_ADM/AAS: "Tool Router" extraction, Stage 1 — a mechanical,
+behavior-preserving conversion completed across Batches 1-4; no branch logic
+changed as part of it). The conversion is done: _TOOL_HANDLERS is now the
+only dispatch mechanism _execute_tool has.
 
-This test is the safety net for that conversion: it snapshots the exact set
-of tool names the dispatcher recognizes *before* any branch has moved, so an
-accidental drop during the mechanical transcription (a missed `elif`, a
-typo'd string) fails CI instead of silently vanishing. The oracle list below
-must only change via an explicit, reviewed tool-inventory change — never as
-a side effect of a refactor commit.
-
-Extraction note: while _execute_tool is still one if/elif chain, "recognized"
-is determined by statically parsing its source for `tool == "..."` and
-`tool in (...)` literals (calling all ~173 branches for real would mean
-firing real network requests / real side effects for tools like send_email,
-post_to_social, execute_code — not safe or fast for a unit test). Once the
-registry lands, update `_recognized_tool_names()` below to read
-`_TOOL_HANDLERS.keys()` directly instead of parsing source — the oracle
-frozenset stays the same either way, which is the point.
+This test is the safety net for that conversion, and remains one going
+forward: it snapshots the exact set of tool names the dispatcher recognizes,
+so an accidental drop (a missed registration, a typo'd string) fails CI
+instead of silently vanishing. The oracle list below must only change via an
+explicit, reviewed tool-inventory change — never as a side effect of a
+refactor commit.
 """
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
-_ARIA_MIND_PATH = (
-    Path(__file__).resolve().parents[2] / "apps" / "core" / "cognition" / "aria_mind.py"
-)
-
 # Snapshotted 2026-08-07 by statically parsing `_execute_tool`'s if/elif
-# chain (apps/core/cognition/aria_mind.py:1518-4782). 173 distinct tool
-# names. Do not hand-edit without re-deriving from source and reviewing the
-# diff — this set is the ground truth the extraction must preserve exactly.
+# chain (apps/core/cognition/aria_mind.py:1518-4782) before the Tool Router
+# extraction began. 173 distinct tool names. Do not hand-edit without
+# re-deriving from source and reviewing the diff — this set is the ground
+# truth the extraction had to preserve exactly, and now the ground truth
+# _TOOL_HANDLERS is checked against.
 EXPECTED_TOOL_NAMES = frozenset(
     {
         "add_goal",
@@ -214,39 +202,12 @@ EXPECTED_TOOL_NAMES = frozenset(
 )
 
 
-def _execute_tool_source() -> str:
-    """Isolates _execute_tool's body from the rest of aria_mind.py so we
-    never accidentally pick up tool-name-shaped strings from unrelated
-    methods (e.g. _adapt_args_generic's own `tool == "generate_image"`
-    checks, which are a different, smaller dispatch used only for retry
-    argument adaptation, not the main dispatcher under test here)."""
-    text = _ARIA_MIND_PATH.read_text(encoding="utf-8")
-    start = text.index("async def _execute_tool(")
-    # Next top-level (4-space-indented) `async def` after _execute_tool
-    # closes the method; _synthesize is the one that currently follows it.
-    end = text.index("\n    async def _synthesize(", start)
-    return text[start:end]
-
-
 def _recognized_tool_names() -> set[str]:
-    """Union of both dispatch paths that coexist during the batch-by-batch
-    Tool Router migration: names already moved into the _TOOL_HANDLERS
-    registry, plus names still recognized by the shrinking if/elif chain.
-    Once the chain is empty (last batch), the regex half of this always
-    contributes nothing and could be deleted — left in until then so this
-    test keeps passing, unmodified in its assertions, through every batch."""
-    names: set[str] = set()
-
+    """The set of tool names _execute_tool recognizes: exactly the keys of
+    _TOOL_HANDLERS, now that it's the dispatcher's only registry."""
     from apps.core.cognition.aria_mind import _TOOL_HANDLERS
 
-    names.update(_TOOL_HANDLERS.keys())
-
-    body = _execute_tool_source()
-    for m in re.finditer(r'tool == "([a-zA-Z_]+)"', body):
-        names.add(m.group(1))
-    for m in re.finditer(r"tool in \(([^)]*)\)", body, re.S):
-        names.update(re.findall(r'"([a-zA-Z_]+)"', m.group(1)))
-    return names
+    return set(_TOOL_HANDLERS.keys())
 
 
 def test_execute_tool_recognizes_exactly_the_expected_tool_set():
