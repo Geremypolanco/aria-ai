@@ -138,12 +138,17 @@ class DeveloperAgent(BaseAgent):
         return resp
 
     async def _generate_code(self, task: str, language: str, design: str) -> str:
-        """Generates complete code based on the design."""
+        """Generates complete code based on the design.
+
+        Raises RuntimeError if the AI backend is unavailable or fails —
+        callers must never receive a '# TODO' placeholder disguised as
+        generated code.
+        """
         from apps.core.tools.ai_client import get_ai_client
 
         ai = get_ai_client()
         if not ai:
-            return f"# {task}\n# Error: AI client not available\n"
+            raise RuntimeError("AI client not available — cannot generate code")
 
         resp = await ai.complete(
             system=(
@@ -156,7 +161,12 @@ class DeveloperAgent(BaseAgent):
             temperature=0.15,
             agent_name="developer_codegen",
         )
-        code = resp.content.strip() if resp and resp.success else f"# TODO: {task}"
+        if not resp or not resp.success:
+            err = resp.error if resp else "no response from AI backend"
+            raise RuntimeError(f"AI code generation failed for task '{task}': {err}")
+        code = resp.content.strip()
+        if not code:
+            raise RuntimeError(f"AI code generation returned empty content for task '{task}'")
         if code.startswith("```"):
             lines = code.split("\n")
             code = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])

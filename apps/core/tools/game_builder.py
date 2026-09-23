@@ -125,22 +125,30 @@ class GameBuilder:
     ) -> tuple[dict[str, str], list[str]]:
         """Use AI to generate each game file concurrently.
 
-        Returns (files, failed_paths) — failed_paths lists every file that
-        fell back to a stub/TODO/error placeholder instead of real
-        AI-generated code, so callers can tell a genuinely-built game apart
-        from one that's mostly empty stubs.
+        Returns (files, failed) where files contains ONLY real AI-generated
+        code and failed holds one human-readable error string per file that
+        could not be generated. No '# TODO' placeholder files are ever
+        written — a file that fails simply isn't in the result, and the
+        caller reports success=False when nothing (or not everything) was
+        generated.
         """
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
-        except Exception:
-            return (
-                {path: f"# {path}\n# TODO: implement {role}\n" for path, role in files_to_gen},
-                [path for path, _role in files_to_gen],
-            )
+            client_error: str | None = None
+        except Exception as exc:
+            ai = None
+            client_error = f"AI client unavailable: {exc}"
+        if ai is None and client_error is None:
+            client_error = "AI client returned None"
 
-        async def gen(path: str, role: str) -> tuple[str, str, bool]:
+        if client_error is not None:
+            # Every requested file fails with the same underlying cause.
+            return {}, [f"{path}: {client_error}" for path, _ in files_to_gen]
+
+        async def gen(path: str, role: str) -> tuple[str, str | None, str | None]:
+            """Returns (path, content, error) — error is None on success."""
             try:
                 resp = await ai.complete(
                     system=(
@@ -157,24 +165,29 @@ class GameBuilder:
                     temperature=0.3,
                     agent_name="game_builder",
                 )
-                if resp and resp.success:
-                    content = resp.content.strip()
-                    failed = False
-                else:
-                    content = f"# {path}\n# TODO\n"
-                    failed = True
-                if content.startswith("```"):
-                    lines = content.split("\n")
-                    content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-                return path, content, failed
             except Exception as exc:
-                return path, f"# {path}\n# Error generating: {exc}\n", True
+                return path, None, f"{path}: AI generation raised {exc}"
+            if not resp or not resp.success:
+                err = resp.error if resp else "no response from AI backend"
+                return path, None, f"{path}: AI generation failed: {err}"
+            content = resp.content.strip()
+            if not content:
+                return path, None, f"{path}: AI returned empty content"
+            if content.startswith("```"):
+                lines = content.split("\n")
+                content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+            return path, content, None
 
         tasks = [gen(path, role) for path, role in files_to_gen]
         results = await asyncio.gather(*tasks)
-        files = {path: content for path, content, _failed in results}
-        failed_paths = [path for path, _content, failed in results if failed]
-        return files, failed_paths
+        files: dict[str, str] = {}
+        failed: list[str] = []
+        for path, content, error in results:
+            if error is not None:
+                failed.append(error)
+            else:
+                files[path] = content  # type: ignore[assignment]
+        return files, failed
 
     def _pack_zip(
         self,
@@ -207,7 +220,7 @@ class GameBuilder:
         if all_failed:
             result["error"] = (
                 f"AI code generation failed for all {total_generated} files — "
-                "project contains only stub placeholders."
+                "no game code was produced."
             )
         return result
 

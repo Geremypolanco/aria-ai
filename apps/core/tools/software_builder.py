@@ -147,8 +147,13 @@ class SoftwareBuilder:
                 content = (
                     resp.content.strip()
                     if (resp and resp.success)
-                    else f"# {path}\n# TODO: implement\n"
+                    else None
                 )
+                if not content:
+                    # Never ship a "# TODO: implement" placeholder as if it
+                    # were generated code — surface the failure honestly.
+                    err = resp.error if resp else "no response from AI backend"
+                    raise RuntimeError(f"AI generation failed for '{path}': {err}")
                 # Strip markdown code fences if present
                 if content.startswith("```"):
                     lines = content.split("\n")
@@ -158,9 +163,19 @@ class SoftwareBuilder:
             tasks = [gen_file(f) for f in structure]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
+            failures: list[str] = []
             for r in results:
                 if isinstance(r, tuple):
                     files[r[0]] = r[1]
+                elif isinstance(r, BaseException):
+                    failures.append(str(r))
+            if failures:
+                # Any failed file poisons the whole project: a ZIP missing
+                # files or containing placeholders is not a working project.
+                raise RuntimeError(
+                    f"AI generation failed for {len(failures)} file(s): "
+                    + "; ".join(failures[:3])
+                )
 
             # Pack into ZIP
             zip_buffer = io.BytesIO()

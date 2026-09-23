@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import time
 import urllib.parse
 import uuid
@@ -90,92 +89,20 @@ class ScrapedBatch:
 
 
 class LeadScraper:
-    """Web-based B2B lead discovery with graceful synthetic fallback."""
+    """Web-based B2B lead discovery.
 
-    _NICHE_SIGNALS: dict[str, list[str]] = {
-        "fitness": [
-            "no online booking",
-            "weak social presence",
-            "no email list",
-            "no automation",
-            "poor local SEO",
-        ],
-        "ecommerce": [
-            "high cart abandonment",
-            "no email sequence",
-            "weak product descriptions",
-            "no upsell",
-        ],
-        "restaurant": [
-            "no online ordering",
-            "poor Google reviews management",
-            "no loyalty program",
-            "weak SEO",
-        ],
-        "saas": [
-            "no onboarding sequence",
-            "high churn signals",
-            "weak content marketing",
-            "no affiliate program",
-        ],
-        "coaching": [
-            "no automated funnel",
-            "no webinar",
-            "weak testimonials page",
-            "no drip sequence",
-        ],
-        "retail": [
-            "no loyalty program",
-            "no email marketing",
-            "weak online presence",
-            "no inventory optimization",
-        ],
-        "default": [
-            "no automation",
-            "weak digital presence",
-            "no content strategy",
-            "no email list",
-        ],
-    }
+    Returns ONLY leads discovered from real web sources. If a source is
+    unreachable or yields nothing, the result is an empty list — this
+    scraper never fabricates, pads, or invents leads.
+    """
 
-    _NICHE_BUSINESS_TYPES: dict[str, list[str]] = {
-        "fitness": [
-            "CrossFit",
-            "Yoga Studio",
-            "Personal Training",
-            "Gym",
-            "Wellness Center",
-            "Pilates",
-        ],
-        "ecommerce": ["Online Store", "Boutique", "Shop", "Market", "Goods", "Supply"],
-        "restaurant": ["Bistro", "Grill", "Kitchen", "Café", "Dining", "Eatery"],
-        "saas": ["Software", "Solutions", "Platform", "Technologies", "Systems", "Labs"],
-        "coaching": ["Coaching", "Academy", "Consulting", "Group", "Institute", "Partners"],
-        "retail": ["Shop", "Boutique", "Store", "Mart", "Depot", "Outlet"],
-        "default": ["Ventures", "Group", "Services", "Solutions", "Co", "Studio"],
-    }
+    # NOTE: niche signal archetypes were removed along with the synthetic
+    # lead generator. Signals are now only added by enrich_lead() when it
+    # genuinely verifies them on the lead's own website.
 
-    # Adjective/name prefixes for synthetic lead generation
-    _NAME_PREFIXES: list[str] = [
-        "Peak",
-        "Urban",
-        "Summit",
-        "Apex",
-        "Bright",
-        "Prime",
-        "Elite",
-        "Core",
-        "Nexus",
-        "Venture",
-        "Clear",
-        "Bold",
-        "Swift",
-        "Vivid",
-        "True",
-        "Solid",
-        "Rise",
-        "Forge",
-    ]
+    # (Removed: _NICHE_BUSINESS_TYPES and _NAME_PREFIXES — they only fed the
+    # synthetic lead generator, which was deleted. This scraper deals
+    # exclusively in real, discovered leads.)
 
     def __init__(self) -> None:
         self._scrape_history: list[dict] = []
@@ -209,54 +136,6 @@ class LeadScraper:
         except Exception as exc:
             logger.warning("LeadScraper._save failed: %s", exc)
 
-    # ── Synthetic Lead Generation ─────────────────────────────────────────────
-
-    async def _generate_synthetic_leads(self, niche: str, count: int) -> list[RawLead]:
-        """
-        Generate template-based leads representing the target market.
-        These are NOT fabricated real companies — they are archetype leads
-        used for pipeline seeding and testing when live data is unavailable.
-        """
-        business_types = self._NICHE_BUSINESS_TYPES.get(
-            niche, self._NICHE_BUSINESS_TYPES["default"]
-        )
-        signals_pool = self._NICHE_SIGNALS.get(niche, self._NICHE_SIGNALS["default"])
-
-        leads: list[RawLead] = []
-        used_names: set[str] = set()
-
-        for _ in range(count):
-            prefix = random.choice(self._NAME_PREFIXES)
-            btype = random.choice(business_types)
-            company_name = f"{prefix} {btype}"
-
-            # Avoid duplicates within the batch
-            attempts = 0
-            while company_name in used_names and attempts < 10:
-                prefix = random.choice(self._NAME_PREFIXES)
-                btype = random.choice(business_types)
-                company_name = f"{prefix} {btype}"
-                attempts += 1
-            used_names.add(company_name)
-
-            # Assign 2-4 random signals
-            num_signals = random.randint(2, min(4, len(signals_pool)))
-            signals = random.sample(signals_pool, num_signals)
-
-            lead = RawLead(
-                niche=niche,
-                company_name=company_name,
-                website_url="",
-                email="",
-                phone="",
-                location="United States",
-                signals=signals,
-                source="synthetic",
-            )
-            leads.append(lead)
-
-        return leads
-
     # ── Web Discovery ─────────────────────────────────────────────────────────
 
     async def _search_businesses(
@@ -267,7 +146,10 @@ class LeadScraper:
     ) -> list[RawLead]:
         """
         Attempt DuckDuckGo instant answer API to discover businesses.
-        Falls back to synthetic leads on any failure.
+
+        On ANY failure (network, HTTP error, parse error) returns an empty
+        list. No synthetic or placeholder leads are ever generated — an
+        empty result honestly means "no leads discovered".
         """
         query = f"{niche} businesses contact email {location}"
         url = (
@@ -276,7 +158,6 @@ class LeadScraper:
         )
 
         raw_leads: list[RawLead] = []
-        signals_pool = self._NICHE_SIGNALS.get(niche, self._NICHE_SIGNALS["default"])
 
         try:
             async with httpx.AsyncClient(headers=self._headers, timeout=10.0) as client:
@@ -300,16 +181,16 @@ class LeadScraper:
                         first_url = topic.get("FirstURL", "")
                         website_url = first_url if first_url.startswith("http") else ""
 
-                        # Assign signals based on niche signals pool
-                        num_signals = random.randint(1, min(3, len(signals_pool)))
-                        signals = random.sample(signals_pool, num_signals)
-
+                        # Signals stay empty here: only the enrichment step
+                        # (enrich_lead) may add signals, and only those it
+                        # actually verifies from the fetched page. Guessing
+                        # signals would fabricate data about real businesses.
                         lead = RawLead(
                             niche=niche,
                             company_name=company_name,
                             website_url=website_url,
                             location=location,
-                            signals=signals,
+                            signals=[],
                             source="duckduckgo",
                         )
                         raw_leads.append(lead)
@@ -319,17 +200,21 @@ class LeadScraper:
                         len(raw_leads),
                         niche,
                     )
+                else:
+                    logger.warning(
+                        "DuckDuckGo search HTTP %d for niche '%s' — returning no leads",
+                        response.status_code,
+                        niche,
+                    )
         except Exception as exc:
-            logger.info("DuckDuckGo search failed for niche '%s': %s — using synthetic", niche, exc)
+            logger.warning(
+                "DuckDuckGo search failed for niche '%s': %s — returning no leads",
+                niche,
+                exc,
+            )
 
         # Polite delay between requests
-        await asyncio.sleep(random.uniform(0.5, 1.5))
-
-        # Pad with synthetic leads if not enough real results
-        if len(raw_leads) < count:
-            needed = count - len(raw_leads)
-            synthetic = await self._generate_synthetic_leads(niche, needed)
-            raw_leads.extend(synthetic)
+        await asyncio.sleep(1.0)
 
         return raw_leads[:count]
 
@@ -417,7 +302,7 @@ class LeadScraper:
             leads_found=len(raw_leads),
             leads_qualified=len(qualified),
             scrape_duration_s=duration,
-            sources_checked=["duckduckgo", "synthetic"],
+            sources_checked=["duckduckgo"],
             raw_leads=[lead.to_dict() for lead in raw_leads],
         )
 

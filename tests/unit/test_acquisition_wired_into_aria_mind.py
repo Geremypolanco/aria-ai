@@ -4,15 +4,11 @@ with their own singleton getters — had zero live callers. Found via the same
 full-repo dead-code audit as the Shopify Revenue Suite.
 
 LeadEngine.discover_leads() was deliberately NOT wired: it invents placeholder
-company names ("SaaS Business 1") without labeling them as synthetic, unlike
-LeadScraper.scrape_leads(), which tags every lead's source as "duckduckgo" or
-"synthetic" and whose synthetic-generator docstring explicitly disclaims that
-these are archetypes, not real companies. Wiring the unlabeled version would
-have ARIA present made-up company names to the user as if they were real,
-contactable leads — the same fabricated-success/fabricated-data problem
-flagged elsewhere this session. discover_leads (the chat tool) uses
-LeadScraper; LeadEngine is only used for generate_proposal_brief, which
-doesn't claim anything about lead provenance.
+company names ("SaaS Business 1") without labeling them as synthetic.
+discover_leads (the chat tool) uses LeadScraper, which returns ONLY leads
+discovered from real web sources and an honest empty result when the source
+is down — it never fabricates companies. LeadEngine is only used for
+generate_proposal_brief, which doesn't claim anything about lead provenance.
 
 Wired into aria_mind.py's tool dispatcher as: discover_leads,
 generate_sales_proposal, add_linkedin_prospect, score_linkedin_prospect,
@@ -53,12 +49,15 @@ def _fake_ai_response(content: str) -> AIResponse:
     return AIResponse(content=content, provider=AIProvider.ANTHROPIC, model="fast", success=True)
 
 
-async def test_discover_leads_labels_synthetic_vs_real():
+async def test_discover_leads_labels_real_vs_unknown_source():
+    # The scraper only emits real sources ("duckduckgo" today). A source the
+    # tagger doesn't recognize falls back to a clearly-labeled tag rather
+    # than being presented as a web-search result.
     batch = ScrapedBatch(
         niche="fitness",
         leads_found=2,
         leads_qualified=2,
-        sources_checked=["duckduckgo", "synthetic"],
+        sources_checked=["duckduckgo", "partner-directory"],
         raw_leads=[
             RawLead(
                 company_name="Real Gym Co",
@@ -67,7 +66,7 @@ async def test_discover_leads_labels_synthetic_vs_real():
             ).to_dict(),
             RawLead(
                 company_name="Peak Yoga Studio",
-                source="synthetic",
+                source="partner-directory",
                 signals=["no online booking"],
             ).to_dict(),
         ],

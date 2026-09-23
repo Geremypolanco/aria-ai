@@ -139,6 +139,13 @@ class Settings(BaseSettings):
     ELEVENLABS_API_KEY: str | None = None
 
     # ── COMMERCE ──────────────────────────────────────────
+    # ERP/CRM connector (ERPNext / Odoo). Disabled by default: the
+    # integration is NOT implemented, so invoicing/CRM calls raise
+    # NotImplementedError instead of pretending to succeed. Only enable
+    # when a real ERP backend is wired up.
+    ERP_ENABLED: bool = False
+    ERP_URL: str | None = None
+    ERP_API_KEY: str | None = None
     GUMROAD_TOKEN: str | None = None
     STRIPE_SECRET_KEY: str | None = None
     # Signing secret for the /billing/webhook endpoint (Stripe dashboard →

@@ -1,0 +1,78 @@
+# ARIA AI — Oracle Cloud Always Free (Ampere A1 / ARM64) deployment.
+#
+# Production-oriented compose for the VM. Builds the image ON the VM with
+# `docker compose up -d --build`, so the result is a native linux/arm64
+# image (python:3.12-slim is multiarch; Playwright pulls the ARM64 Chromium
+# build automatically).
+#
+# Services:
+#   - aria-api : FastAPI on :8080 (+ /health)
+#   - worker   : background mission worker (same image, different entrypoint)
+#   - redis    : queue + cache (named volume, survives restarts)
+#
+# Secrets: create a `.env` file at the REPO ROOT (copy from .env.example and
+# fill in real values). This compose reads it via env_file. Never commit it.
+#
+# Usage (from the repo root on the VM):
+#   docker compose -f infra/oracle-cloud/docker-compose.yml up -d --build
+
+name: aria
+
+services:
+  aria-api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: aria-ai:local
+    ports:
+      - "8080:8080"
+    env_file:
+      - ../../.env
+    environment:
+      PORT: "8080"
+      ENVIRONMENT: "production"
+      REDIS_URL: "redis://redis:6379"
+      ARIA_ENV: "production"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: aria-ai:local
+    command: ["python", "-m", "apps.core.scale.worker"]
+    env_file:
+      - ../../.env
+    environment:
+      ENVIRONMENT: "production"
+      REDIS_URL: "redis://redis:6379"
+      ARIA_ENV: "production"
+      WORKER_CONCURRENCY: "4"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis_data:
