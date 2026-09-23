@@ -125,24 +125,30 @@ class GameBuilder:
     ) -> tuple[dict[str, str], list[str]]:
         """Use AI to generate each game file concurrently.
 
-        Returns (files, failed_paths) where files always contain real
-        AI-generated code. If the AI backend is unavailable or any file
-        fails to generate, raises RuntimeError with the underlying error —
-        we never ship '# TODO' placeholder files pretending to be a
-        finished game.
+        Returns (files, failed) where files contains ONLY real AI-generated
+        code and failed holds one human-readable error string per file that
+        could not be generated. No '# TODO' placeholder files are ever
+        written — a file that fails simply isn't in the result, and the
+        caller reports success=False when nothing (or not everything) was
+        generated.
         """
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
+            client_error: str | None = None
         except Exception as exc:
-            raise RuntimeError(
-                f"AI client unavailable, cannot generate game files: {exc}"
-            ) from exc
-        if ai is None:
-            raise RuntimeError("AI client returned None, cannot generate game files")
+            ai = None
+            client_error = f"AI client unavailable: {exc}"
+        if ai is None and client_error is None:
+            client_error = "AI client returned None"
 
-        async def gen(path: str, role: str) -> tuple[str, str]:
+        if client_error is not None:
+            # Every requested file fails with the same underlying cause.
+            return {}, [f"{path}: {client_error}" for path, _ in files_to_gen]
+
+        async def gen(path: str, role: str) -> tuple[str, str | None, str | None]:
+            """Returns (path, content, error) — error is None on success."""
             try:
                 resp = await ai.complete(
                     system=(
@@ -160,24 +166,28 @@ class GameBuilder:
                     agent_name="game_builder",
                 )
             except Exception as exc:
-                raise RuntimeError(
-                    f"AI generation failed for '{path}': {exc}"
-                ) from exc
+                return path, None, f"{path}: AI generation raised {exc}"
             if not resp or not resp.success:
                 err = resp.error if resp else "no response from AI backend"
-                raise RuntimeError(f"AI generation failed for '{path}': {err}")
+                return path, None, f"{path}: AI generation failed: {err}"
             content = resp.content.strip()
             if not content:
-                raise RuntimeError(f"AI generation returned empty content for '{path}'")
+                return path, None, f"{path}: AI returned empty content"
             if content.startswith("```"):
                 lines = content.split("\n")
                 content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-            return path, content
+            return path, content, None
 
         tasks = [gen(path, role) for path, role in files_to_gen]
         results = await asyncio.gather(*tasks)
-        files = {path: content for path, content in results}
-        return files, []
+        files: dict[str, str] = {}
+        failed: list[str] = []
+        for path, content, error in results:
+            if error is not None:
+                failed.append(error)
+            else:
+                files[path] = content  # type: ignore[assignment]
+        return files, failed
 
     def _pack_zip(
         self,
@@ -210,7 +220,7 @@ class GameBuilder:
         if all_failed:
             result["error"] = (
                 f"AI code generation failed for all {total_generated} files — "
-                "project contains only stub placeholders."
+                "no game code was produced."
             )
         return result
 
