@@ -144,11 +144,7 @@ class SoftwareBuilder:
                     temperature=0.2,
                     agent_name="software_builder",
                 )
-                content = (
-                    resp.content.strip()
-                    if (resp and resp.success)
-                    else None
-                )
+                content = resp.content.strip() if (resp and resp.success) else None
                 if not content:
                     # Never ship a "# TODO: implement" placeholder as if it
                     # were generated code — surface the failure honestly.
@@ -173,8 +169,7 @@ class SoftwareBuilder:
                 # Any failed file poisons the whole project: a ZIP missing
                 # files or containing placeholders is not a working project.
                 raise RuntimeError(
-                    f"AI generation failed for {len(failures)} file(s): "
-                    + "; ".join(failures[:3])
+                    f"AI generation failed for {len(failures)} file(s): " + "; ".join(failures[:3])
                 )
 
             # Pack into ZIP
