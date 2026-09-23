@@ -32,7 +32,8 @@ def test_raw_lead_to_dict_has_required_keys(scraper):
 def test_raw_lead_default_source(scraper):
     from apps.acquisition.scraper.lead_scraper import RawLead
     lead = RawLead(niche="fitness", company_name="GymX")
-    assert lead.source in ("web", "synthetic")
+    # Default source is "web"; the scraper never produces "synthetic" leads.
+    assert lead.source == "web"
 
 
 def test_raw_lead_signals_is_list(scraper):
@@ -52,63 +53,18 @@ def test_scraped_batch_to_dict_has_required_keys(scraper):
     assert required.issubset(d.keys())
 
 
-# ── Niche signals and business types ─────────────────────────────────────────
+# ── Synthetic generation was REMOVED ─────────────────────────────────────────
+# The scraper must never invent companies or signals. Guessing pain points
+# for real businesses is fabricated data, so the synthetic generator and its
+# signal/business-type tables were deleted. These tests lock that in.
 
-def test_niche_signals_has_fitness(scraper):
-    assert "fitness" in scraper._NICHE_SIGNALS
-    assert len(scraper._NICHE_SIGNALS["fitness"]) >= 3
-
-
-def test_niche_signals_has_ecommerce(scraper):
-    assert "ecommerce" in scraper._NICHE_SIGNALS
+def test_synthetic_generator_removed(scraper):
+    assert not hasattr(scraper, "_generate_synthetic_leads")
 
 
-def test_niche_signals_has_default(scraper):
-    assert "default" in scraper._NICHE_SIGNALS
-
-
-def test_niche_business_types_has_fitness(scraper):
-    assert "fitness" in scraper._NICHE_BUSINESS_TYPES
-
-
-# ── _generate_synthetic_leads ─────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_generate_synthetic_leads_returns_list(scraper):
-    leads = await scraper._generate_synthetic_leads("fitness", 5)
-    assert isinstance(leads, list)
-    assert len(leads) >= 1
-
-
-@pytest.mark.asyncio
-async def test_generate_synthetic_leads_correct_niche(scraper):
-    leads = await scraper._generate_synthetic_leads("ecommerce", 3)
-    assert all(l.niche == "ecommerce" for l in leads)
-
-
-@pytest.mark.asyncio
-async def test_generate_synthetic_leads_have_company_name(scraper):
-    leads = await scraper._generate_synthetic_leads("fitness", 3)
-    assert all(len(l.company_name) > 0 for l in leads)
-
-
-@pytest.mark.asyncio
-async def test_generate_synthetic_leads_have_signals(scraper):
-    leads = await scraper._generate_synthetic_leads("fitness", 3)
-    assert all(len(l.signals) >= 1 for l in leads)
-
-
-@pytest.mark.asyncio
-async def test_generate_synthetic_leads_source_is_synthetic(scraper):
-    leads = await scraper._generate_synthetic_leads("restaurant", 2)
-    assert all(l.source == "synthetic" for l in leads)
-
-
-@pytest.mark.asyncio
-async def test_generate_synthetic_leads_unknown_niche_uses_default(scraper):
-    leads = await scraper._generate_synthetic_leads("unicorn", 3)
-    assert isinstance(leads, list)
-    assert len(leads) >= 1
+def test_niche_signal_tables_removed(scraper):
+    assert not hasattr(scraper, "_NICHE_SIGNALS")
+    assert not hasattr(scraper, "_NICHE_BUSINESS_TYPES")
 
 
 # ── scrape_leads ──────────────────────────────────────────────────────────────
@@ -151,7 +107,9 @@ async def test_scrape_leads_correct_niche(scraper):
 
 
 @pytest.mark.asyncio
-async def test_scrape_leads_finds_leads(scraper):
+async def test_scrape_leads_empty_when_source_down(scraper):
+    """Honest failure: when the source is unreachable, the batch is empty —
+    the scraper never pads results with invented companies."""
     with patch("httpx.AsyncClient") as mock_cls:
         mock_http = AsyncMock()
         mock_http.__aenter__ = AsyncMock(return_value=mock_http)
@@ -159,7 +117,33 @@ async def test_scrape_leads_finds_leads(scraper):
         mock_http.get = AsyncMock(side_effect=Exception("offline"))
         mock_cls.return_value = mock_http
         batch = await scraper.scrape_leads("fitness", count=5)
-    assert batch.leads_found >= 1
+    assert batch.leads_found == 0
+    assert batch.raw_leads == []
+
+
+@pytest.mark.asyncio
+async def test_scrape_leads_real_results_when_source_up(scraper):
+    """When DuckDuckGo answers, only real results are returned — tagged
+    with their real source, never 'synthetic'."""
+    payload = {
+        "RelatedTopics": [
+            {"Text": "Peak Fitness Gym - best gyms", "FirstURL": "https://peakfitness.example.com"},
+            {"Text": "Iron Works Training Center", "FirstURL": "https://ironworks.example.com"},
+        ]
+    }
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_response = MagicMock(status_code=200)
+        mock_response.json = MagicMock(return_value=payload)
+        mock_http.get = AsyncMock(return_value=mock_response)
+        mock_cls.return_value = mock_http
+        batch = await scraper.scrape_leads("fitness", count=5)
+    assert batch.leads_found == 2
+    assert all(lead["source"] == "duckduckgo" for lead in batch.raw_leads)
+    assert not any(lead["source"] == "synthetic" for lead in batch.raw_leads)
+    assert batch.sources_checked == ["duckduckgo"]
 
 
 @pytest.mark.asyncio
