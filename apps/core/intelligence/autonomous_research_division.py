@@ -60,8 +60,12 @@ class AriaResearchDivision:
                 "error": f"Research backend unavailable: {exc}",
             }
 
-        if not result.get("success"):
-            error = result.get("error", "unknown research failure")
+        if not isinstance(result, dict) or not result.get("success"):
+            error = (
+                result.get("error", "unknown research failure")
+                if isinstance(result, dict)
+                else f"unexpected research result type: {type(result).__name__}"
+            )
             logger.warning("[ResearchDivision] Research failed: %s", error)
             return {
                 "report_id": report_id,
@@ -71,13 +75,23 @@ class AriaResearchDivision:
                 "error": f"Research failed: {error}",
             }
 
-        report = result.get("report") or {}
+        # The agent contract says `report` is a dict, but a misbehaving
+        # backend could return a string or something else — never let that
+        # turn into an AttributeError; fall back to an honest empty report.
+        raw_report = result.get("report") or {}
+        report = raw_report if isinstance(raw_report, dict) else {}
+        if not isinstance(raw_report, dict):
+            logger.warning(
+                "[ResearchDivision] Unexpected report type %s — using empty report",
+                type(raw_report).__name__,
+            )
+        sources = result.get("sources") or []
         return {
             "report_id": report_id,
             "title": report.get("title", f"Strategic Opportunities in {focus_area}"),
             "status": "completed",
             "findings": report.get("findings", []),
-            "sources": result.get("sources", [])[:10],
+            "sources": sources[:10] if isinstance(sources, list) else [],
             "generated_at": datetime.now().isoformat(),
         }
 
