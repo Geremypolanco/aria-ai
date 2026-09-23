@@ -28,6 +28,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # PLAYWRIGHT_BROWSERS_PATH is set before install so the browser lands in a
 # path the non-root `aria` user (created below) can read — the default
 # /root/.cache/ms-playwright wouldn't be.
+# On ARM64 (e.g. Oracle Ampere A1) this pulls the linux-arm64 Chromium build
+# automatically — no extra flags needed.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-browsers
 RUN playwright install chromium && chmod -R a+rX /ms-browsers
 

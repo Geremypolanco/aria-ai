@@ -12,7 +12,7 @@ version: "3.9"
 #
 # Secrets (never committed):
 #   Copy .env.example → .env and fill in values.
-#   Production secrets live in Fly.io (fly secrets set KEY=VALUE).
+#   In production, set them as environment secrets on the host / platform.
 
 services:
   aria-api:

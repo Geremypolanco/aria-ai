@@ -13,13 +13,13 @@ memory on Supabase, Stripe billing, and OAuth connectors.
 - `apps/<domain>/` — domain modules (acquisition, content, shopify, economics, …). `apps/dashboard/` does not exist — don't reference it.
 - `database/` + `supabase_schema.sql` — Supabase schemas to apply manually.
 - `infra/docker-compose.yml` — local dev stack (api + worker + redis). From repo root, `docker compose up` works via the root `docker-compose.yml` wrapper.
-- `Dockerfile` (root) — production image (python:3.12-slim, Playwright, non-root `aria` user). `fly.toml` deploys it.
+- `Dockerfile` (root) — production image (python:3.12-slim, Playwright, non-root `aria` user). Multiarch: builds natively on ARM64. Deploy target is Oracle Cloud Always Free (Ampere A1): `infra/oracle-cloud/docker-compose.yml` + `infra/oracle-cloud/DEPLOY.md`.
 - `.env.example` — documents all 232 settings. Copy to `.env` for local dev; never commit `.env`.
 - `tests/` — unit + integration tests. `conftest.py` mocks Redis/Supabase/AI — tests never touch the real network.
 
 ## Rules
 
-1. **Never fabricate data.** If a backend is unavailable, return an explicit error / `status: "unavailable"` — never hardcoded findings, synthetic leads, or `# TODO` placeholder files. LLM code-generation failures raise `RuntimeError`.
+1. **Never fabricate data.** If a backend is unavailable, return an explicit error / `status: "unavailable"` — never hardcoded findings, synthetic leads, or `# TODO` placeholder files. LLM code-generation failures surface as explicit errors at the tool boundary: builders return `{"success": False, "error": ...}` and agents' exceptions are converted to failure dicts by `BusinessHub.dispatch` — an exception must never escape to the chat caller, which only checks the result dict.
 2. **Secrets only via environment.** Never hardcode keys, tokens, or passwords — not even "dev" ones. `.gitignore` covers `.env`.
 3. **The ERP/CRM connector is disabled by default** (`ERP_ENABLED=false` in config). Its mutating calls raise `NotImplementedError` until a real backend is implemented. Don't "fix" this by faking success.
 4. **Don't break imports.** `apps/core/main.py` mounts routers in try/except so one broken module can't take down boot — keep it that way.
