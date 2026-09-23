@@ -28,9 +28,31 @@ async def test_dispatch_actually_calls_run_not_execute():
 
 
 async def test_developer_agent_skips_execution_for_non_owner():
-    result = await BusinessHub().dispatch(
-        "developer", "write a hello world function", {"is_owner": False}
-    )
+    # The owner gate is what this test specifies — not AI availability.
+    # Generation is mocked so the test is hermetic: CI has no AI keys, and
+    # a real generation failure must surface as an honest error (see
+    # _generate_code), never as a fabricated placeholder that would let
+    # the flow reach the gate by accident.
+    async def fake_generate_code(*a, **k):
+        return "print('hi')"
+
+    async def fake_design(*a, **k):
+        return "trivial"
+
+    async def fake_tests(*a, **k):
+        return ""
+
+    with patch(
+        "apps.core.agents.business.developer_agent.DeveloperAgent._generate_code",
+        fake_generate_code,
+    ), patch(
+        "apps.core.agents.business.developer_agent.DeveloperAgent._design_solution", fake_design
+    ), patch(
+        "apps.core.agents.business.developer_agent.DeveloperAgent._generate_tests", fake_tests
+    ):
+        result = await BusinessHub().dispatch(
+            "developer", "write a hello world function", {"is_owner": False}
+        )
     assert result.get("execution_skipped")
     assert "execution" not in result or not result.get("execution", {}).get("success")
 
