@@ -125,22 +125,24 @@ class GameBuilder:
     ) -> tuple[dict[str, str], list[str]]:
         """Use AI to generate each game file concurrently.
 
-        Returns (files, failed_paths) — failed_paths lists every file that
-        fell back to a stub/TODO/error placeholder instead of real
-        AI-generated code, so callers can tell a genuinely-built game apart
-        from one that's mostly empty stubs.
+        Returns (files, failed_paths) where files always contain real
+        AI-generated code. If the AI backend is unavailable or any file
+        fails to generate, raises RuntimeError with the underlying error —
+        we never ship '# TODO' placeholder files pretending to be a
+        finished game.
         """
         try:
             from apps.core.tools.ai_client import AIModel, get_ai_client
 
             ai = get_ai_client()
-        except Exception:
-            return (
-                {path: f"# {path}\n# TODO: implement {role}\n" for path, role in files_to_gen},
-                [path for path, _role in files_to_gen],
-            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"AI client unavailable, cannot generate game files: {exc}"
+            ) from exc
+        if ai is None:
+            raise RuntimeError("AI client returned None, cannot generate game files")
 
-        async def gen(path: str, role: str) -> tuple[str, str, bool]:
+        async def gen(path: str, role: str) -> tuple[str, str]:
             try:
                 resp = await ai.complete(
                     system=(
@@ -157,24 +159,25 @@ class GameBuilder:
                     temperature=0.3,
                     agent_name="game_builder",
                 )
-                if resp and resp.success:
-                    content = resp.content.strip()
-                    failed = False
-                else:
-                    content = f"# {path}\n# TODO\n"
-                    failed = True
-                if content.startswith("```"):
-                    lines = content.split("\n")
-                    content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
-                return path, content, failed
             except Exception as exc:
-                return path, f"# {path}\n# Error generating: {exc}\n", True
+                raise RuntimeError(
+                    f"AI generation failed for '{path}': {exc}"
+                ) from exc
+            if not resp or not resp.success:
+                err = resp.error if resp else "no response from AI backend"
+                raise RuntimeError(f"AI generation failed for '{path}': {err}")
+            content = resp.content.strip()
+            if not content:
+                raise RuntimeError(f"AI generation returned empty content for '{path}'")
+            if content.startswith("```"):
+                lines = content.split("\n")
+                content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+            return path, content
 
         tasks = [gen(path, role) for path, role in files_to_gen]
         results = await asyncio.gather(*tasks)
-        files = {path: content for path, content, _failed in results}
-        failed_paths = [path for path, _content, failed in results if failed]
-        return files, failed_paths
+        files = {path: content for path, content in results}
+        return files, []
 
     def _pack_zip(
         self,
