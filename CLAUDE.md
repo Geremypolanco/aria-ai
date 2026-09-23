@@ -1,25 +1,19 @@
-## CLAUDE MODE RULES for ARIA
+# CLAUDE.md — ARIA AI
 
-- Act as Claude Code: Generate artifacts, use tools, iterative development.
-- Always reason step by step, create real Shopify products with images/videos.
-- Use tool calling for LinkedIn, Shopify, media generation.
-- Never say 'I can't' if credentials provided.
+## What this repo is
 
-## Multi-agent coordination
+ARIA AI — Autonomous Business System. Python/FastAPI backend (`apps/core/main.py`, ~89 endpoints + WebSocket chat), ~20 domain modules under `apps/`, Supabase for persistence (`database/*.sql`), Stripe billing, OAuth connector hub. Primary LLM engine: HuggingFace, with Groq/Anthropic/OpenAI fallbacks via `apps/core/tools/ai_client.py`.
 
-Multiple Claude sessions may work on this repo concurrently. To avoid clobbering
-each other's work:
+## Working here
 
-- Before starting, `git fetch origin main` and rebase/merge your feature branch
-  onto the latest `main` — don't assume the branch you started from is still current.
-- Keep branches short-lived: get CI green and merge to `main` promptly rather than
-  letting a branch sit for many commits. The longer it lives, the more likely another
-  agent's merge collides with it.
-- If your PR shows a merge conflict or goes stale after another PR merges, re-fetch
-  `main`, re-merge, and re-verify before merging — don't force-push over it.
-- `main.py`, `app.html`, and `index.html` are hot files that multiple redesign/feature
-  efforts tend to touch at once — expect conflicts there and resolve by reading both
-  sides' actual behavior, not by blindly taking "ours" or "theirs".
-- `deploy.yml` deploys on every push to `main`, and `main`'s CI gate is real — always
-  confirm CI is green on your PR before merging, since the merge itself triggers a
-  production deploy.
+- **Entry points:** API → `python -m uvicorn apps.core.main:app --host 0.0.0.0 --port ${PORT:-8080}`; worker → `python -m apps.core.scale.worker`. Local stack: `docker compose up` (root wrapper → `infra/docker-compose.yml`).
+- **Config:** everything comes from env vars defined in `apps/core/config.py` (see `.env.example` — all 232 documented). The app boots with no env vars in degraded mode; don't add required fields without a safe default.
+- **Golden rule: never fabricate.** Unavailable backend → explicit error, never invented data. LLM generation failure → `RuntimeError`, never `# TODO` placeholder files. The ERP connector (`apps/core/integrations/business_os_connector.py`) is intentionally disabled (`ERP_ENABLED=false`) until a real backend exists.
+- **Tests** live in `tests/` with a fully-mocked `conftest.py` (no real network). Run affected tests; at minimum `py_compile` touched files.
+- **Secrets** via env only. Never commit `.env`. Never invent credential values.
+
+## Conventions
+
+- Atomic commits, English messages, feature branches — never push straight to `main`.
+- Before starting: `git fetch origin main`, rebase your branch. Keep branches short-lived; re-merge and re-verify if `main` moves under you.
+- Don't force-push over another agent's work.
