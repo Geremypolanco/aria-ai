@@ -2299,6 +2299,12 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
             if not ai:
                 return {"success": False, "summary": "AI client unavailable"}
 
+            # U2 anti-hallucination gate: the LLM output is validated against
+            # DigitalProductData (price_cents is bounded $1–$999). Persistent
+            # validation failures go to the dead-letter queue and this
+            # returns {} — the pre-built templates below take over.
+            from apps.core.llm.contracts import DigitalProductData
+
             product_data = await ai.complete_json(
                 system=(
                     "You are a bestselling digital product creator. "
@@ -2318,6 +2324,8 @@ Output JSON:
 }}""",
                 model=AIModel.CREATIVE,
                 max_tokens=2000,
+                schema=DigitalProductData,
+                schema_name="DigitalProductData",
             )
 
             if not product_data:
@@ -2538,7 +2546,17 @@ Output JSON:
             if aria_email and aria_password:
                 try:
                     prod_name = product_data.get("product_name", title)
-                    prod_price = product_data.get("price_cents", 997)
+                    # U3 deterministic guard: the price that is actually
+                    # published on Gumroad is computed here, never taken raw
+                    # from the LLM (bounds $1–$999).
+                    from apps.core.llm.contracts import safe_price_cents
+
+                    prod_price = safe_price_cents(
+                        product_data.get("price_cents"),
+                        default_cents=997,
+                        min_cents=100,
+                        max_cents=99900,
+                    )
                     prod_desc = product_data.get("description", "")
 
                     async def _pf_gumroad_browser() -> str:
@@ -2972,6 +2990,10 @@ Output JSON:
             if not ai:
                 return {"success": False, "summary": "AI unavailable"}
 
+            # U2 anti-hallucination gate: premium offer validated against
+            # OfferData (price_cents bounded $500–$5,000 per the prompt).
+            from apps.core.llm.contracts import OfferData
+
             offer = await ai.complete_json(
                 system="You are a B2B sales expert. Create premium service packages that command $500-$5000. Output JSON only.",
                 user=f"""Create a premium B2B consulting offer based on this market insight:
@@ -2991,6 +3013,8 @@ JSON:
 }}""",
                 model=AIModel.STRATEGY,
                 max_tokens=1500,
+                schema=OfferData,
+                schema_name="OfferData",
             )
 
             if not offer:
@@ -3137,7 +3161,17 @@ JSON:
                     plat = await get_platform_login()
                     gum_page = await plat.gumroad(aria_email, aria_password)
                     offer_name = offer.get("offer_name", "AI Business Consulting")
-                    offer_price = offer.get("price_cents", 149700)
+                    # U3 deterministic guard: the price actually published on
+                    # Gumroad is computed here, never taken raw from the LLM
+                    # (bounds $500–$5,000).
+                    from apps.core.llm.contracts import safe_price_cents
+
+                    offer_price = safe_price_cents(
+                        offer.get("price_cents"),
+                        default_cents=149700,
+                        min_cents=50000,
+                        max_cents=500000,
+                    )
                     offer_desc = offer.get("description", "")
                     gum_url = await plat.gumroad_create_product(
                         gum_page, offer_name, offer_price, offer_desc

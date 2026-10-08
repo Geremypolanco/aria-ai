@@ -29,6 +29,8 @@ from apps.core.config import settings
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from pydantic import BaseModel
+
 logger = logging.getLogger("aria.ai_client")
 
 
@@ -265,6 +267,71 @@ class AriaAIClient:
         logger.info("AriaAIClient initialized — Primary engine: HuggingFace")
 
     async def complete_json(
+        self,
+        system: str,
+        user: str,
+        model: AIModel = AIModel.STRATEGY,
+        max_tokens: int = 2000,
+        temperature: float = 0.7,
+        agent_name: str = "aria",
+        prefer_quality: bool = False,
+        schema: type[BaseModel] | None = None,
+        schema_name: str | None = None,
+    ) -> dict:
+        """Helper to get parsed JSON directly.
+
+        When ``schema`` (a pydantic ``BaseModel`` subclass) is provided, the
+        parsed output is validated through the anti-hallucination gate
+        (``apps.core.llm.contracts``): validate → retry with exponential
+        backoff (max 3 attempts) → dead-letter queue on persistent failure.
+        The dead-letter entry is pushed to the process-wide visible queue and
+        ``{}`` is returned — data is NEVER invented or padded to pass.
+        Without ``schema`` the behavior is exactly the legacy one.
+        """
+        if schema is None:
+            return await self._complete_json_once(
+                system=system,
+                user=user,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                agent_name=agent_name,
+                prefer_quality=prefer_quality,
+            )
+
+        # Local import: contracts only needs pydantic+stdlib, but keep the
+        # LLM-contracts dependency out of this module's import-time graph.
+        from apps.core.llm.contracts import get_dead_letter_queue, validate_or_retry
+
+        name = schema_name or getattr(schema, "__name__", "unknown")
+        result = await validate_or_retry(
+            lambda: self._complete_json_once(
+                system=system,
+                user=user,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                agent_name=agent_name,
+                prefer_quality=prefer_quality,
+            ),
+            schema,
+            schema_name=name,
+            agent_name=agent_name,
+        )
+        if result.ok:
+            data = result.data
+            return data.model_dump() if hasattr(data, "model_dump") else dict(data)
+        get_dead_letter_queue().push(result.dead_letter)
+        logger.warning(
+            "[%s] complete_json: output failed schema=%s validation after %d attempts — "
+            "quarantined in dead-letter queue, returning {}",
+            agent_name,
+            name,
+            result.dead_letter.attempts if result.dead_letter else 0,
+        )
+        return {}
+
+    async def _complete_json_once(
         self,
         system: str,
         user: str,
@@ -726,6 +793,11 @@ class AriaAIClient:
         return text
 
     def get_health_summary(self) -> dict:
+        # Dead-letter queue is visible here so quarantined LLM outputs are
+        # operator-visible instead of silent (U2).
+        from apps.core.llm.contracts import get_dead_letter_queue
+
+        dead_letters = get_dead_letter_queue()
         return {
             p.value: {
                 "state": self._health[p].state.value,
@@ -738,7 +810,11 @@ class AriaAIClient:
             "_totals": {
                 "tokens_used": self._total_tokens,
                 "fallbacks_triggered": self._total_fallbacks,
-            }
+            },
+            "dead_letters": {
+                "count": len(dead_letters),
+                "recent": [e.to_dict() for e in dead_letters.list()[-5:]],
+            },
         }
 
     async def stream_complete(

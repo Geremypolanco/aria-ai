@@ -34,6 +34,22 @@ class CFOAgent(BaseAgent):
         if not ebook:
             return {"success": False, "error": "Could not generate the ebook"}
 
+        # U3 deterministic guard: price_usd originates from the LLM. The
+        # price that is published (Gumroad) and charged (Stripe) is computed
+        # here — clamped to the $7–$27 band the generation prompt demands.
+        # usd_to_cents never raises: unparseable input falls back to $9.99.
+        from apps.core.llm.contracts import usd_to_cents
+
+        ebook["price_usd"] = (
+            usd_to_cents(
+                ebook.get("price_usd"),
+                default_cents=999,
+                min_usd=7.0,
+                max_usd=27.0,
+            )
+            / 100
+        )
+
         results: dict[str, Any] = {"success": True, "agent": "cfo_agent", "ebook": ebook}
 
         # Publish to Gumroad (requires approval if price > 0)
@@ -96,6 +112,13 @@ class CFOAgent(BaseAgent):
 
     async def publish_to_gumroad(self, ebook: dict[str, Any]) -> dict[str, Any]:
         """Publishes the ebook to Gumroad via API."""
+        # Defense in depth: re-apply the deterministic price guard at the
+        # HTTP boundary in case this method is ever called directly.
+        from apps.core.llm.contracts import usd_to_cents
+
+        price_cents = usd_to_cents(
+            ebook.get("price_usd"), default_cents=999, min_usd=7.0, max_usd=27.0
+        )
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 res = await client.post(
@@ -104,7 +127,7 @@ class CFOAgent(BaseAgent):
                         "access_token": settings.GUMROAD_TOKEN,
                         "name": ebook["title"],
                         "description": ebook["description"],
-                        "price": int(ebook.get("price_usd", 9.99) * 100),  # cents
+                        "price": price_cents,
                         "url": "https://gumroad.com",
                         "published": "true",
                     },
@@ -131,6 +154,12 @@ class CFOAgent(BaseAgent):
         self, name: str, price_usd: float, description: str
     ) -> dict[str, Any]:
         """Creates a product in Stripe."""
+        # Defense in depth: deterministic price guard at the money boundary.
+        from apps.core.llm.contracts import usd_to_cents
+
+        unit_amount = usd_to_cents(
+            price_usd, default_cents=999, min_usd=7.0, max_usd=27.0
+        )
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 prod_res = await client.post(
@@ -150,7 +179,7 @@ class CFOAgent(BaseAgent):
                     auth=(settings.STRIPE_SECRET_KEY or "", ""),
                     data={
                         "product": product_id,
-                        "unit_amount": int(price_usd * 100),
+                        "unit_amount": unit_amount,
                         "currency": "usd",
                     },
                 )
