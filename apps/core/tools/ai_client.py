@@ -796,8 +796,21 @@ class AriaAIClient:
         # Dead-letter queue is visible here so quarantined LLM outputs are
         # operator-visible instead of silent (U2).
         from apps.core.llm.contracts import get_dead_letter_queue
+        from apps.core.llm.contracts.dead_letter_store import get_dead_letter_store
 
         dead_letters = get_dead_letter_queue()
+        store = get_dead_letter_store()
+        # Best effort: the store never raises; when Supabase is unconfigured
+        # (or we are in the test env) the sink reports unavailable instead of
+        # a fabricated zero.
+        try:
+            sink_available = store.available()
+        except Exception:  # noqa: BLE001 — health must never break on this
+            sink_available = False
+        try:
+            sink_count = store.count() if sink_available else None
+        except Exception:  # noqa: BLE001
+            sink_count = None
         return {
             p.value: {
                 "state": self._health[p].state.value,
@@ -814,6 +827,10 @@ class AriaAIClient:
             "dead_letters": {
                 "count": len(dead_letters),
                 "recent": [e.to_dict() for e in dead_letters.list()[-5:]],
+            },
+            "dead_letters_persistent": {
+                "available": sink_available,
+                "count": sink_count,
             },
         }
 

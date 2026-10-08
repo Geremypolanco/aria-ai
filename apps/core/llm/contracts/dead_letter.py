@@ -64,6 +64,18 @@ class DeadLetterQueue:
             entry.attempts,
             "; ".join(entry.errors[:3]),
         )
+        # L2 durable sink (Supabase) — best effort, never raises, never
+        # blocks. The in-memory queue above stays the source of truth; the
+        # store degrades to a logged warning when Supabase is unconfigured
+        # or unreachable, so entries survive worker restarts when it is.
+        # Lazy import: dead_letter_store imports this module at its top
+        # level, so a top-level import here would be circular.
+        try:
+            from apps.core.llm.contracts.dead_letter_store import get_dead_letter_store
+
+            get_dead_letter_store().persist(entry)
+        except Exception:  # noqa: BLE001 — the entry is already safe above
+            logger.debug("[dead-letter] persistent sink unavailable", exc_info=True)
 
     def list(self) -> list[DeadLetterEntry]:
         return list(self._entries)
