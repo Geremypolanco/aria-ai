@@ -1653,7 +1653,7 @@ async def user_app(request: Request):
         '<a href="/admin" class="navlink">'
         '<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" '
         'stroke-width="1.8"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z"/></svg>'
-        "Admin panel</a>"
+        '<span data-i18n="Admin panel">Admin panel</span></a>'
         if is_owner
         else ""
     )

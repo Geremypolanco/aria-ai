@@ -49,8 +49,19 @@ def _render(email: str) -> str:
         .replace("__IS_OWNER__", "false")
         .replace("__ADMIN_LINK__", "")
     )
-    match = re.search(r"<script>(.*?)</script>", html, re.DOTALL)
-    assert match, "app.html must contain a <script> block"
+    # The main app script is the <script> block declaring `const USER`
+    # (head also carries small locale bootstrap scripts since the ES/EN
+    # auto-detection landed — the first <script> in the file is no longer
+    # guaranteed to be the app script).
+    match = next(
+        (
+            m
+            for m in re.finditer(r"<script>(.*?)</script>", html, re.DOTALL)
+            if "const USER" in m.group(1)
+        ),
+        None,
+    )
+    assert match, "app.html must contain the main <script> block (with const USER)"
     return match.group(1)
 
 
