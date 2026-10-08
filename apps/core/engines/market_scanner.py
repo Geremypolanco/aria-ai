@@ -45,14 +45,65 @@ class MarketScanner:
         if not results.get("success"):
             return []
 
+        # U5 provenance: every opportunity shown to the operator must carry
+        # citations derived from the REAL web-search evidence below — an
+        # opportunity without provenance is never shown.
+        from apps.core.llm.contracts import (
+            MarketOpportunityList,
+            finding_citations,
+            validate_citations,
+        )
+
+        web_results = results.get("results") or []
+        evidence = [
+            {
+                "source": f"web:{str(r.get('source', 'search')).lower().replace(' ', '-')}-{i}",
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+            }
+            for i, r in enumerate(web_results)
+            if isinstance(r, dict)
+        ]
+        citations = finding_citations(evidence)
+        if not citations:
+            logger.warning("[MarketScanner] no citable evidence — no opportunities (U5)")
+            return []
+
         # Analyze trends with AI
         analysis = await self.ai.complete_json(
             system="You are a market analyst. Identify sales opportunities.",
-            user=f"Analyze these trends: {results.get('results')}. Respond with a list of opportunities: [{{topic, market_size, competition_level, expected_roi}}]",
+            user=(
+                f"Analyze these trends: {web_results}. Respond with JSON: "
+                '{"opportunities": [{topic, market_size, competition_level, '
+                "expected_roi (0-10), citations}]}. "
+                "Each opportunity's citations MUST be chosen ONLY from this "
+                f"evidence list: {citations}. Never invent a citation."
+            ),
             model=AIModel.STRATEGY,
+            schema=MarketOpportunityList,
+            schema_name="MarketOpportunityList",
+            agent_name="market_scanner",
         )
+        opps = analysis.get("opportunities", []) if isinstance(analysis, dict) else []
 
-        return analysis if isinstance(analysis, list) else []
+        # Keep only citations that actually come from the evidence set; drop
+        # opportunities left without provenance instead of showing them.
+        valid = set(citations)
+        kept: list[dict] = []
+        for opp in opps:
+            if not isinstance(opp, dict):
+                continue
+            opp_cites = [c for c in (opp.get("citations") or []) if c in valid]
+            if not opp_cites:
+                logger.warning(
+                    "[MarketScanner] dropping opportunity without provenance: %s",
+                    opp.get("topic"),
+                )
+                continue
+            opp["citations"] = opp_cites
+            kept.append(opp)
+        validate_citations(kept, min_citations=1)
+        return kept
 
     async def _scan_shopify_opportunities(self) -> list[dict[str, Any]]:
         """Searches for high-value Shopify products Aria can replicate."""

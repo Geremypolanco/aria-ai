@@ -291,12 +291,16 @@ Generate the JSON with this exact format:
 }}"""
 
         try:
+            from apps.core.llm.contracts import EcommerceProductData
+
             product = await ai.complete_json(
                 system=system_prompt,
                 user=user_prompt,
                 model=AIModel.CREATIVE,
                 max_tokens=1500,
                 agent_name="ecommerce",
+                schema=EcommerceProductData,
+                schema_name="EcommerceProductData",
             )
             if product and product.get("title"):
                 logger.info(f"[EcommerceAgent] Product generated: {product.get('title')}")
@@ -337,6 +341,18 @@ Generate the JSON with this exact format:
         """Creates a complete, optimized listing on Shopify."""
         try:
             from apps.core.integrations.shopify_engine import ShopifyEngine
+            from apps.core.llm.contracts import usd_to_cents
+
+            # U3 deterministic guard: the LLM-produced price becomes a REAL
+            # charge on a customer-facing listing — clamp it to the sane
+            # $1–$999 band before it leaves this process. Never raises.
+            _cents = usd_to_cents(
+                product_data.get("price"),
+                default_cents=9999,
+                min_usd=1.0,
+                max_usd=999.0,
+            )
+            product_data = {**product_data, "price": f"{_cents / 100:.2f}"}
 
             # Use the correct configuration variables for production
             shop_name = settings.SHOPIFY_URL or settings.SHOPIFY_SHOP_NAME
@@ -475,12 +491,16 @@ Generate the JSON with this format:
 }}"""
 
         try:
+            from apps.core.llm.contracts import HighTicketFunnel
+
             funnel = await ai.complete_json(
                 system=system_prompt,
                 user=user_prompt,
                 model=AIModel.STRATEGY,
                 max_tokens=1200,
                 agent_name="ecommerce",
+                schema=HighTicketFunnel,
+                schema_name="HighTicketFunnel",
             )
             if funnel and funnel.get("service_name"):
                 logger.info(

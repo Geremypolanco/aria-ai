@@ -1149,6 +1149,10 @@ class AriaMind:
             user_input = f"{user_context}\n\n{user_input}"
         user_input += self._lang_directive(text)
 
+        # U2 schema gate: a malformed plan is retried x3 then dead-lettered;
+        # {} is falsy so the FAST direct-reply fallback below still engages.
+        from apps.core.llm.contracts import MindDecision
+
         result = await ai.complete_json(
             system=system,
             user=user_input,
@@ -1156,6 +1160,8 @@ class AriaMind:
             max_tokens=1800,
             agent_name="aria_mind",
             prefer_quality=True,
+            schema=MindDecision,
+            schema_name="MindDecision",
         )
 
         if result and isinstance(result, dict):

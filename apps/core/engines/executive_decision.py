@@ -66,10 +66,15 @@ class ExecutiveDecisionEngine:
         - action_plan: specific steps
         """
 
+        from apps.core.llm.contracts import ExecutiveDecision
+
         decision = await self.ai.complete_json(
             system="You are the CEO of ARIA. Your only goal is to maximize revenue.",
             user=prompt,
             model=AIModel.STRATEGY,
+            schema=ExecutiveDecision,
+            schema_name="ExecutiveDecision",
+            agent_name="executive_decision",
         )
 
         return decision if decision else {"error": "Decision failed"}
