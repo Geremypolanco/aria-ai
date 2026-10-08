@@ -445,9 +445,11 @@ app = FastAPI(
 # credentials=True forbids a literal "*" (Starlette would reflect any request
 # Origin instead, which defeats the purpose) — so the allowlist must be explicit.
 _cors_origins = {"http://localhost:8000", "http://127.0.0.1:8000"}
-_base_url = getattr(settings, "ARIA_BASE_URL", None)
+from apps.core.aria_site import get_aria_base_url as _get_aria_base_url
+
+_base_url = _get_aria_base_url() or None
 if _base_url:
-    _cors_origins.add(_base_url.rstrip("/"))
+    _cors_origins.add(_base_url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -2311,7 +2313,12 @@ async def billing_checkout(request: Request, tier: str = "pro", agreed: str = ""
     await founding.ensure_promo(key)
 
     email = (user.get("email") or "").strip().lower()
-    base = (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
+    # No invented default: Stripe needs absolute redirect URLs, so when
+    # ARIA_BASE_URL is unset we honestly use the deployment the user is
+    # actually hitting (request.base_url) instead of a dead domain.
+    from apps.core.aria_site import get_aria_base_url
+
+    base = get_aria_base_url() or str(request.base_url).rstrip("/")
     tier_key = tier if tier in BILLING_PLANS else "pro"
     try:
         import stripe
@@ -2809,9 +2816,14 @@ async def upload_media(request: Request, file: UploadFile = File(...)):
     except Exception as e:  # noqa: BLE001
         logger.error("upload save failed: %s", e)
         return JSONResponse({"error": "save_failed"}, status_code=500)
-    base = (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
+    # No invented default: without ARIA_BASE_URL return a same-origin
+    # relative URL instead of pointing the client at a dead domain.
+    from apps.core.aria_site import get_aria_base_url
+
+    _base = get_aria_base_url()
+    base = f"{_base}/static/uploads" if _base else "/static/uploads"
     kind = "video" if (file.content_type or "").startswith("video/") else "image"
-    return {"ok": True, "url": f"{base}/static/uploads/{name}", "kind": kind, "name": file.filename}
+    return {"ok": True, "url": f"{base}/{name}", "kind": kind, "name": file.filename}
 
 
 @app.post("/api/v1/chat")

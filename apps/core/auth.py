@@ -93,7 +93,12 @@ def _secret() -> bytes:
 
 
 def _base() -> str:
-    return (getattr(settings, "ARIA_BASE_URL", None) or "https://aria-ai.fly.dev").rstrip("/")
+    # No invented default: without ARIA_BASE_URL there is no public site to
+    # build OAuth redirect_uris against. Callers check `if not _base()` and
+    # return None (provider disabled) instead of handing the IdP a dead URL.
+    from apps.core.aria_site import get_aria_base_url
+
+    return get_aria_base_url()
 
 
 # ── signed user session ────────────────────────────────────────────────────
@@ -170,7 +175,7 @@ def github_enabled() -> bool:
 
 
 def google_authorize_url(state: str) -> str | None:
-    if not google_enabled():
+    if not google_enabled() or not _base():
         return None
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -185,7 +190,7 @@ def google_authorize_url(state: str) -> str | None:
 
 
 def github_authorize_url(state: str) -> str | None:
-    if not github_enabled():
+    if not github_enabled() or not _base():
         return None
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
@@ -239,11 +244,12 @@ def google_connector_authorize_url(state: str, scope: str) -> str | None:
     owner does NOT have to register a separate connector redirect URI. The
     callback disambiguates login vs connector-link via a short-lived cookie.
     """
-    if not google_enabled():
+    base = _base()
+    if not google_enabled() or not base:
         return None
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": f"{_base()}/auth/google/callback",
+        "redirect_uri": f"{base}/auth/google/callback",
         "response_type": "code",
         "scope": scope,
         "state": state,

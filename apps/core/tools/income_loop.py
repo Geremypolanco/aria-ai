@@ -12,7 +12,7 @@ Sampling Bandit as real outcomes come in.
 
 As of the latest rebalance, roughly half the total selection weight is
 concentrated on strategies whose primary effect is driving real traffic to
-ARIA's own site (aria-ai.fly.dev) rather than creating/selling a one-off
+ARIA's own site (ARIA_BASE_URL) rather than creating/selling a one-off
 niche product: content_pipeline, github_publish, content_repurposer,
 content_amplifier, seo_optimizer/seo_tracking/seo_backlink_builder/
 seo_content_cluster, social_blitz, landing_page_deploy, media_pitch,
@@ -57,6 +57,69 @@ from datetime import UTC, datetime
 from apps.core.config import settings
 
 logger = logging.getLogger("aria.income_loop")
+
+
+# ── Public-site URL helpers ───────────────────────────────────────────────
+# Generated marketing copy must NEVER hardcode a domain. ARIA_BASE_URL used
+# to default to a dead fly.dev domain, so published content linked readers
+# to a 404. Every helper below resolves the configured URL at call time and
+# degrades to "no link" when no public site is configured.
+
+
+def _public_site_url() -> str:
+    """Configured public site URL, or ``""`` when unconfigured."""
+    try:
+        from apps.core.aria_site import get_aria_base_url
+
+        return get_aria_base_url()
+    except Exception:
+        return ""
+
+
+def _dashboard_url() -> str:
+    """Absolute dashboard URL, or ``""`` when no public site is configured."""
+    base = _public_site_url()
+    return f"{base}/dashboard" if base else ""
+
+
+def _site_cta_md(label: str = "See it live") -> str:
+    """Markdown CTA footer linking to the dashboard — ``""`` when no site.
+
+    Includes its own separator so callers can append it directly; omitting
+    it leaves no dangling markup behind.
+    """
+    url = _dashboard_url()
+    return f"\n\n---\n*{label}: {url}*" if url else ""
+
+
+def _published_by_md(prefix: str = "Published by") -> str:
+    """Attribution footer — plain text when no site, linked when there is."""
+    url = _dashboard_url()
+    if url:
+        return f"*{prefix} [ARIA AI]({url})*"
+    return f"*{prefix} ARIA AI*"
+
+
+def _dashboard_md_link(label: str = "ARIA AI Dashboard") -> str:
+    """Markdown link to the dashboard, or the bare label when no site."""
+    url = _dashboard_url()
+    return f"[{label}]({url})" if url else label
+
+
+def _dash_suffix(sep: str = " → ") -> str:
+    """Link suffix for tweets CTAs — ``""`` when no site is configured."""
+    url = _dashboard_url()
+    return f"{sep}{url}" if url else ""
+
+
+def _tracking_link_format() -> str:
+    """Affiliate tracking-link template for the configured site (or an
+    explicit placeholder the operator must replace when no site exists)."""
+    base = _public_site_url()
+    if base:
+        return f"{base}/?ref={{affiliate_id}}"
+    return "YOUR-SITE-URL/?ref={affiliate_id}  (set ARIA_BASE_URL first)"
+
 
 INTERVAL_SECONDS = 1200  # 20 minutes between cycles (was 30)
 FIRST_RUN_DELAY = 45  # seconds after startup before first run
@@ -286,6 +349,39 @@ STRATEGIES = [
     ),  # boostado: create recurring Stripe subscription product → MRR compound growth
 ]
 
+# Strategies whose primary effect is driving traffic to ARIA's own public
+# site (ARIA_BASE_URL). When the site is unconfigured or unreachable these
+# are PARKED by _pick_strategy(): their whole point is sending people to
+# the site, and without one they would publish content linking to a 404.
+# (Names mirror the traffic roster documented in the module docstring.)
+_TRAFFIC_STRATEGIES: frozenset[str] = frozenset(
+    {
+        "content_pipeline",
+        "github_publish",
+        "content_repurposer",
+        "content_amplifier",
+        "seo_optimizer",
+        "seo_tracking",
+        "seo_backlink_builder",
+        "seo_content_cluster",
+        "social_blitz",
+        "landing_page_deploy",
+        "media_pitch",
+        "product_hunt_launch",
+        "self_monetize",
+        "viral_detector",
+        "growth_hacker",
+        "growth_experiment",
+        "conversion_optimizer",
+        "brand_storyteller",
+        "thought_leadership",
+        "case_study_publisher",
+        "podcast_pitch",
+        "influencer_outreach",
+        "multilingual_content",
+    }
+)
+
 # Strategies that already call publish_to_twitter/linkedin internally.
 # The global distributor in _run_one_cycle skips these to avoid double-posting.
 _SELF_DISTRIBUTING_STRATEGIES: frozenset[str] = frozenset(
@@ -390,19 +486,26 @@ class ThompsonBandit:
         except Exception as exc:
             logger.debug("[Bandit] save error: %s", exc)
 
-    def sample(self) -> str:
+    def sample(self, exclude: set[str] | frozenset[str] | None = None) -> str:
         """
         Thompson sampling: draw θ_i ~ Beta(α_i, β_i) for each arm, return argmax.
         Uses numpy if available; falls back to UCB-style selection otherwise.
+
+        ``exclude`` removes arms from this draw (e.g. parked traffic
+        strategies) without touching the learned α/β counts. When everything
+        is excluded we fall back to the full roster rather than crash.
         """
+        names = [n for n in self._names if not exclude or n not in exclude]
+        if not names:
+            names = list(self._names)
         try:
             import numpy as np
 
-            samples = {n: np.random.beta(self._alpha[n], self._beta[n]) for n in self._names}
+            samples = {n: np.random.beta(self._alpha[n], self._beta[n]) for n in names}
             return max(samples, key=samples.__getitem__)
         except ImportError:
             # Fallback: select by expected success rate (no exploration)
-            rates = {n: self._alpha[n] / (self._alpha[n] + self._beta[n]) for n in self._names}
+            rates = {n: self._alpha[n] / (self._alpha[n] + self._beta[n]) for n in names}
             return max(rates, key=rates.__getitem__)
 
     def update(self, strategy: str, success: bool) -> None:
@@ -453,6 +556,7 @@ class IncomeLoop:
         self._niche_idx = 0  # Round-robin through niche catalog (loaded from Redis in first cycle)
         self._adaptive_weights: dict[str, float] = {}  # updated from Redis every 10 cycles
         self._weights_refresh_cycle = 0
+        self._site_park_warned = False  # rate-limits the traffic-parked warning
         # Thompson Sampling Bandit — learns which strategies perform best over time.
         # Base weights from STRATEGIES serve as Bayesian prior (domain knowledge).
         self._bandit = ThompsonBandit(
@@ -689,16 +793,37 @@ class IncomeLoop:
         Adaptive weights from Redis (written by strategy_optimizer) are folded in as
         an additional factor by temporarily boosting α for high-weight strategies.
         """
+        # Honest degradation: when the public site is unconfigured or
+        # unreachable, traffic-driving strategies are parked — their whole
+        # point is sending people to the site, and without one they would
+        # publish content linking to a 404. The bandit's learned α/β counts
+        # are untouched; the arms are just excluded from this draw.
+        from apps.core.aria_site import describe_site_status, is_aria_site_live
+
+        exclude: frozenset[str] | None = None
+        if not is_aria_site_live():
+            exclude = _TRAFFIC_STRATEGIES
+            if not self._site_park_warned:
+                logger.warning(
+                    "[IncomeLoop] %s — parking %d traffic-driving strategies",
+                    describe_site_status(),
+                    len(_TRAFFIC_STRATEGIES),
+                )
+                self._site_park_warned = True
+        elif self._site_park_warned:
+            logger.info("[IncomeLoop] public site reachable again — traffic strategies unparked")
+            self._site_park_warned = False
+
         if self._adaptive_weights:
             # Temporarily boost α by adaptive weight ratio
             saved_alpha = dict(self._bandit._alpha)
             for name, w in self._adaptive_weights.items():
                 if name in self._bandit._alpha:
                     self._bandit._alpha[name] = max(self._bandit._alpha[name], w)
-            choice = self._bandit.sample()
+            choice = self._bandit.sample(exclude=exclude)
             self._bandit._alpha = saved_alpha
             return choice
-        return self._bandit.sample()
+        return self._bandit.sample(exclude=exclude)
 
     async def _refresh_adaptive_weights(self) -> None:
         """Load optimizer weights from Redis (written by strategy_optimizer objective)."""
@@ -1097,14 +1222,14 @@ JSON:
                 arts = [
                     {
                         "title": "Inside ARIA: An AI That Actually Executes, Not Just Chats",
-                        "body": f"# Inside ARIA: An AI That Actually Executes, Not Just Chats\n\n*Published {_today} by ARIA AI*\n\nMost AI assistants describe what you could do. ARIA does it: it plans a task, picks the right tool from its own toolbox, and carries it out — with four independent safety layers checking the plan before anything real happens.\n\n## What that looks like in practice\n- **Autonomous execution**: give ARIA a goal in plain language and it reasons through the steps, calling real tools (web search, code execution, publishing, payments) instead of just describing them.\n- **Built-in safety, not an afterthought**: every consequential action passes through input moderation, a constitutional review of the specific tool call, a content/code firewall, and an emergency kill switch — before it runs, not after something goes wrong.\n- **Asks before acting when it matters**: for genuinely risky or ambiguous requests, ARIA pauses and asks a clarifying question, or queues the action for a human to approve, instead of guessing.\n- **A real sandbox for code**: when ARIA needs to run code, it does so inside an isolated sandbox with no access to the host beyond its own workdir.\n- **Voice, not just text**: talk to ARIA and hear it talk back.\n\nARIA isn't a demo of what AI agents might do someday. It's running right now, autonomously, with the guardrails to make that safe.\n\n---\n*See it live: https://aria-ai.fly.dev/dashboard*",
+                        "body": f"# Inside ARIA: An AI That Actually Executes, Not Just Chats\n\n*Published {_today} by ARIA AI*\n\nMost AI assistants describe what you could do. ARIA does it: it plans a task, picks the right tool from its own toolbox, and carries it out — with four independent safety layers checking the plan before anything real happens.\n\n## What that looks like in practice\n- **Autonomous execution**: give ARIA a goal in plain language and it reasons through the steps, calling real tools (web search, code execution, publishing, payments) instead of just describing them.\n- **Built-in safety, not an afterthought**: every consequential action passes through input moderation, a constitutional review of the specific tool call, a content/code firewall, and an emergency kill switch — before it runs, not after something goes wrong.\n- **Asks before acting when it matters**: for genuinely risky or ambiguous requests, ARIA pauses and asks a clarifying question, or queues the action for a human to approve, instead of guessing.\n- **A real sandbox for code**: when ARIA needs to run code, it does so inside an isolated sandbox with no access to the host beyond its own workdir.\n- **Voice, not just text**: talk to ARIA and hear it talk back.\n\nARIA isn't a demo of what AI agents might do someday. It's running right now, autonomously, with the guardrails to make that safe.{_site_cta_md('See it live')}",
                         "body_markdown": "",
                         "tags": ["AI", "autonomous-agents", "AI-safety", "automation"],
                         "urls": [],
                     },
                     {
                         "title": f"How ARIA Runs Its Own Growth, Autonomously, Every {INTERVAL_SECONDS // 60} Minutes",
-                        "body": f"# How ARIA Runs Its Own Growth, Autonomously, Every {INTERVAL_SECONDS // 60} Minutes\n\n*Published {_today} by ARIA AI*\n\nThis article was published by ARIA's own autonomous income loop — a background process that picks a growth or monetization strategy every {INTERVAL_SECONDS // 60} minutes from a roster of over 100, and executes it end to end, no human in the loop.\n\n## What's actually in that roster\n- **Content & SEO**: articles, topic clusters, backlink building, rank tracking — published across GitHub, dev.to, Medium, and Hashnode.\n- **Distribution**: the same piece of content gets repurposed across LinkedIn, Twitter/X, Reddit, and more, instead of being written once and left to sit.\n- **Real commerce integrations**: Stripe, Square, Gumroad, and Shopify — not mocked, not simulated.\n- **Outreach**: partner and media pitches, podcast guest pitches, cold outreach — all drafted and sent by ARIA.\n\nEvery cycle is logged, and the strategy mix adapts over time (a Thompson Sampling bandit shifts weight toward whatever's actually working) instead of running the same fixed playbook forever.\n\n---\n*This is the system writing about itself. Watch it work: https://aria-ai.fly.dev/dashboard*",
+                        "body": f"# How ARIA Runs Its Own Growth, Autonomously, Every {INTERVAL_SECONDS // 60} Minutes\n\n*Published {_today} by ARIA AI*\n\nThis article was published by ARIA's own autonomous income loop — a background process that picks a growth or monetization strategy every {INTERVAL_SECONDS // 60} minutes from a roster of over 100, and executes it end to end, no human in the loop.\n\n## What's actually in that roster\n- **Content & SEO**: articles, topic clusters, backlink building, rank tracking — published across GitHub, dev.to, Medium, and Hashnode.\n- **Distribution**: the same piece of content gets repurposed across LinkedIn, Twitter/X, Reddit, and more, instead of being written once and left to sit.\n- **Real commerce integrations**: Stripe, Square, Gumroad, and Shopify — not mocked, not simulated.\n- **Outreach**: partner and media pitches, podcast guest pitches, cold outreach — all drafted and sent by ARIA.\n\nEvery cycle is logged, and the strategy mix adapts over time (a Thompson Sampling bandit shifts weight toward whatever's actually working) instead of running the same fixed playbook forever.{_site_cta_md('This is the system writing about itself. Watch it work')}",
                         "body_markdown": "",
                         "tags": ["AI", "income", "passive income", "side hustle"],
                         "urls": [],
@@ -1320,7 +1445,7 @@ JSON:
                                 "".join(c for c in _rn_cp if c.isalnum() or c == "-")[:22]
                                 + f"-{_week_cp}-art"
                             )
-                            _readme_cp = f"---\ntitle: {_t_cp}\ntags:\n- article\n- AI\n---\n\n{_b_cp}\n\n---\n*Published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                            _readme_cp = f"---\ntitle: {_t_cp}\ntags:\n- article\n- AI\n---\n\n{_b_cp}\n\n---\n{_published_by_md()}"
                             _cr_cp = await _hfc.post(
                                 "https://huggingface.co/api/repos/create",
                                 headers={
@@ -2208,8 +2333,8 @@ JSON: {{"title": "...", "body": "... (600+ words, practical guide)", "tags": ["a
                             if _nr_deliverables
                             else ""
                         )
-                        + "## Book a Project\n\nVisit [ARIA AI Dashboard](https://aria-ai.fly.dev/dashboard) to get started.\n\n"
-                        + "---\n*Service powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        + "## Book a Project\n\nVisit " + _dashboard_md_link() + " to get started.\n\n"
+                        + "---\n*Service powered by " + _dashboard_md_link("ARIA AI") + "*"
                     )
                     async with _hf_nr_http.AsyncClient(timeout=20.0) as _hnr:
                         _cr_nr = await _hnr.post(
@@ -2622,7 +2747,7 @@ Output JSON:
                             if product_data.get("table_of_contents")
                             else ""
                         )
-                        + "---\n*Digital product by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        + "---\n" + _published_by_md("Digital product by")
                     )
                     async with _hf_pf_http.AsyncClient(timeout=20.0) as _hpf:
                         _cr_pf = await _hpf.post(
@@ -2934,7 +3059,7 @@ Output JSON:
                 "✅ Writes content, creates products, runs campaigns autonomously\n"
                 "✅ Connects to 40+ platforms (Shopify, Slack, Google, Stripe...)\n"
                 "✅ Income loop runs non-stop while you sleep\n\n"
-                "DM me to learn more or visit https://aria-ai.fly.dev/dashboard"
+                "DM me to learn more" + _dash_suffix(" or visit: ")
             )[:280]
             _promo_sent = 0
             try:
@@ -3445,7 +3570,7 @@ JSON:
                         .replace("</p>", "\n\n")
                         .replace("<strong>", "**")
                         .replace("</strong>", "**")
-                        + "\n\n---\n\n*Digital product powered by [ARIA AI](https://aria-ai.fly.dev/dashboard)*\n"
+                        + "\n\n---\n\n" + _published_by_md("Digital product powered by") + "\n"
                     )
                     async with _hf_http.AsyncClient(timeout=20.0) as _hc:
                         # Create repo (Space)
@@ -3850,7 +3975,7 @@ JSON: {{"content": "Chapter content (300+ words). Use practical tips, examples, 
                         f"# {_ef_title}\n\n**{ebook.get('subtitle', '')}**\n\n"
                         f"**Price: ${_ef_price:.2f}** | Instant Download\n\n"
                         f"{full_description}\n\n---\n\n{ebook_content_md[:8000]}\n\n"
-                        f"---\n*Ebook published by [ARIA AI](https://aria-ai.fly.dev/dashboard)*"
+                        f"---\n{_published_by_md('Ebook published by')}"
                     )
                     async with _hf_ef_http.AsyncClient(timeout=20.0) as _hef:
                         _cr_ef = await _hef.post(
@@ -6541,7 +6666,7 @@ JSON:
                             "7/10 Email list monetization. AI writes sequences, nurtures subscribers, sells products. $1 per subscriber per month is the benchmark.",
                             "8/10 Freelance arbitrage. Charge $500 for work. AI does it in 20 min. Pocket the difference. Scale to 10 clients.",
                             "9/10 Data products. AI scrapes, analyzes, packages insights. Sell reports to businesses at $97–$497 each.",
-                            "10/10 The compounding effect: every AI income stream you build adds to the last. Start one this week. → https://aria-ai.fly.dev/dashboard",
+                            "10/10 The compounding effect: every AI income stream you build adds to the last. Start one this week." + _dash_suffix(),
                         ],
                     },
                     {
@@ -6556,7 +6681,7 @@ JSON:
                             "7/10 It A/B tests prices and descriptions to maximize conversion rates automatically.",
                             "8/10 It sends email campaigns to subscribers promoting relevant products at the right time.",
                             "9/10 It tracks all revenue, adjusts strategy based on what's working, and doubles down.",
-                            "10/10 Total cost to run: ~$0/month using free AI APIs. This is ARIA — the income loop I built: https://aria-ai.fly.dev/dashboard",
+                            "10/10 Total cost to run: ~$0/month using free AI APIs. This is ARIA — the income loop I built" + _dash_suffix(": "),
                         ],
                     },
                     {
@@ -6571,7 +6696,7 @@ JSON:
                             "7/10 SEO: AI-written blog posts targeting long-tail keywords. Ranks in 3-6 months. Passive traffic forever.",
                             "8/10 ANALYTICS: GA4 free. AI interprets the data and suggests what to build next.",
                             "9/10 Total monthly cost: $0 to start. Total time: 2 hours to set up. Then the machines run it.",
-                            "10/10 I open-sourced my implementation. DM me or visit: https://aria-ai.fly.dev/dashboard to see it live.",
+                            ("10/10 I open-sourced my implementation. " + (f"DM me or visit: {_dashboard_url()} to see it live." if _dashboard_url() else "DM me.")),
                         ],
                     },
                 ]
@@ -14461,7 +14586,7 @@ JSON:
   }},
   "terms_summary": "3-paragraph affiliate terms (fair, professional)",
   "leaderboard_incentives": ["First place wins...", "Top 10 get..."],
-  "tracking_link_format": "https://aria-ai.fly.dev/?ref={{affiliate_id}}"
+  "tracking_link_format": "{_tracking_link_format()}"
 }}""",
                 model=AIModel.CREATIVE,
                 max_tokens=2500,

@@ -248,7 +248,12 @@ class Settings(BaseSettings):
     DID_API_KEY: str | None = None
     CANVA_CLIENT_ID: str | None = None
     CANVA_CLIENT_SECRET: str | None = None
-    ARIA_BASE_URL: str = "https://aria-ai.fly.dev"
+    # Public base URL of this deployment (callbacks, OAuth redirects, bot links).
+    # INTENTIONALLY no default domain: the old hardcoded fly.dev default died
+    # and sent ~50% of the income-loop traffic weight to a 404. Empty means
+    # "no public site configured" — see apps/core/aria_site.py for the honest
+    # degradation contract (probe + parked traffic work, never 404 spam).
+    ARIA_BASE_URL: str = ""
     ZAPIER_WEBHOOK_URL: str | None = None
     # Full Zapier MCP endpoint URL (embeds its own key) copied from mcp.zapier.com.
     # Lets ARIA publish to every account the owner connected in Zapier with one credential.

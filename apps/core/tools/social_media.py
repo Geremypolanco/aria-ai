@@ -72,7 +72,11 @@ class SocialMediaManager:
 
     def __init__(self) -> None:
         self._http = httpx.AsyncClient(timeout=30.0)
-        self._base_url = os.getenv("ARIA_BASE_URL", "https://aria-ai.fly.dev")
+        # No invented default: without ARIA_BASE_URL there is no public site
+        # to build OAuth redirect_uris against (get_auth_url returns None).
+        from apps.core.aria_site import get_aria_base_url
+
+        self._base_url = get_aria_base_url()
 
     def _get_creds(self, platform: str) -> tuple[str | None, str | None]:
         cfg = PLATFORM_CONFIGS.get(platform, {})
@@ -89,6 +93,14 @@ class SocialMediaManager:
         app_id, app_secret = self._get_creds(platform)
         if not app_id or not app_secret:
             logger.warning("[SocialMedia] Credentials not configured for %s", platform)
+            return None
+
+        if not self._base_url:
+            logger.warning(
+                "[SocialMedia] ARIA_BASE_URL not configured — cannot build "
+                "OAuth redirect_uri for %s",
+                platform,
+            )
             return None
 
         state = secrets.token_urlsafe(32)
@@ -133,6 +145,8 @@ class SocialMediaManager:
         if not app_id or not app_secret:
             return None
 
+        if not self._base_url:
+            return None
         redirect_uri = f"{self._base_url}/auth/callback/{platform}"
 
         try:

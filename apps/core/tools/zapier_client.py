@@ -93,13 +93,17 @@ class ZapierClient:
         """
         if not self.webhook_url:
             return {"success": False, "error": "ZAPIER_WEBHOOK_URL no configurado"}
+        from apps.core.aria_site import site_link
+
+        # No invented default: without ARIA_BASE_URL there is no public
+        # callback URL to hand Zapier — omit it instead of a dead domain.
         payload = {
             "request_id": str(uuid.uuid4()),
             "event": event,
             "data": data or {},
             "chat_id": chat_id,
             "timestamp": time.time(),
-            "aria_callback_url": f"{getattr(settings, 'ARIA_BASE_URL', 'https://aria-ai.fly.dev')}/zapier/callback",
+            "aria_callback_url": site_link("/zapier/callback") or None,
         }
         logger.info("Zapier trigger: event=%s request_id=%s", event, payload["request_id"])
         try:
@@ -130,13 +134,22 @@ class ZapierClient:
         """
         if not self.webhook_url:
             return {"success": False, "error": "ZAPIER_WEBHOOK_URL no configurado"}
+        from apps.core.aria_site import site_link
+
+        _cb = site_link("/zapier/callback")
+        if not _cb:
+            return {
+                "success": False,
+                "error": "ARIA_BASE_URL no configurado — trigger_and_wait "
+                "necesita una URL pública para recibir el callback de Zapier",
+            }
         payload = {
             "request_id": str(uuid.uuid4()),
             "event": event,
             "data": data or {},
             "chat_id": chat_id,
             "timestamp": time.time(),
-            "aria_callback_url": f"{getattr(settings, 'ARIA_BASE_URL', 'https://aria-ai.fly.dev')}/zapier/callback",
+            "aria_callback_url": _cb,
         }
         loop = asyncio.get_event_loop()
         future: asyncio.Future = loop.create_future()
